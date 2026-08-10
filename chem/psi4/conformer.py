@@ -32,6 +32,7 @@ def conformer_search_ensemble(
     multiplicity: int = 1,
     memory: str = "4 GB",
     psi4_high_precision: bool = False,
+    seed: int | None = None,
     _progress_callback=None,
 ) -> dict[str, Any]:
     """
@@ -42,6 +43,10 @@ def conformer_search_ensemble(
          → 输出每个构象的最终能量（Hartree）、排序、CSV、PNG 能量棒图
     """
     from pathlib import Path as _Path
+
+    # 审计 #3 修复：可选随机种子，使 fallback 分支（pybel rotor search）生成的构象集可复现。
+    # 使用独立 random.Random 实例，避免污染模块级 random 全局状态（不影响并发的其他任务）。
+    rng = random.Random(seed) if seed is not None else random
 
     def _report(perc: int, msg: str):
         if _progress_callback:
@@ -108,11 +113,14 @@ def conformer_search_ensemble(
                         continue
             except Exception:
                 rotor_bonds = []
-            seen = set()
+            # 去重改用 3D 构象 RMSD（重原子），而非 SMILES。
+            # 同一分子的不同构象 SMILES 相同 → 用 SMILES 去重会把所有构象合并成 1 个，
+            # 导致多构象搜索失效、后续 NMR/pKa 的 Boltzmann 加权退化为单构象（P-1）。
             out_mols = []
+            out_obmols = []  # 存坐标副本，用于 RMSD 比较
             for _ in range(n_confs_total):
                 for b in rotor_bonds:
-                    ang = random.uniform(0, 360)
+                    ang = rng.uniform(0, 360)
                     try:
                         b.SetTorsion(ang)
                     except Exception:
@@ -130,20 +138,34 @@ def conformer_search_ensemble(
                             pass
                 except Exception:
                     pass
-                try:
-                    conv = ob_utils.ob.OBConversion()
-                    conv.SetOutFormat("smi")
-                    smi = conv.WriteString(obmol).strip()
-                    key2 = smi
-                except Exception:
-                    key2 = str(id(obmol))
-                if key2 not in seen:
-                    seen.add(key2)
-                    dup = ob_utils.ob.OBMol()
-                    dup.Assign(obmol)
-                    out_mols.append(ob_utils.pybel.Molecule(dup))
+                # 与已有构象做 RMSD 比较（重原子，阈值 0.1 Å），近重复才跳过
+                dup = False
+                for prev in out_obmols:
+                    try:
+                        if obmol.RMSD(prev, True) < 0.1:
+                            dup = True
+                            break
+                    except Exception:
+                        pass
+                if not dup:
+                    keep = ob_utils.ob.OBMol()
+                    keep.Assign(obmol)
+                    out_obmols.append(keep)
+                    pm = ob_utils.ob.OBMol()
+                    pm.Assign(obmol)
+                    out_mols.append(ob_utils.pybel.Molecule(pm))
                 if len(out_mols) >= n_confs_total:
                     break
+            # 审计 1.1（极端场景）：若分子无旋转键（如苯环）或构象空间极小时，
+            # 实际生成的唯一构象数可能远小于请求的 n_confs_total。若静默返回少量构象，
+            # 用户可能误以为有 n_confs_total 个构象参与了后续 Boltzmann 加权（NMR/pKa），
+            # 实际只有少数几个，造成结果代表性偏差。在此显式告警，提醒用户真实构象数。
+            if 0 < len(out_mols) < n_confs_total:
+                logger.warning(
+                    "构象搜索回退分支仅生成 %d 个唯一构象（请求 %d）。若分子无旋转键或构象空间极小，"
+                    "此属正常；但后续 Boltzmann 加权将仅基于这 %d 个构象，请注意结果代表性。",
+                    len(out_mols), n_confs_total, len(out_mols),
+                )
             if out_mols:
                 conv = ob_utils.ob.OBConversion()
                 conv.SetOutFormat("sdf")

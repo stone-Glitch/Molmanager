@@ -4,9 +4,13 @@
 PSI4 工具函数 - XYZ 解析、坐标插值、IR 绘图、二面角设置等
 """
 import csv
+import hashlib
 import math
 import os
+import struct
 import tempfile
+import threading
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +54,24 @@ def _write_xyz(n: int, atoms: list[str], coords: list[list[float]]) -> str:
 
 
 _LERP_COORDS_CACHE_MAX = 2048
-_LERP_COORDS_CACHE: dict[Any, list[list[float]]] = {}
+# 审计 2.1：原实现用 id(R)/id(P)（对象内存地址）做键，对象被回收后地址会被复用，
+# 可能导致「不同分子对」命中「陈旧/错误」的插值结果；且原淘汰为 FIFO、无锁。
+# 改为：① 用坐标内容哈希做键（正确性）；② 用 OrderedDict 实现真正 LRU；③ 加锁线程安全；
+# ④ 命中时返回拷贝，避免调用方篡改污染共享缓存。
+_LERP_COORDS_CACHE: "OrderedDict[bytes, list[list[float]]]" = OrderedDict()
+_LERP_COORDS_CACHE_LOCK = threading.Lock()
+
+
+def _coords_signature(coords) -> bytes | None:
+    """用坐标内容的 MD5 做缓存键（而非对象 id），避免 id 复用导致的错误命中。"""
+    try:
+        h = hashlib.md5()
+        for vec in coords:
+            # 大端双精度打包：与浮点精度无关、稳定且快速
+            h.update(struct.pack("!%dd" % len(vec), *[float(x) for x in vec]))
+        return h.digest()
+    except Exception:
+        return None
 
 
 def _lerp_coords(R: list[list[float]], P: list[list[float]], t: float) -> list[list[float]]:
@@ -62,23 +83,31 @@ def _lerp_coords(R: list[list[float]], P: list[list[float]], t: float) -> list[l
     """
     one_minus_t = 1.0 - t
     n = len(R)
+    key = None
     try:
-        key = (id(R), id(P), t)
-    except TypeError:
+        rb = _coords_signature(R)
+        pb = _coords_signature(P)
+        if rb is not None and pb is not None:
+            key = rb + pb + (b"t" + repr(t).encode("ascii"))
+    except Exception:
         key = None
-    if key is not None and key in _LERP_COORDS_CACHE:
-        return _LERP_COORDS_CACHE[key]
+    if key is not None:
+        with _LERP_COORDS_CACHE_LOCK:
+            if key in _LERP_COORDS_CACHE:
+                _LERP_COORDS_CACHE.move_to_end(key)                # LRU：标记最近使用
+                return [list(c) for c in _LERP_COORDS_CACHE[key]]  # 返回拷贝，防止外部篡改
     result = [[one_minus_t * R[i][0] + t * P[i][0],
                one_minus_t * R[i][1] + t * P[i][1],
                one_minus_t * R[i][2] + t * P[i][2]] for i in range(n)]
     if key is not None:
-        if len(_LERP_COORDS_CACHE) >= _LERP_COORDS_CACHE_MAX:
-            try:
-                k = next(iter(_LERP_COORDS_CACHE))
-                del _LERP_COORDS_CACHE[k]
-            except StopIteration:
-                pass
-        _LERP_COORDS_CACHE[key] = result
+        with _LERP_COORDS_CACHE_LOCK:
+            while len(_LERP_COORDS_CACHE) >= _LERP_COORDS_CACHE_MAX:
+                try:
+                    _LERP_COORDS_CACHE.popitem(last=False)          # 淘汰最久未使用
+                except KeyError:
+                    break
+            _LERP_COORDS_CACHE[key] = [list(c) for c in result]
+            _LERP_COORDS_CACHE.move_to_end(key)
     return result
 
 

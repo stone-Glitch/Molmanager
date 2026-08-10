@@ -16,6 +16,8 @@ import os
 import sys
 import stat
 import tempfile
+import shutil
+import time
 from pathlib import Path
 from typing import Optional, Union
 
@@ -57,6 +59,47 @@ def get_app_data_dir() -> Path:
     return d
 
 
+# ==================== 备份目录（F17 / T07）====================
+
+#: 备份根目录名。
+#: 🔴 改动此常量必须同步以下两处，否则备份文件会被当作普通文件误伤：
+#:    1. utils/backup_manager.BACKUP_DIR_NAME
+#:    2. core/model.PROTECTED_DIR_NAMES（scan_files / 整理 / 删除的排除名单）
+BACKUP_DIR_NAME = ".backup"
+
+
+def get_backup_dir(work_dir: Optional[PathLike] = None, *, create: bool = True) -> Path:
+    """
+    获取备份根目录（F17 快照的存放位置）。
+
+    参数:
+        work_dir: 工作目录。给定时返回 ``<work_dir>/.backup``（快照跟着数据走，
+                  换工作目录后互不干扰）；为 None 时回落到应用数据目录下的
+                  ``.backup``，保证「还没选工作目录」时也有地方落盘。
+        create:   是否自动创建目录（默认 True，并设为仅当前用户可访问 0o700）
+
+    返回:
+        备份根目录的 Path。**本函数不抛异常**：创建失败时仍返回路径对象，
+        由调用方（BackupManager）按「备份失败只 WARNING」的契约处理。
+    """
+    if work_dir is not None:
+        try:
+            base = Path(work_dir)
+        except (TypeError, ValueError):
+            base = get_app_data_dir()
+    else:
+        base = get_app_data_dir()
+    d = base / BACKUP_DIR_NAME
+    if create:
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            chmod_quiet(d, 0o700)
+        except OSError:
+            # 静默：备份目录建不出来不能阻断主流程（架构 §6.4）
+            pass
+    return d
+
+
 # ==================== Windows Junction 检测 ====================
 
 def is_windows_junction(path: PathLike, *, raise_on_junction: bool = False) -> bool:
@@ -82,8 +125,13 @@ def is_windows_junction(path: PathLike, *, raise_on_junction: bool = False) -> b
         except OSError:
             return False
         FILE_ATTRIBUTE_REPARSE_POINT = 0x0400
-        if ((st.st_mode & stat.S_IFMT) == stat.S_IFDIR
-                and (st.st_file_attributes & FILE_ATTRIBUTE_REPARSE_POINT)):
+        # ⚠️ BUG-1 修复：stat.S_IFMT 是「函数」(stat.S_IFMT(mode))，不是位掩码。
+        # 旧代码误写成 `st.st_mode & stat.S_IFMT` 会抛 TypeError，
+        # 被下方裸 except 静默吞掉 → 函数恒返回 False，整条防护链全线失效。
+        # 这里改用函数调用形式；st_file_attributes 用 getattr 兜底
+        # （非 Windows / 部分文件系统无此属性时为 0，即「非 reparse point」）。
+        attrs = getattr(st, "st_file_attributes", 0)
+        if stat.S_IFMT(st.st_mode) == stat.S_IFDIR and (attrs & FILE_ATTRIBUTE_REPARSE_POINT):
             if raise_on_junction:
                 raise ValueError(
                     f"检测到 Windows Junction / ReparsePoint 目录，拒绝跟随操作: {os.fspath(p)!r}"
@@ -91,7 +139,15 @@ def is_windows_junction(path: PathLike, *, raise_on_junction: bool = False) -> b
             return True
     except ValueError:
         raise
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # 安全降级必须留痕：检测失败绝不能再「静默吞掉」，否则会像 BUG-1 那样
+        # 长期潜伏、在用户数据上酿成真实损坏。此处降级为 False（保守：不误判为
+        # junction，交给 is_symlink / 上层 commonpath 等其余防线兜底）。
+        from utils.logger import default_logger as _logger
+        _logger.warning(
+            "is_windows_junction 检测异常，降级为 False（保守非 junction）: %r (%s: %s)",
+            os.fspath(path), type(exc).__name__, exc,
+        )
         return False
     return False
 
@@ -105,22 +161,59 @@ def enforce_no_symlink_target(
     _level: str = "leaf",
 ) -> None:
     """
-    安全检查：确保路径不是符号链接或 Windows Junction。
-    路径不存在时，若 allow_nonexistent=True 则静默通过。
+    安全检查：确保路径（及其**每一层祖先**）都不是符号链接或 Windows Junction。
+
+    BUG-1 修复关键：必须逐级检查，不能只检查「叶子 + 直接父目录」。
+    复现路径 ``wk/jn/.backup`` 中 junction 出现在**中间层** ``jn``，
+    若只查叶子 ``benzene.mol`` 与其父 ``snap``，会完全漏掉 ``jn``，
+    导致防护链失效、真实改写 ``.backup``（架构文档 C11 最大风险项）。
+
+    实现要点：用 ``absolute()``（**不跟随** symlink/junction）拿到字面路径，
+    再逐级拼接、对每一层已存在的目录调用 ``is_symlink()`` / ``is_windows_junction()``。
+    ⚠️ 绝不能用 ``resolve()``：它会把 junction 中间层「折叠」成真实目标，
+    使 ``jn`` 从 parts 中消失、无法被检出。
+
+    参数:
+        path: 要检查的路径
+        allow_nonexistent: 最终目标不存在时是否静默通过（仅对最终目标生效；
+                           已存在的祖先层仍会被检查，以拦下位于中间层的 junction/symlink）
+        _level: 仅作调用层级标记，无安全语义
 
     抛出:
-        ValueError: 检测到 symlink / junction 时
+        ValueError: 任一层级检测到 symlink / junction 时
     """
-    p = Path(path)
-    if not p.exists() and allow_nonexistent:
-        return
+    # 不调用 resolve()：resolve 会跟随 junction / symlink 把中间层「折叠」掉，
+    # 导致 junction 这一级从 parts 中消失、无法被检出（BUG-1 复现路径 wk/jn/.backup 的 jn）。
+    # 这里只用 absolute()（不跟随符号链接）拿到字面路径，再逐级拼接检查每一层。
     try:
-        if p.is_symlink():
-            raise ValueError(f"检测到符号链接（symlink），拒绝操作: {os.fspath(p)!r}")
-    except OSError as exc:
-        raise ValueError(f"无法判定是否为符号链接: {os.fspath(p)!r} ({exc})") from exc
-    if os.name == "nt":
-        is_windows_junction(p, raise_on_junction=True)
+        p = Path(path)
+        if not p.is_absolute():
+            p = Path.cwd() / p
+    except (OSError, ValueError):
+        return
+    parts = p.parts
+    if not parts:
+        return
+    cur = Path(parts[0])
+    for seg in parts[1:]:
+        cur = cur / seg
+        try:
+            exists = cur.exists()
+        except OSError:
+            exists = False
+        if not exists:
+            # 该层不存在：继续向下拼（可能是尚未创建的重命名目标），
+            # 但其上层若存在 junction/symlink 已在上一轮被拦下。
+            continue
+        try:
+            if cur.is_symlink():
+                raise ValueError(f"检测到符号链接（symlink），拒绝操作: {os.fspath(cur)!r}")
+        except OSError as exc:
+            raise ValueError(f"无法判定是否为符号链接: {os.fspath(cur)!r} ({exc})") from exc
+        if os.name == "nt":
+            # 内部 raise_on_junction=True：命中即抛 ValueError（绝不静默）。
+            is_windows_junction(cur, raise_on_junction=True)
+
 
 
 # ==================== 安全输出路径解析 ====================
@@ -213,8 +306,10 @@ def resolve_secure_output_path(
 
     # --- 路径链 symlink/junction 逐段检查 ---
     def _walk_chain(target: Path, base: Path) -> None:
+        # 🔴 BUG-5：绝不能用 resolve()（会把 junction 中间层折叠掉），必须 absolute()，
+        # 与 enforce_no_symlink_target 一致。
         try:
-            rel = target.resolve(strict=False).relative_to(base.resolve(strict=False))
+            rel = target.absolute().relative_to(base.absolute())
             parts_a = list(rel.parts)
         except (OSError, ValueError):
             parts_a = list(target.parts)
@@ -224,8 +319,8 @@ def resolve_secure_output_path(
             if not cur.exists():
                 continue
             enforce_no_symlink_target(cur, allow_nonexistent=True, _level="chain")
-        if target.exists():
-            enforce_no_symlink_target(target, allow_nonexistent=True, _level="leaf")
+        # 🔴 BUG-5：叶子（输出文件本身）即使尚不存在也要检查其祖先链。
+        enforce_no_symlink_target(target, allow_nonexistent=True, _level="leaf")
 
     try:
         _walk_chain(cand, base_real)
@@ -258,6 +353,60 @@ def resolve_secure_output_path(
             raise ValueError(f"无法为输出路径创建父目录: {os.fspath(cand)!r} ({exc})") from exc
 
     return cand
+
+
+# ==================== 安全输入文件解析 ====================
+
+def resolve_secure_input_file(
+    path: PathLike,
+    *,
+    base_dir: Optional[PathLike] = None,
+    allow_outside: bool = True,
+) -> Path:
+    """
+    安全解析「被读取的输入文件」路径。
+
+    与 resolve_secure_output_path（限制**写入**落点）不同，输入文件由用户/调用方
+    显式选择，可能位于任意目录，因此默认 allow_outside=True（不做来源白名单），
+    仅保证最终解析到的是一个**真实存在的普通文件**（拒绝目录 / 设备 / 不存在路径），
+    防止读到非预期位置或把目录当文件读（审计：reaction_animation 输入越权读取）。
+
+    若确实需要限制来源（例如内部生成的临时文件），传 base_dir 且 allow_outside=False
+    即可开启白名单校验。
+
+    参数:
+        path: 输入文件路径
+        base_dir: 允许的来源根目录（allow_outside=False 时生效）
+        allow_outside: 是否允许文件位于 base_dir 之外（默认 True）
+
+    返回:
+        解析后的真实文件路径（Path）
+
+    抛出:
+        ValueError: 文件不存在 / 不是普通文件 / 越出 base_dir 范围
+    """
+    try:
+        p = Path(path)
+        if not p.is_absolute():
+            p = Path.cwd() / p
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"非法的输入文件路径: {os.fspath(path)!r} ({exc})") from exc
+    # realpath 不要求路径存在；先拿到真实路径再判存在性/类型，
+    # 避免 resolve(strict=True) 在部分 Windows 路径上误抛 OSError。
+    real = Path(os.path.realpath(os.fspath(p)))
+    if not real.exists():
+        raise ValueError(f"输入文件不存在: {os.fspath(real)!r}")
+    if not real.is_file():
+        raise ValueError(
+            f"输入路径不是普通文件（可能是目录或设备），拒绝读取: {os.fspath(real)!r}"
+        )
+    if base_dir is not None and not allow_outside:
+        try:
+            base_real = Path(base_dir).resolve(strict=True)
+            real.relative_to(base_real)
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"输入文件越出允许来源范围: {os.fspath(real)!r}") from exc
+    return real
 
 
 # ==================== 默认 base_dir 推断 ====================
@@ -334,3 +483,75 @@ def secure_output_path(
         allow_outside=allow_outside,
         create_parent=create_parent,
     )
+
+
+# ==================== 过期临时目录清理 ====================
+
+def cleanup_stale_tempdirs(max_age_seconds: int = 3 * 24 * 3600) -> int:
+    """
+    清理系统临时目录中过期（> max_age_seconds）的 psi4_temp_* 目录，返回删除数量。
+    安全加固（修复 CWE-59 符号链接跟随 / CWE-367 TOCTOU / 审计 1.2 Windows junction）：
+      - 仅在系统临时目录内匹配，不触碰 cwd。
+      - 先用 resolve(strict=True) 拿真实路径，再 relative_to 校验仍在临时根目录内。
+      - 拒绝所有 is_symlink / Windows junction 路径。
+      - age 检查与 rmtree 作用于同一已 resolve 的 Path 对象，缩小竞争窗口。
+    """
+    from utils.logger import default_logger as logger
+    removed = 0
+    roots: set = set()
+    for envvar in ('TMPDIR', 'TEMP', 'TMP'):
+        v = os.environ.get(envvar)
+        if v:
+            try:
+                roots.add(Path(v).resolve())
+            except OSError:
+                continue
+    try:
+        roots.add(Path(tempfile.gettempdir()).resolve())
+    except OSError:
+        pass
+    roots = {r for r in roots if r and r.is_dir()}
+    if not roots:
+        return 0
+    now = time.time()
+    seen: set = set()
+    for root in roots:
+        try:
+            candidates = list(root.glob("psi4_temp_*"))
+        except OSError:
+            continue
+        for d in candidates:
+            try:
+                if is_windows_junction(d):
+                    continue
+                real = d.resolve(strict=True)
+                if d.is_symlink() or real.is_symlink():
+                    continue
+                if is_windows_junction(real):
+                    continue
+                if real in seen:
+                    continue
+                seen.add(real)
+                try:
+                    real.relative_to(root)
+                except ValueError:
+                    continue
+                if not real.is_dir():
+                    continue
+                if not real.name.startswith("psi4_temp_"):
+                    continue
+                try:
+                    st = real.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                if now - st.st_mtime >= max_age_seconds:
+                    try:
+                        shutil.rmtree(real, ignore_errors=True)
+                        removed += 1
+                    except OSError:
+                        pass
+            except Exception:
+                continue
+    if removed:
+        logger.info("清理过期临时目录 %d 个（> %.1f 天）", removed, max_age_seconds / 86400.0)
+    return removed

@@ -10,7 +10,12 @@ import csv
 import shutil
 import subprocess
 import tempfile
+import threading
 import logging  # ← 添加这一行！
+import time
+import sys
+import signal
+import atexit
 from pathlib import Path
 from typing import Dict, Optional, Callable, Any, List, Tuple
 
@@ -36,9 +41,8 @@ def _apply_numpy_cumproduct_compat_patch() -> None:
     try:
         _np.cumproduct = _np.cumprod
         _log.warning(
-            "检测到 numpy ≥ 1.24 且 pint 较旧：已临时为 numpy 补上 cumproduct=cumprod 别名，"
-            "避免 PSI4 导入崩溃。建议运行 `conda install -c conda-forge pint=0.24` "
-            "或 `pip install --upgrade pint` 以彻底解决此问题。"
+            "numpy 2.x 已移除 cumproduct：已临时补上 cumproduct=cumprod 别名，"
+            "以兼容仍调用 numpy.cumproduct 的旧依赖（如旧版 pint/qcelemental）。属正常防御性补丁，无需处理。"
         )
     except Exception as _e:
         try:
@@ -47,33 +51,135 @@ def _apply_numpy_cumproduct_compat_patch() -> None:
             import sys as _sys
             print(f"[compat] numpy cumproduct 补丁非致命错误: {_e}", file=_sys.stderr)
 
-try:
-    import chem.psi4 as psi4
-except Exception as _psi4_first_import_err:
-    try:
-        from utils.logger import default_logger as _log
-        _log.warning("PSI4 首次导入失败（可能是 numpy/pint 不兼容），尝试应用兼容性补丁后重试: %s",
-                     _psi4_first_import_err)
-    except Exception:
-        import sys as _sys
-        print(f"[psi4_import] 首次导入失败：{_psi4_first_import_err}", file=_sys.stderr)
-    _apply_numpy_cumproduct_compat_patch()
-    try:
-        import chem.psi4 as psi4
-    except Exception as _psi4_second_err:
+# ---------- PSI4 库的延迟导入 ----------
+# 这里一并修复两个问题：
+#   1) 原先写的是 `import chem.psi4 as psi4` —— 那是**本项目自己的路由包**（即本文件所在的包），
+#      不是 conda 安装的量化库。它没有 geometry / set_memory / energy 等 API，
+#      导致所有计算任务在 psi4.geometry 处失败（"has no attribute 'geometry'"），
+#      而环境自检却因「导入成功」误报 PSI4 可用。真实库是顶层的 `import psi4`。
+#   2) 真实 psi4 导入约需 10 秒。若放在模块层同步导入，
+#      chem.reaction_animation → chem.psi4_compute → 本模块 这条链会让应用**启动即冻结 10 秒**。
+#      故改为首次实际使用时才加载。numpy 兼容补丁仍在模块层提前打好（开销可忽略），
+#      以免其它模块中函数级的 `import psi4` 抢先执行时踩到 pint 崩溃。
+_apply_numpy_cumproduct_compat_patch()
+
+_psi4_mod: Any = None
+_psi4_load_failed = False
+_psi4_load_lock = threading.Lock()
+
+
+def _load_psi4() -> Any:
+    """真正导入 psi4 库；失败只告警一次并返回 None。线程安全 + 结果缓存。"""
+    global _psi4_mod, _psi4_load_failed
+    if _psi4_mod is not None or _psi4_load_failed:
+        return _psi4_mod
+    with _psi4_load_lock:
+        if _psi4_mod is not None or _psi4_load_failed:
+            return _psi4_mod
         try:
-            from utils.logger import default_logger as _log2
-            _log2.warning("PSI4 第二次导入仍失败，将标记为不可用: %s", _psi4_second_err)
-        except Exception:
-            import sys as _sys
-            print(f"[psi4_import] 第二次导入仍失败：{_psi4_second_err}", file=_sys.stderr)
-        psi4 = None
-else:
-    _apply_numpy_cumproduct_compat_patch()
+            import psi4 as _real
+        except Exception as _first_err:
+            logger.warning(
+                "PSI4 首次导入失败（可能是 numpy/pint 不兼容），应用兼容补丁后重试: %s", _first_err)
+            _apply_numpy_cumproduct_compat_patch()
+            try:
+                import psi4 as _real  # type: ignore[no-redef]
+            except Exception as _second_err:
+                logger.warning("PSI4 第二次导入仍失败，将标记为不可用: %s", _second_err)
+                _psi4_load_failed = True
+                return None
+        _psi4_mod = _real
+        return _psi4_mod
+
+
+def psi4_is_available() -> bool:
+    """PSI4 库是否可真正加载（首次调用会触发约 10 秒的导入）。"""
+    return _load_psi4() is not None
+
+
+class _Psi4Lazy:
+    """
+    `psi4.xxx` 访问代理：保持既有 40+ 处调用点原样不动，同时把导入开销推迟到首次使用。
+    未安装时抛 AttributeError，与「模块无此属性」语义一致，
+    因此 `getattr(psi4, 'energy', None)` 这类带默认值的探测仍能正确返回 None。
+    """
+    __slots__ = ()
+
+    def __getattr__(self, name: str) -> Any:
+        mod = _load_psi4()
+        if mod is None:
+            raise AttributeError(f"PSI4 未安装或导入失败，无法访问 psi4.{name}")
+        return getattr(mod, name)
+
+    def __bool__(self) -> bool:
+        return _load_psi4() is not None
+
+
+psi4 = _Psi4Lazy()
+
+# ---------- 内存参数归一化 ----------
+_MEMORY_RE = re.compile(
+    r"^\s*([0-9]*\.?[0-9]+)\s*"
+    r"(k|ki|m|mi|g|gi|t|ti)?"
+    r"(b|bytes?)?\s*$",
+    re.IGNORECASE,
+)
+_DEFAULT_MEMORY = "4 GB"
+
+
+def normalize_psi4_memory(value: Any, default: str = _DEFAULT_MEMORY) -> str:
+    """
+    把各种形式的内存设置归一化成 PSI4 能接受的 "<数值> <单位>" 字符串。
+
+    背景：psi4.set_memory 不接受裸数字字符串——
+        psi4.set_memory("4")  -> ValidationError: Invalid memory specification: '4'.
+        psi4.set_memory(4)    -> ValidationError: 请求 3.81e-06 MiB，低于 250 MiB 下限
+    而 UI 侧的 memory_var 是 IntVar，`str(memory_var.get())` 得到的正是裸 "4"，
+    且 `or "4 GB"` 兜底永远不会触发（非空字符串为真），导致所有计算任务在
+    set_memory 处直接崩溃。这里统一补全单位，裸数字一律按 GB 解释。
+
+    >>> normalize_psi4_memory(4)          -> '4 GB'
+    >>> normalize_psi4_memory('4')        -> '4 GB'
+    >>> normalize_psi4_memory('4 GB')     -> '4 GB'
+    >>> normalize_psi4_memory('2000 MB')  -> '2000 MB'
+    >>> normalize_psi4_memory('')         -> '4 GB'
+    """
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
+    m = _MEMORY_RE.match(text)
+    if not m:
+        # 无法识别的写法：不猜测，回退默认值并告警，避免把非法串丢给 PSI4
+        logger.warning("无法解析内存设置 %r，回退为 %s", text, default)
+        return default
+    num, unit, _suffix = m.group(1), m.group(2), m.group(3)
+    # 数值合法性校验：PSI4 最低要求约 250 MiB
+    try:
+        num_val = float(num)
+    except ValueError:
+        return default
+    if num_val <= 0:
+        logger.warning("内存设置 %r 非正数，回退为 %s", text, default)
+        return default
+    if not unit:
+        # 裸数字按 GB 解释（与 UI Spinbox 的语义一致）
+        return f"{num.rstrip('.') or '0'} GB"
+    unit_norm = unit.upper()
+    if not unit_norm.endswith("I"):
+        unit_norm += "B"          # G  -> GB
+    else:
+        unit_norm += "B"          # GI -> GIB
+    return f"{num} {unit_norm}"
+
 
 # ---------- 缓存 ----------
 _XYZ_READ_CACHE: dict[tuple[str, int, int], str | None] = {}
 _XYZ_READ_CACHE_MAX = 512
+# 审计 #1 修复：原缓存无锁，多个 PSI4 任务并发调用 read_xyz_content 时
+# 字典读写/淘汰非原子，可能字典损坏或读到半写入值。加 RLock 保护。
+_XYZ_READ_CACHE_LOCK = threading.RLock()
 
 
 def _xyz_cache_key(path_str: str) -> tuple[str, int, int] | None:
@@ -101,7 +207,8 @@ def check_psi4_installed() -> Tuple[bool, str, Dict[str, Any]]:
     }
     wl: list[str] = details["warnings"]
 
-    if psi4 is None:
+    # 注意：psi4 现在是延迟加载代理，永远不为 None，必须走 psi4_is_available()
+    if not psi4_is_available():
         return False, "PSI4 未安装或导入失败", details
 
     try:
@@ -257,8 +364,11 @@ def convert_with_obabel(input_file: str, output_file: str) -> bool:
 # ---------- 读取 XYZ ----------
 def read_xyz_content(file_path: str) -> Optional[str]:
     key = _xyz_cache_key(file_path)
-    if key is not None and key in _XYZ_READ_CACHE:
-        return _XYZ_READ_CACHE[key]
+    # 读路径加锁（仅查缓存，不含文件 IO）
+    if key is not None:
+        with _XYZ_READ_CACHE_LOCK:
+            if key in _XYZ_READ_CACHE:
+                return _XYZ_READ_CACHE[key]
     encodings = ('utf-8', 'gbk', 'gb2312', 'latin-1')
     content: str | None = None
     for enc in encodings:
@@ -277,50 +387,53 @@ def read_xyz_content(file_path: str) -> Optional[str]:
                 content = raw.decode('utf-8', errors='replace')
         except OSError:
             content = None
+    # 解析在锁外进行，避免文件 IO 阻塞其他并发读取（GIL 保证 dict 单操作原子，
+    # 此处锁只保护「查-算-写」组合的非原子性）
     if content is None:
-        if key is not None:
-            _XYZ_READ_CACHE[key] = None
-        return None
-    lines = content.splitlines()
-    if len(lines) < 2:
-        result = None
+        result: str | None = None
     else:
-        try:
-            atom_count = int(lines[0].strip())
-        except ValueError:
-            atom_count = 0
-        if atom_count <= 0:
+        lines = content.splitlines()
+        if len(lines) < 2:
             result = None
         else:
-            coord_lines = []
-            _atom_re = re.compile(r'^[A-Za-z][a-z]?$')
-            for line in lines[2:]:
-                if not line.strip():
-                    continue
-                parts = line.split()
-                if len(parts) >= 4:
-                    try:
-                        x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
-                    except ValueError:
-                        continue
-                    atom = parts[0]
-                    if _atom_re.match(atom):
-                        coord_lines.append((atom, x, y, z))
-            if not coord_lines:
+            try:
+                atom_count = int(lines[0].strip())
+            except ValueError:
+                atom_count = 0
+            if atom_count <= 0:
                 result = None
             else:
-                n = len(coord_lines)
-                out_lines = [str(n), "Converted by OpenBabel"]
-                out_lines.extend([f"{a:2s}  {x:12.6f}  {y:12.6f}  {z:12.6f}" for (a, x, y, z) in coord_lines])
-                result = "\n".join(out_lines) + "\n"
+                coord_lines = []
+                _atom_re = re.compile(r'^[A-Za-z][a-z]?$')
+                for line in lines[2:]:
+                    if not line.strip():
+                        continue
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        try:
+                            x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
+                        except ValueError:
+                            continue
+                        atom = parts[0]
+                        if _atom_re.match(atom):
+                            coord_lines.append((atom, x, y, z))
+                if not coord_lines:
+                    result = None
+                else:
+                    n = len(coord_lines)
+                    out_lines = [str(n), "Converted by OpenBabel"]
+                    out_lines.extend([f"{a:2s}  {x:12.6f}  {y:12.6f}  {z:12.6f}" for (a, x, y, z) in coord_lines])
+                    result = "\n".join(out_lines) + "\n"
+    # 写路径加锁（含 LRU 淘汰），与读路径同一把锁
     if key is not None:
-        if len(_XYZ_READ_CACHE) >= _XYZ_READ_CACHE_MAX:
-            try:
-                first_key = next(iter(_XYZ_READ_CACHE))
-                del _XYZ_READ_CACHE[first_key]
-            except StopIteration:
-                pass
-        _XYZ_READ_CACHE[key] = result
+        with _XYZ_READ_CACHE_LOCK:
+            if len(_XYZ_READ_CACHE) >= _XYZ_READ_CACHE_MAX:
+                try:
+                    first_key = next(iter(_XYZ_READ_CACHE))
+                    del _XYZ_READ_CACHE[first_key]
+                except StopIteration:
+                    pass
+            _XYZ_READ_CACHE[key] = result
     return result
 
 
@@ -404,6 +517,21 @@ def run_psi4_task(
         logger.debug("[PSI4 进度] %3d%% - %s", int(percent), msg)
 
     # TempDirGuard
+    def _rmtree_with_retry(p: str, attempts: int = 3) -> None:
+        """清理临时目录，失败指数退避重试；最终仍失败记 warning（而非静默忽略）。"""
+        import time as _time
+        last_err: Exception | None = None
+        for i in range(attempts):
+            try:
+                shutil.rmtree(p, ignore_errors=False)
+                return
+            except Exception as _e:
+                last_err = _e
+                logger.debug("TempDirGuard 清理临时目录失败(第%d次) %s: %s", i + 1, p, _e)
+                _time.sleep(0.5 * (2 ** i))  # 0.5s / 1.0s / 2.0s 指数退避
+        if os.path.exists(p):
+            logger.warning("TempDirGuard 多次尝试仍无法清理临时目录 %s: %s", p, last_err)
+
     class _TempDirGuard:
         def __init__(self):
             self.path: str | None = None
@@ -437,11 +565,8 @@ def run_psi4_task(
                     logger.debug("TempDirGuard 清理额外临时路径失败 %s: %s", ep, _re)
             self.extra_paths = []
             p, self.path = self.path, None
-            if p and os.path.exists(p):
-                try:
-                    shutil.rmtree(p, ignore_errors=True)
-                except Exception as _re:
-                    logger.debug("TempDirGuard 清理主临时目录失败 %s: %s", p, _re)
+            if p:
+                _rmtree_with_retry(p)  # 审计 S-3 修复：加重试与告警，避免临时目录静默残留
 
     _td = _TempDirGuard()
 
@@ -611,7 +736,8 @@ def run_psi4_task(
 
             psi4.set_output_file(log_file, append=False)
 
-            psi4.set_memory(memory)
+            # 统一归一化：UI 传进来的可能是裸 "4"，直接给 set_memory 会抛 ValidationError
+            psi4.set_memory(normalize_psi4_memory(memory))
             psi4.set_options({
                 'basis': basis,
                 'scf_type': 'pk',
@@ -631,7 +757,9 @@ def run_psi4_task(
 
             _pcm_enabled_here = False
             if solvent:
-                _pcm_try_tasks = {"energy"}
+                # 审计 #2 修复：溶剂下 optimize/frequency/thermo 也需启用 PCM，
+                # 否则溶剂下的热化学/优化/频率实际仍是气相。
+                _pcm_try_tasks = {"energy", "optimize", "frequency", "thermo"}
                 if task_type in _pcm_try_tasks:
                     try:
                         psi4.set_options({'pcm': True, 'solvent': solvent})
@@ -658,6 +786,42 @@ def run_psi4_task(
                     except Exception as _solv_meta_err:
                         logger.warning("写入溶剂元数据选项失败: %s", _solv_meta_err)
 
+            # ---- 审计 UX2：进度嗅探线程 ----
+            # 重定向 PSI4 输出到临时文件，后台线程轮询提取 SCF 迭代/优化步，解决
+            # 「长时间计算无中间反馈」导致用户误以为程序卡死的问题。
+            # 嗅探线程只通过 progress_callback（写 jsonl 文件）回传，不触碰 tkinter，线程安全。
+            _progress_out = os.path.join(
+                output_dir or tempfile.gettempdir(),
+                f"psi4_progress_{os.getpid()}_{id(results)}.out",
+            )
+            _progress_stop = threading.Event()
+            try:
+                psi4.core.set_output_file(_progress_out)
+            except Exception:
+                _progress_out = None
+            def _poll_progress():
+                import re as _re
+                _last = ("", 0)
+                while not _progress_stop.is_set():
+                    if _progress_out and os.path.exists(_progress_out):
+                        try:
+                            with open(_progress_out, "r", errors="replace") as _fh:
+                                _txt = _fh.read()
+                            _opt = _re.findall(r"[Oo]ptimization Step\s+(\d+)", _txt)
+                            _step = int(_opt[-1]) if _opt else 0
+                            _scf = _re.findall(r"SCF Iteration\s+(\d+)", _txt)
+                            _it = int(_scf[-1]) if _scf else 0
+                            if _step and _step != _last[1]:
+                                report(min(95, 40 + _step), f"优化第 {_step} 步…")
+                                _last = ("opt", _step)
+                            elif _it and _it != _last[1]:
+                                report(min(90, 30 + _it), f"SCF 第 {_it} 次迭代…")
+                                _last = ("scf", _it)
+                        except Exception:
+                            pass
+                    _progress_stop.wait(1.5)
+            _progress_thread = threading.Thread(target=_poll_progress, daemon=True)
+            _progress_thread.start()
             report(10, "开始计算...")
             _pcm_safe_rollback_done = False
 
@@ -690,7 +854,15 @@ def run_psi4_task(
 
             elif task_type == 'optimize':
                 report(30, "开始几何优化...")
-                energy, wfn = psi4.optimize(method, molecule=mol, return_wfn=True)
+                try:
+                    energy, wfn = psi4.optimize(method, molecule=mol, return_wfn=True)
+                except Exception as _e1:
+                    if _rollback_pcm_if_needed():
+                        energy, wfn = psi4.optimize(method, molecule=mol, return_wfn=True)
+                        results["pcm_rolled_back"] = True
+                        results["solvent_rollback_reason"] = str(_e1)[:200]
+                    else:
+                        raise
                 results["energy"] = energy
                 opt_mol = wfn.molecule()
                 results["optimized_xyz"] = opt_mol.save_string_xyz()
@@ -698,7 +870,15 @@ def run_psi4_task(
 
             elif task_type == 'frequency':
                 report(30, "计算频率...")
-                energy, wfn = psi4.frequency(method, molecule=mol, return_wfn=True)
+                try:
+                    energy, wfn = psi4.frequency(method, molecule=mol, return_wfn=True)
+                except Exception as _e1:
+                    if _rollback_pcm_if_needed():
+                        energy, wfn = psi4.frequency(method, molecule=mol, return_wfn=True)
+                        results["pcm_rolled_back"] = True
+                        results["solvent_rollback_reason"] = str(_e1)[:200]
+                    else:
+                        raise
                 results["energy"] = energy
                 freqs = psi4.core.variable("frequencies")
                 if freqs is not None:
@@ -731,12 +911,28 @@ def run_psi4_task(
 
             elif task_type == 'thermo':
                 report(30, "进行几何优化...")
-                opt_energy, opt_wfn = psi4.optimize(method, molecule=mol, return_wfn=True)
+                try:
+                    opt_energy, opt_wfn = psi4.optimize(method, molecule=mol, return_wfn=True)
+                except Exception as _e1:
+                    if _rollback_pcm_if_needed():
+                        opt_energy, opt_wfn = psi4.optimize(method, molecule=mol, return_wfn=True)
+                        results["pcm_rolled_back"] = True
+                        results["solvent_rollback_reason"] = str(_e1)[:200]
+                    else:
+                        raise
                 results["energy"] = opt_energy
                 opt_mol = opt_wfn.molecule()
                 results["optimized_xyz"] = opt_mol.save_string_xyz()
                 report(60, "计算频率（优化后结构）...")
-                freq_energy, freq_wfn = psi4.frequency(method, molecule=opt_mol, return_wfn=True)
+                try:
+                    freq_energy, freq_wfn = psi4.frequency(method, molecule=opt_mol, return_wfn=True)
+                except Exception as _e2:
+                    # 频率步若因 PCM 失败，降级为气相重算（optimize 步已成功则保留）
+                    if _rollback_pcm_if_needed():
+                        freq_energy, freq_wfn = psi4.frequency(method, molecule=opt_mol, return_wfn=True)
+                        results.setdefault("pcm_rolled_back", True)
+                    else:
+                        raise
                 thermo = psi4.core.variable("thermodynamics")
                 if thermo is not None:
                     results["thermo"] = thermo.to_array().tolist()
@@ -925,8 +1121,394 @@ def run_psi4_task(
                 psi4.core.clean()
             except Exception:
                 pass
+            # 审计 UX2：停止进度嗅探线程并恢复 PSI4 输出目标（避免污染 worker 复用）
+            try:
+                if '_progress_stop' in locals() and _progress_stop is not None:
+                    _progress_stop.set()
+                    _progress_thread.join(timeout=2)
+            except Exception:
+                pass
+            try:
+                if '_progress_out' in locals() and _progress_out:
+                    psi4.core.set_output_file("")
+            except Exception:
+                pass
 
     finally:
         _finalize()
 
     return results
+
+
+# ================================================================
+# 可取消的 PSI4 任务运行器（F03 队列「取消 / 超时终止」的硬地基）
+# ================================================================
+def _psi4_runner_script_path() -> Path:
+    """返回子进程运行器脚本的绝对路径。"""
+    return Path(__file__).resolve().parents[0] / "_subprocess_runner.py"
+
+
+def _terminate_process_tree(proc: "subprocess.Popen", grace_period: float = 2.0) -> None:
+    """
+    跨平台杀掉整个进程树（PSI4 会派生 OpenMP/MPI 子进程，只杀父进程没用）。
+
+    优化（审计建议）：先发「优雅退出」信号，等待 grace_period 秒让进程树自我清理
+    （flush 输出、删除半成品 .fchk 等），仍未退出再强制杀，最后兜底 proc.kill()。
+      - Windows: taskkill /T（不带 /F，温和终止）→ 等待 → taskkill /T /F（强制）
+      - POSIX:   killpg(SIGTERM) → 等待 → killpg(SIGKILL)
+    """
+    pid = proc.pid
+    if proc.poll() is not None:
+        return  # 已经退出，无需处理
+    # ---- 1) 优雅退出 ----
+    try:
+        if sys.platform.startswith("win"):
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+        else:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+    except Exception:
+        pass
+    # ---- 2) 等待优雅退出 ----
+    deadline = time.time() + grace_period
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return
+        time.sleep(0.1)
+    # ---- 3) 强制杀 ----
+    try:
+        if sys.platform.startswith("win"):
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+        else:
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            # 审计 4.3 修复：补充用 psutil 递归杀脱离进程组的后代（若可用），
+            # 覆盖 PSI4 自行 setsid 导致其后代不在同一进程组、killpg 杀不到的场景。
+            try:
+                import psutil
+                parent = psutil.Process(pid)
+                for child in parent.children(recursive=True):
+                    try:
+                        child.kill()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    # ---- 4) 兜底 ----
+    try:
+        if proc.poll() is None:
+            proc.kill()
+    except Exception:
+        pass
+
+
+def _read_new_progress(progress_path: str, state: dict, progress_callback) -> None:
+    """读取 progress 文件中新增的 JSON 行并转发给 progress_callback。"""
+    if progress_callback is None or not os.path.exists(progress_path):
+        return
+    try:
+        with open(progress_path, "r", encoding="utf-8") as pf:
+            content = pf.read()
+    except Exception:
+        return
+    if not content:
+        return
+    parts = content.split("\n")
+    # 末尾若没有换行，说明最后一行可能还没写完，跳过它避免重复/半行解析
+    n_complete = len(parts) - 1
+    last_n = state.get("last_n", 0)
+    if n_complete <= last_n:
+        return
+    for i in range(last_n, n_complete):
+        line = parts[i].strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            progress_callback(obj.get("p", 0), obj.get("m", ""))
+        except Exception:
+            pass
+    state["last_n"] = n_complete
+
+
+def _run_psi4_subprocess(
+    input_file, task_type, method, basis, output_dir, preset_name,
+    solvent, d3, charge, multiplicity, memory, *,
+    progress_callback=None, cancel_check=None, timeout=None, poll_interval=0.2,
+    **kwargs
+) -> Dict:
+    """
+    在独立子进程里运行 run_psi4_task，主进程轮询 cancel_check / timeout，
+    一旦触发就杀掉整个进程树实现强制取消。结果从临时 JSON 读回。
+    """
+    work_root = Path(__file__).resolve().parents[2]  # .../chem/psi4/core.py -> 工作区根
+    runner = work_root / "chem" / "psi4" / "_subprocess_runner.py"
+    if not runner.exists():
+        raise RuntimeError(f"子进程运行器不存在: {runner}")
+
+    tmp = tempfile.mkdtemp(prefix="psi4_sub_")
+    cmd_path = os.path.join(tmp, "cmd.json")
+    result_path = os.path.join(tmp, "result.json")
+    progress_path = os.path.join(tmp, "progress.jsonl")
+
+    # 拼出要传给子进程的关键字参数（剔除不可序列化的回调）
+    cmd = dict(
+        input_file=input_file,
+        task_type=task_type,
+        method=method,
+        basis=basis,
+        output_dir=output_dir,
+        preset_name=preset_name,
+        solvent=solvent,
+        d3=d3,
+        charge=charge,
+        multiplicity=multiplicity,
+        memory=memory,
+    )
+    for k, v in kwargs.items():
+        if k in ("_progress_callback", "_extra_post_hook"):
+            continue
+        cmd[k] = v
+
+    with open(cmd_path, "w", encoding="utf-8") as f:
+        json.dump(cmd, f, ensure_ascii=False, default=str)
+
+    env = os.environ.copy()
+    pypath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(work_root) + (os.pathsep + pypath if pypath else "")
+
+    # 用 `-m` 方式启动，避免把脚本所在目录（chem/psi4，里面有个 utils.py）
+    # 塞进 sys.path[0] 而遮蔽顶层的 utils 包。cwd 设为工作区根保证包可导入。
+    args = [sys.executable, "-m", "chem.psi4._subprocess_runner",
+            cmd_path, result_path, progress_path]
+    creationflags = 0
+    if sys.platform.startswith("win"):
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+    proc = subprocess.Popen(
+        args, cwd=str(work_root), env=env, creationflags=creationflags,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+    progress_state = {"last_n": 0}
+    cancelled = False
+    started = time.time()
+    try:
+        while proc.poll() is None:
+            _read_new_progress(progress_path, progress_state, progress_callback)
+            if cancel_check is not None and cancel_check():
+                cancelled = True
+                _terminate_process_tree(proc)
+                break
+            if timeout is not None and (time.time() - started) > timeout:
+                cancelled = True
+                _terminate_process_tree(proc)
+                break
+            time.sleep(poll_interval)
+        # 收尾：把残余进度转发完
+        _read_new_progress(progress_path, progress_state, progress_callback)
+    finally:
+        if proc.poll() is None:
+            _terminate_process_tree(proc)
+        try:
+            proc.wait(timeout=3)
+        except Exception:
+            pass
+
+    if cancelled:
+        return {"success": False, "cancelled": True, "error": "任务已被取消（超时或用户取消）"}
+
+    if not os.path.exists(result_path):
+        return {"success": False, "error": "子进程未产出结果（可能崩溃或被强杀）"}
+
+    try:
+        with open(result_path, "r", encoding="utf-8") as rf:
+            result = json.load(rf)
+    except Exception as e:
+        return {"success": False, "error": f"读取子进程结果失败: {e}"}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return result
+
+
+# ================================================================
+# 持久热 worker（消除每次计算重导 psi4 的 ~10-15s 开销）
+# ================================================================
+_worker_proc = None
+_worker_lock = threading.Lock()
+
+
+def _ensure_worker() -> "subprocess.Popen":
+    """懒启动 / 复用常驻 worker；worker 进程在启动时一次性导入 psi4。"""
+    global _worker_proc
+    if _worker_proc is not None and _worker_proc.poll() is None:
+        return _worker_proc
+    _worker_proc = None  # 之前的可能已死（被取消强杀或崩溃），需要重启
+    work_root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    pypath = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(work_root) + (os.pathsep + pypath if pypath else "")
+    creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if sys.platform.startswith("win") else 0
+    _worker_proc = subprocess.Popen(
+        [sys.executable, "-m", "chem.psi4._worker"],
+        cwd=str(work_root), env=env, creationflags=creationflags,
+        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        text=True, bufsize=1,
+    )
+    return _worker_proc
+
+
+def _kill_worker() -> None:
+    """杀掉常驻 worker 进程树（用于取消 / 退出清理）。"""
+    global _worker_proc
+    proc = _worker_proc
+    _worker_proc = None
+    if proc is None:
+        return
+    _terminate_process_tree(proc)
+    try:
+        proc.wait(timeout=3)
+    except Exception:
+        pass
+
+
+def _run_psi4_worker(
+    input_file, task_type, method, basis, output_dir, preset_name,
+    solvent, d3, charge, multiplicity, memory, *,
+    progress_callback=None, cancel_check=None, timeout=None, poll_interval=0.2,
+    **kwargs
+) -> Dict:
+    work_root = Path(__file__).resolve().parents[2]
+    tmp = tempfile.mkdtemp(prefix="psi4_wk_")
+    result_path = os.path.join(tmp, "result.json")
+    progress_path = os.path.join(tmp, "progress.jsonl")
+
+    cmd = dict(
+        input_file=input_file, task_type=task_type, method=method, basis=basis,
+        output_dir=output_dir, preset_name=preset_name, solvent=solvent, d3=d3,
+        charge=charge, multiplicity=multiplicity, memory=memory,
+        result_path=result_path, progress_path=progress_path,
+    )
+    for k, v in kwargs.items():
+        if k in ("_progress_callback", "_extra_post_hook"):
+            continue
+        cmd[k] = v
+
+    with _worker_lock:
+        try:
+            proc = _ensure_worker()
+            try:
+                proc.stdin.write(json.dumps(cmd, ensure_ascii=False, default=str) + "\n")
+                proc.stdin.flush()
+            except Exception as _w_err:
+                _kill_worker()
+                raise RuntimeError(f"向 worker 写命令失败: {_w_err}")
+
+            started = time.time()
+            progress_state = {"last_n": 0}
+            cancelled = False
+            try:
+                while True:
+                    if os.path.exists(result_path):
+                        break
+                    _read_new_progress(progress_path, progress_state, progress_callback)
+                    if cancel_check is not None and cancel_check():
+                        cancelled = True
+                        _kill_worker()
+                        break
+                    if timeout is not None and (time.time() - started) > timeout:
+                        cancelled = True
+                        _kill_worker()
+                        break
+                    if proc.poll() is not None:
+                        # worker 在写出结果前就退出了（如 psi4 崩溃）
+                        raise RuntimeError("worker 进程在计算完成前意外退出")
+                    time.sleep(poll_interval)
+                _read_new_progress(progress_path, progress_state, progress_callback)
+            finally:
+                pass
+        finally:
+            pass
+
+    if cancelled:
+        return {"success": False, "cancelled": True, "error": "任务已被取消（超时或用户取消）"}
+
+    try:
+        with open(result_path, "r", encoding="utf-8") as rf:
+            result = json.load(rf)
+    except Exception as e:
+        raise RuntimeError(f"读取 worker 结果失败: {e}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return result
+
+
+def run_psi4_task_cancellable(
+    input_file: str,
+    task_type: str = 'energy',
+    method: str = 'b3lyp',
+    basis: str = '6-31g*',
+    output_dir: Optional[str] = None,
+    preset_name: Optional[str] = None,
+    solvent: Optional[str] = None,
+    d3: bool = False,
+    charge: int = 0,
+    multiplicity: int = 1,
+    memory: str = '4 GB',
+    *,
+    cancel_check: Optional[Callable[[], bool]] = None,
+    timeout: Optional[float] = None,
+    poll_interval: float = 0.2,
+    **kwargs
+) -> Dict:
+    """
+    可取消版本的 run_psi4_task。三级回退保证健壮：
+      1) 常驻热 worker（psi4 仅导入一次，开销最低，支持取消/超时强杀）；
+      2) 退化为每次启动的子进程（_subprocess_runner，仍支持取消，但每次重导 psi4）；
+      3) 退化为同步直接调用 run_psi4_task（不可取消，但功能不丢）。
+
+    参数：
+      cancel_check: 无参 callable，返回 True 时取消。通常传 app.task_manager.is_cancelled
+      timeout:      可选的最大运行秒数，超时即取消
+      **kwargs:     透传 extra_options 等给底层 run_psi4_task
+    """
+    progress_callback = kwargs.get("_progress_callback")
+    try:
+        return _run_psi4_worker(
+            input_file, task_type, method, basis, output_dir, preset_name,
+            solvent, d3, charge, multiplicity, memory,
+            progress_callback=progress_callback,
+            cancel_check=cancel_check, timeout=timeout,
+            poll_interval=poll_interval, **kwargs)
+    except Exception as _w_err:
+        logger.warning("PSI4 热 worker 失败，回退到子进程模式：%s", _w_err)
+        try:
+            return _run_psi4_subprocess(
+                input_file, task_type, method, basis, output_dir, preset_name,
+                solvent, d3, charge, multiplicity, memory,
+                progress_callback=progress_callback,
+                cancel_check=cancel_check, timeout=timeout,
+                poll_interval=poll_interval, **kwargs)
+        except Exception as _sp_err:
+            logger.warning("PSI4 子进程模式也失败，回退到同步执行：%s", _sp_err)
+            return run_psi4_task(
+                input_file, task_type, method, basis, output_dir, preset_name,
+                solvent, d3, charge, multiplicity, memory, **kwargs)
+
+
+# 解释器退出时杀掉常驻 worker，避免残留进程
+atexit.register(_kill_worker)

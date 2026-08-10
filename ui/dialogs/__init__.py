@@ -22,6 +22,11 @@ from .results_dialog import show_results_browser_dialog
 from .sync_dialog import show_diff_sync_dialog
 from .advanced_tools_dialog import show_advanced_tools_dialog
 from .analytics_dialog import show_formula_dialog, export_geometry_csv
+from .backup_dialog import show_backup_manager_dialog
+from .update_dialog import (
+    show_update_dialog, show_no_update_dialog,
+    show_check_failed_dialog, notify_update_result,
+)
 
 
 class Dialogs:
@@ -84,6 +89,30 @@ class Dialogs:
 
     def export_geometry_csv(self):
         export_geometry_csv(self.app, self.controller)
+
+    def show_backup_manager_dialog(self):
+        """F17：备份管理（快照列表 / 预览 / 回滚）。"""
+        show_backup_manager_dialog(self.app, self.controller)
+
+    # ---- F18 在线更新检查（T15/T16）----
+    def show_update_dialog(self, info, manual: bool = False):
+        """发现新版本时的对话框（版本对比 / 更新说明 / 三个按钮）。"""
+        return show_update_dialog(self.app, info, manual=manual)
+
+    def show_no_update_dialog(self, current_version=None):
+        """手动检查且已是最新版本时的反馈（静默检查不会调用）。"""
+        show_no_update_dialog(self.app, current_version)
+
+    def show_check_failed_dialog(self, reason: str = ""):
+        """手动检查失败时的反馈（静默检查不会调用）。"""
+        show_check_failed_dialog(self.app, reason)
+
+    def notify_update_result(self, info, manual: bool = False):
+        """
+        F18 唯一的 UI 分发点：静默 / 手动两条路径的差异全收敛在这里。
+        view 的 after(2000) 回调与菜单回调都走它，避免规则各写一份而漂移。
+        """
+        return notify_update_result(self.app, info, manual=manual)
 
     # ---- 工具方法 ----
     @staticmethod

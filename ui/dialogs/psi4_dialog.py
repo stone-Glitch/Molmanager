@@ -12,7 +12,7 @@ from pathlib import Path
 
 from utils.logger import default_logger as logger
 from utils.constants import PSI4_PRESETS, PSI4_TASKS, RUN_PRESETS
-from chem.psi4_compute import check_psi4_installed, run_psi4_task, run_linear_scan, run_rigid_scan
+from chem.psi4_compute import check_psi4_installed, run_psi4_task, run_psi4_task_cancellable, run_linear_scan, run_rigid_scan
 from .base import _append_text, _clear_text, show_friendly_error
 from utils.dialog_geom import fit_dialog_geometry
 
@@ -196,7 +196,8 @@ def show_psi4_dialog(app, controller):
     d3_var = tk.BooleanVar(value=False)
     ttk.Checkbutton(advanced_frame, text="DFT-D3", variable=d3_var).pack(side=tk.LEFT, padx=10)
     ttk.Label(advanced_frame, text="内存(GB):").pack(side=tk.LEFT, padx=10)
-    memory_var = tk.IntVar(value=4)
+    _psi4_cfg = ((getattr(app, "config_data", {}) or {}).get("psi4_config", {}) or {})
+    memory_var = tk.IntVar(value=int(_psi4_cfg.get("memory_gb", 4)))
     ttk.Spinbox(advanced_frame, from_=1, to=128, textvariable=memory_var, width=5).pack(side=tk.LEFT, padx=5)
 
     # 输出目录
@@ -324,21 +325,27 @@ def _run_psi4_batch(app, controller, files, task_var, method_var, basis_var, cha
     d3 = d3_var.get()
     out_dir = out_dir_var.get().strip() or None
     preset = preset_var.get()
-    memory = str(memory_var.get()).strip() or "4 GB"
+    # memory_var 是 IntVar，str(...) 得到裸数字（如 "4"）；
+    # `or "4 GB"` 兜底永远不触发，直接传给 psi4.set_memory 会抛 ValidationError。
+    # 统一走归一化函数补全单位。
+    from chem.psi4.core import normalize_psi4_memory
+    memory = normalize_psi4_memory(memory_var.get())
+    # F07 修复引擎可能写入的 SCF 收敛辅助选项，注入到本次计算（run_psi4_task 原生支持 extra_options）
+    scf_options = ((getattr(app, "config_data", {}) or {}).get("psi4_config", {}) or {}).get("scf_options", {}) or {}
 
     if not method or not basis:
         result_text.insert(tk.END, "❌ 方法和基组不能为空\n")
         return
 
-    # 记忆配置
-    app.psi4_last_method = method
-    app.psi4_last_basis = basis
-    app.psi4_last_task = task
-    app.config_data["psi4_config"] = {
+    # 记忆配置（合并而非整体覆盖，保留 F07 修复引擎写入的 scf_options 等字段）
+    _psi4_cfg = ((getattr(app, "config_data", {}) or {}).get("psi4_config", {}) or {}).copy()
+    _psi4_cfg.update({
         "last_method": method,
         "last_basis": basis,
         "last_task": task,
-    }
+        "memory_gb": memory_var.get(),
+    })
+    app.config_data["psi4_config"] = _psi4_cfg
     from utils.config import save_config
     save_config(app.config_data)
 
@@ -429,16 +436,24 @@ def _run_psi4_batch(app, controller, files, task_var, method_var, basis_var, cha
     result_text.see(tk.END)
 
     def task_process(**kwargs):
+        cancelled_any = False
         for idx, fname in enumerate(files):
             file_path = Path(controller.model.work_dir) / fname
             _append_text(app, result_text, f"\n--- ({idx+1}/{total}) {fname} ---\n")
 
             try:
-                res = run_psi4_task(
+                res = run_psi4_task_cancellable(
                     str(file_path), task, method, basis, out_dir, preset,
                     solvent, d3, charge, mult, memory,
-                    _progress_callback=kwargs.get('_progress_callback')
+                    _progress_callback=kwargs.get('_progress_callback'),
+                    cancel_check=app.task_manager.is_cancelled,
+                    extra_options=scf_options,
                 )
+                if res.get("cancelled"):
+                    _append_text(app, result_text, "⏹ 该任务已取消\n")
+                    app.helpers.on_log(f"⏹ PSI4 计算已取消: {fname}", 'warning')
+                    cancelled_any = True
+                    break
                 def update_result(r=res, fname=fname):
                     if r["success"]:
                         _append_text(app, result_text, "✅ 成功!\n")
@@ -460,7 +475,10 @@ def _run_psi4_batch(app, controller, files, task_var, method_var, basis_var, cha
                 _append_text(app, result_text, f"❌ 异常: {e}\n")
                 app.helpers.on_log(f"❌ PSI4 异常: {e}", 'error')
 
-        _append_text(app, result_text, "\n🎉 所有任务处理完成！\n")
+        if cancelled_any:
+            _append_text(app, result_text, "\n⏹ 计算已被取消，未完成的任务已停止。\n")
+        else:
+            _append_text(app, result_text, "\n🎉 所有任务处理完成！\n")
         controller.scan_files()
 
     app.helpers.run_task(task_process)

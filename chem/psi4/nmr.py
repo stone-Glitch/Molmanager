@@ -96,8 +96,12 @@ def run_nmr_simulation(
 
     # 检查 PSI4 CPHF 是否可用
     psi4_available = False
+    # 显式初始化：_det 原先只在 psi4_available 分支内赋值，
+    # 后续 `psi4_available and _det.get(...)` 仅靠短路求值才不炸——
+    # 一旦条件被拆开或中间插入引用，立刻 UnboundLocalError。
+    _det: dict = {}
     try:
-        import chem.psi4 as psi4
+        import psi4
         psi4_available = True
     except Exception:
         psi4_available = False
@@ -120,7 +124,6 @@ def run_nmr_simulation(
                     solvent=solvent, d3=d3,
                     charge=charge, multiplicity=multiplicity,
                     memory=memory,
-                    extra_options={"cphf_tasks": ["CSHF", "CSF"]},
                     _extra_post_hook=lambda wfn_mol, mol_mol, _method: psi4.cphf("nmr", molecule=mol_mol),
                 )
                 log_p = r.get("log_file")
@@ -165,11 +168,19 @@ def run_nmr_simulation(
             shifts_exp = [30.0 - float((i % 10)) * 0.05 for i in range(max(1, H_atom_count))]
             H_shifts_per_conf.append(shifts_exp)
 
-    # 同步长度
+    # 同步长度：不同构象的氢数若不一致（如个别构象 NMR 计算部分失败），
+    # 仅对共有氢做 Boltzmann 加权，避免用 30.0 占位值污染平均谱（科学 1.2）。
     valid_counts = [len(s) for s in H_shifts_per_conf if s]
     if valid_counts:
         m = min(valid_counts)
-        H_shifts_per_conf = [s[:m] if len(s) >= m else s + [30.0]*(m-len(s)) for s in H_shifts_per_conf]
+        if min(valid_counts) != max(valid_counts):
+            logger.warning(
+                "NMR：不同构象氢原子数不一致（min=%d, max=%d），仅对共有 %d 个氢做加权，"
+                "其余氢的化学位移可能未计入。建议检查各构象 NMR 计算是否完整。",
+                min(valid_counts), max(valid_counts), m,
+            )
+        # 仅截断到共有氢数；不再用 30.0 填充（否则混入虚假峰）
+        H_shifts_per_conf = [s[:m] for s in H_shifts_per_conf]
         H_atom_count = m
 
     while len(weights) < len(H_shifts_per_conf):

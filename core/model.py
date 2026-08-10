@@ -19,6 +19,7 @@ Model - 核心业务逻辑
 import os
 import re
 import csv
+import json
 import stat
 import shutil
 import hashlib
@@ -33,6 +34,7 @@ from utils.path_utils import (
     is_windows_junction,
     enforce_no_symlink_target,
     resolve_secure_output_path,
+    get_backup_dir,
 )
 import chem.openbabel_utils as ob_utils
 import chem.psi4_compute as psi4_utils
@@ -41,6 +43,32 @@ import chem.psi4_compute as psi4_utils
 # 保留旧函数名，确保外部导入（如 psi4_compute / reaction_animation）不报错
 _is_windows_junction = is_windows_junction
 # resolve_secure_output_path_external 将在文件末尾委托给 path_utils
+
+# ============================================================================
+# 🔴 受保护目录名单（T08 / F17 硬性验收项）
+# ----------------------------------------------------------------------------
+# 这些目录里放的是「用户数据的救命副本」，必须对所有遍历/整理/重命名/删除逻辑
+# 完全隐身，否则备份文件会混进文件列表被用户自己的操作误伤 —— 安全网变事故源。
+#
+#   .trash_backup —— 删除操作的回收站（历史已有）
+#   .backup       —— F17 自动备份快照根目录（本期新增）
+#
+# ⚠️ 改动此常量必须同步：
+#     utils/path_utils.BACKUP_DIR_NAME
+#     utils/backup_manager.BACKUP_DIR_NAME
+# ============================================================================
+PROTECTED_DIR_NAMES: frozenset[str] = frozenset({".trash_backup", ".backup", ".preview"})
+
+
+def is_protected_relpath(rel_path: str) -> bool:
+    """相对路径的任一层是否落在受保护目录内。"""
+    if not rel_path:
+        return False
+    try:
+        parts = str(rel_path).replace("\\", "/").split("/")
+    except Exception:
+        return False
+    return any(seg in PROTECTED_DIR_NAMES for seg in parts)
 class MolManagerModel:
     def __init__(self, work_dir="output"):
         self._lock = threading.RLock()
@@ -51,8 +79,20 @@ class MolManagerModel:
         self.redo_stack: list = []
         self.log_callback = None
         self._suppress_history = False
+        # 历史汇聚容器：非 None 时，_add_history 不直接入栈，而是把 file_pairs
+        # 汇聚到这里，由发起方（如 fix_all）在结束时合并成「一条」可撤销历史。
+        # 取代旧的 _suppress_history 硬抑制——后者会让子步骤历史彻底丢失。
+        self._history_sink: list | None = None
         self._scan_cache: tuple[int, tuple, int, list] | None = None
         self._scan_cache_revision: int = 0
+        # ---- F17 自动备份（T09/T10）----
+        # 映射表的「来源文件」（通常是 TSV），load_mapping_file 时记录，
+        # 保存映射时一并纳入快照，避免 JSON/TSV 双格式只备份一半（C9）。
+        self.mapping_source_path: Path | None = None
+        self._backup_manager = None
+        self._backup_enabled: bool = True
+        self._backup_keep: int = 10
+        self._backup_max_mb: int = 64
 
     @property
     def work_dir(self) -> Path:
@@ -77,6 +117,12 @@ class MolManagerModel:
             ob_utils.set_default_base_dir(str(self._work_dir_resolved))
         except Exception:
             pass
+        # 审计加分项：切换工作目录时同步清空 ob_utils 的描述符/分子读取缓存，
+        # 释放内存并避免跨目录残留 stale 缓存（缓存键虽含完整路径不会误命中，清缓存仍属良好卫生）。
+        try:
+            ob_utils.clear_caches()
+        except Exception:
+            pass
 
     def set_log_callback(self, callback):
         self.log_callback = callback
@@ -97,6 +143,239 @@ class MolManagerModel:
         with self._lock:
             self._scan_cache_revision += 1
             self._scan_cache = None
+
+    # ---------- 🔴 受保护目录守卫（T08 / F17）----------
+    @staticmethod
+    def _touches_protected(path) -> bool:
+        """
+        路径字符串里是否出现受保护目录段（.trash_backup / .backup）。
+
+        纯字符串判断，不碰文件系统 —— 即使路径不存在 / 无权限也能挡住，
+        作为 resolve 检查之前的第一道快速防线。
+        """
+        if path is None:
+            return False
+        try:
+            text = os.fspath(path)
+        except (TypeError, ValueError):
+            try:
+                text = str(path)
+            except Exception:
+                return False
+        parts = text.replace("\\", "/").split("/")
+        return any(seg in PROTECTED_DIR_NAMES for seg in parts)
+
+    def _is_inside_protected(self, resolved_path: Path) -> bool:
+        """
+        已 resolve 的绝对路径是否位于工作目录下某个受保护目录之内（含目录本身）。
+
+        用于 resolve 之后的第二道防线（挡住相对路径 / 大小写 / 8.3 短名等绕过）。
+        """
+        try:
+            base = self._work_dir_resolved
+        except AttributeError:
+            return False
+        for name in PROTECTED_DIR_NAMES:
+            guard = (base / name).resolve(strict=False)
+            try:
+                if resolved_path == guard:
+                    return True
+                resolved_path.relative_to(guard)
+                return True
+            except (ValueError, OSError):
+                continue
+        return False
+
+    def is_protected(self, path) -> bool:
+        """
+        对外的统一判定：给定路径是否属于「不可被整理/重命名/删除」的受保护内容。
+
+        UI 与 controller 应优先调用本方法，而不是各自硬编码目录名。
+        """
+        if self._touches_protected(path):
+            return True
+        try:
+            return self._is_inside_protected(Path(path).resolve(strict=False))
+        except (OSError, TypeError, ValueError):
+            return False
+
+    # ---------- 🗂️ 备份（F17 / T09-T10）----------
+    def configure_backup(self, backup_cfg: Optional[Dict] = None) -> None:
+        """
+        用 config["backup"] 配置备份行为。controller 初始化时调用一次即可。
+
+        永不抛异常：配置读不出来就用默认值（启用 / 每类保留 10 份）。
+        """
+        cfg = backup_cfg if isinstance(backup_cfg, dict) else {}
+        try:
+            self._backup_enabled = bool(cfg.get("enabled", True))
+        except Exception:
+            self._backup_enabled = True
+        try:
+            self._backup_keep = int(cfg.get("keep_per_type", 10) or 10)
+        except (TypeError, ValueError):
+            self._backup_keep = 10
+        try:
+            self._backup_max_mb = int(cfg.get("max_file_mb", 64) or 64)
+        except (TypeError, ValueError):
+            self._backup_max_mb = 64
+        mgr = getattr(self, "_backup_manager", None)
+        if mgr is not None:
+            try:
+                mgr.configure(
+                    enabled=self._backup_enabled,
+                    keep_per_type=self._backup_keep,
+                    max_file_bytes=self._backup_max_mb * 1024 * 1024,
+                )
+            except Exception as exc:
+                logger.debug("更新备份配置失败（非致命）: %s", exc)
+
+    @property
+    def backup_manager(self):
+        """
+        懒加载的 BackupManager，绑定当前工作目录下的 ``.backup``。
+
+        工作目录变化后会自动重建（快照跟着数据走）。任何构造失败都返回 None，
+        调用方按「拿不到就跳过备份」处理，绝不阻断主流程。
+        """
+        try:
+            from utils.backup_manager import BackupManager
+        except Exception as exc:  # pragma: no cover
+            logger.warning("⚠️ 备份模块不可用（已跳过备份）: %s", exc)
+            return None
+        try:
+            root = get_backup_dir(self.work_dir, create=False)
+        except Exception as exc:
+            logger.warning("⚠️ 解析备份目录失败（已跳过备份）: %s", exc)
+            return None
+        mgr = getattr(self, "_backup_manager", None)
+        if mgr is not None and getattr(mgr, "backup_root", None) == root:
+            return mgr
+        try:
+            mgr = BackupManager(
+                root,
+                keep_per_type=getattr(self, "_backup_keep", 10),
+                enabled=getattr(self, "_backup_enabled", True),
+                max_file_bytes=getattr(self, "_backup_max_mb", 64) * 1024 * 1024,
+                logger=logger,
+            )
+        except Exception as exc:
+            logger.warning("⚠️ 备份管理器初始化失败（已跳过备份）: %s", exc)
+            return None
+        self._backup_manager = mgr
+        return mgr
+
+    def create_backup_snapshot(self, trigger: str, files, description: str = ""):
+        """
+        统一的快照入口。**永不抛异常**（架构 §6.4），失败返回 None。
+
+        参数:
+            trigger: 'mapping' / 'export' / 'config'
+            files:   待备份的文件路径集合（不存在的会被静默跳过）
+        """
+        try:
+            mgr = self.backup_manager
+            if mgr is None:
+                return None
+            return mgr.create_snapshot(trigger, files, description)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("⚠️ 创建快照失败（不影响主操作）: %s", exc)
+            return None
+
+    def get_mapping_artifacts(self) -> List[Path]:
+        """
+        返回「映射表产物集合」——F17 快照按产物集合而非单文件备份（架构 §7 风险表）。
+
+        C9：映射表历史上是**读 TSV / 写 JSON** 双格式，两者都要纳入快照，
+        否则回滚后会出现 JSON 已还原、TSV 仍是新版的撕裂状态。
+        """
+        out: List[Path] = []
+        seen: set = set()
+
+        def _add(p) -> None:
+            if p is None:
+                return
+            try:
+                path = Path(p)
+                key = os.path.normcase(os.fspath(path))
+            except (TypeError, ValueError, OSError):
+                return
+            if key in seen:
+                return
+            seen.add(key)
+            out.append(path)
+
+        _add(self.default_mapping_path())
+        _add(getattr(self, "mapping_source_path", None))
+        return out
+
+    def default_mapping_path(self) -> Path:
+        """映射表 JSON 的默认落盘位置（与 mapping_dialog 历史行为一致）。"""
+        return Path(self.work_dir) / "分子命名映射.json"
+
+    def save_mapping(self, mapping_dict: Dict[str, str], *,
+                     path=None, backup: bool = True) -> Path:
+        """
+        保存映射表到磁盘（T10：从 ui/dialogs/mapping_dialog.py 下沉而来）。
+
+        相比原 UI 层直写，这里额外提供三件事：
+          1. **快照钩子** —— 覆盖前先备份旧的 JSON + TSV 产物（可回滚）；
+          2. **原子写** —— tmp → chmod → os.replace，写一半崩溃不会损坏映射表；
+          3. **状态同步** —— 自动 set_mapping + invalidate_scan_cache。
+
+        参数:
+            mapping_dict: 英文名 → 中文名
+            path:         落盘路径，默认 ``<work_dir>/分子命名映射.json``
+            backup:       是否在覆盖前创建快照（默认 True）
+
+        返回:
+            实际写入的 Path。
+
+        抛出:
+            OSError / ValueError —— 写盘失败时抛给调用方（保存失败必须让用户知道）。
+            ⚠️ 注意：**备份失败不抛**，只记 WARNING 后继续保存（架构 §6.4）。
+        """
+        if not isinstance(mapping_dict, dict):
+            raise ValueError("mapping_dict 必须是 dict")
+        out_path = Path(path) if path else self.default_mapping_path()
+
+        # ---- 1) 快照（失败只警告，绝不阻断保存）----
+        if backup:
+            try:
+                artifacts = self.get_mapping_artifacts()
+                if str(out_path) not in {str(a) for a in artifacts}:
+                    artifacts.append(out_path)
+                self.create_backup_snapshot(
+                    "mapping", artifacts,
+                    f"保存映射表前的自动快照（{len(mapping_dict)} 条）",
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("⚠️ 映射表快照失败（保存继续）: %s", exc)
+
+        # ---- 2) 原子写（复用 config.save_config 范式，C19）----
+        tmp_path: Optional[Path] = None
+        try:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(mapping_dict, f, ensure_ascii=False, indent=2)
+            if hasattr(os, "replace"):
+                os.replace(tmp_path, out_path)
+            else:  # pragma: no cover
+                tmp_path.rename(out_path)
+            tmp_path = None
+        finally:
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+        # ---- 3) 同步内存状态 ----
+        self.set_mapping(dict(mapping_dict))
+        self.invalidate_scan_cache()
+        self._log(f"💾 映射表已保存：{len(mapping_dict)} 条 → {out_path.name}", 'success')
+        return out_path
 
     # ---------- 映射加载 ----------
     def load_mapping_file(self, path: Path):
@@ -123,6 +402,11 @@ class MolManagerModel:
                     continue
                 mapping[eng] = chn
         self.set_mapping(mapping)
+        # 记录来源文件，供 save_mapping 的快照覆盖双格式产物（C9 / T10）
+        try:
+            self.mapping_source_path = Path(path)
+        except (TypeError, ValueError):
+            self.mapping_source_path = None
         return len(mapping), duplicate_count
 
     def filter_files(self, entries: list[dict], keyword: str="", status: str="全部", ext: str="全部") -> list[dict]:
@@ -143,6 +427,37 @@ class MolManagerModel:
             result = [e for e in result if e.get('ext', '').lower() == target]
         return result
 
+    # ---------- 扫描文件缓存键（审计 3.1）----------
+    def _compute_tree_signature(self, wd: Path) -> bytes:
+        """递归目录签名：收集每个目录的相对路径与其 mtime_ns 后做内容哈希。
+
+        原实现只用工作目录根自身的 mtime_ns 作缓存键；但「在深层子目录内增删文件」
+        只更新对应子目录的 mtime、根目录 mtime 不变 → 缓存返回陈旧文件列表（审计 3.1）。
+        这里把整棵目录树的目录 mtime 纳入键：任意子目录内的增删都会改变签名，
+        从而正确失效缓存。仅遍历目录（不检查文件内容），比完整文件扫描便宜，
+        且足以覆盖变更检测。
+        """
+        h = hashlib.md5()
+        stack = [os.fspath(wd)]
+        while stack:
+            d = stack.pop()
+            try:
+                with os.scandir(d) as it:
+                    for entry in it:
+                        if entry.is_dir(follow_symlinks=False):
+                            try:
+                                mtime_ns = entry.stat(follow_symlinks=False).st_mtime_ns
+                            except OSError:
+                                mtime_ns = 0
+                            rel = os.path.relpath(entry.path, os.fspath(wd)).replace(os.sep, "/")
+                            h.update(rel.encode("utf-8"))
+                            h.update(str(mtime_ns).encode("ascii"))
+                            h.update(b"\x00")
+                            stack.append(entry.path)
+            except (PermissionError, OSError):
+                continue
+        return h.digest()
+
     # ---------- 扫描文件 ----------
     def scan_files(self, ext_filter=None):
         wd = self.work_dir
@@ -152,16 +467,14 @@ class MolManagerModel:
             ext_filter = list(SUPPORTED_EXTS)
         ext_filter = tuple(e.lower() if e.startswith('.') else '.' + e.lower() for e in ext_filter)
 
-        try:
-            wd_mtime = wd.stat().st_mtime_ns
-        except OSError as e:
-            logger.debug("无法读取工作目录 mtime，跳过缓存: %s", e)
-            wd_mtime = 0
+        # 审计 3.1：缓存键从「仅根目录 mtime」改为「递归目录树签名」。
+        # 否则在深层子目录内增删文件不会改变根目录 mtime，缓存会返回陈旧列表。
+        sig = self._compute_tree_signature(wd)
 
         with self._lock:
             cached = self._scan_cache
             rev = self._scan_cache_revision
-            if cached and len(cached) >= 4 and cached[0] == wd_mtime and cached[1] == ext_filter and cached[2] == rev:
+            if cached and len(cached) >= 4 and cached[0] == sig and cached[1] == ext_filter and cached[2] == rev:
                 return cached[3]
 
         # 复制映射快照，避免长时间持锁
@@ -170,7 +483,10 @@ class MolManagerModel:
             reverse_snapshot = dict(self._reverse_mapping)
 
         result: list[dict] = []
-        trash_dir_name = ".trash_backup"
+        # 🔴 T08：排除名单从单一 ".trash_backup" 扩为 PROTECTED_DIR_NAMES，
+        #    新增 ".backup"（F17 快照根目录）。少了这一行，备份副本会出现在
+        #    文件列表里，被「整理 / 重命名 / 删除」当成普通文件处理。
+        protected_dir_names = PROTECTED_DIR_NAMES
         ext_set = frozenset(ext_filter)
         root_str = os.fspath(wd)
 
@@ -188,7 +504,8 @@ class MolManagerModel:
                 with os.scandir(dir_path) as it:
                     for entry in it:
                         name = entry.name
-                        if name == trash_dir_name:
+                        if name in protected_dir_names:
+                            # 受保护目录整棵子树都不入栈，连带其中的文件一并隐身
                             continue
                         if entry.is_dir(follow_symlinks=False):
                             stack.append(entry.path)
@@ -235,9 +552,10 @@ class MolManagerModel:
                 continue
         result.sort(key=lambda x: x['name'])
 
-        if wd_mtime:
+        if sig:
             with self._lock:
-                self._scan_cache = (wd_mtime, ext_filter, rev, result)
+                self._scan_cache = (sig, ext_filter, rev, result)
+        self.cleanup_stale_previews()
         return result
 
     # ---------- 生成缺失映射列表 ----------
@@ -263,6 +581,8 @@ class MolManagerModel:
     def export_missing_csv(self, csv_path: str) -> int:
         # 安全路径校验
         safe_path = self.resolve_secure_output_path(csv_path, create_parent=True)
+        # F17：覆盖既有导出产物前先快照（文件不存在时 create_snapshot 自动跳过）
+        self.create_backup_snapshot("export", [safe_path], "导出缺失映射表前的自动快照")
         missing_eng = self.generate_missing_list()
         if isinstance(missing_eng, dict):
             missing_list = list(missing_eng.keys())
@@ -276,6 +596,43 @@ class MolManagerModel:
             for eng in missing_list:
                 writer.writerow({'english': eng, 'chinese': ''})
         return len(missing_list)
+
+    def export_mapping_csv(self, csv_path: str) -> int:
+        """
+        导出**当前完整映射表**为 CSV（列：english, chinese）。
+
+        🔴 热修复：`ui/dialogs/mapping_dialog.py` 的「📤 导出当前映射表」按钮
+        一直在调这个方法，但 model 侧从未实现 —— 用户一点就 AttributeError。
+        这里补齐，并对齐 `export_missing_csv` 的三条既有约定：
+
+          1. 路径过 `resolve_secure_output_path`（禁 ``..``、禁越出工作目录、
+             禁 symlink/junction 目标）；
+          2. 覆盖既有导出产物前先打 ``export`` 快照（F17，文件不存在时自动跳过）；
+          3. 用 ``utf-8-sig`` 写，保证 Excel 直接双击打开中文不乱码。
+
+        参数:
+            csv_path: 目标 CSV 路径（相对路径以工作目录为根）。
+
+        返回:
+            实际写出的映射条数。
+
+        抛出:
+            ValueError / OSError —— 路径非法或写盘失败时抛给调用方（导出失败必须让用户知道）。
+        """
+        safe_path = self.resolve_secure_output_path(csv_path, create_parent=True)
+        # F17：覆盖既有导出产物前先快照（失败只警告，不阻断导出）
+        self.create_backup_snapshot("export", [safe_path], "导出完整映射表前的自动快照")
+        with self._lock:
+            rows: List[Tuple[str, str]] = sorted(
+                self.mapping.items(), key=lambda kv: str(kv[0]).lower()
+            )
+        with open(safe_path, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=['english', 'chinese'])
+            writer.writeheader()
+            for eng, chn in rows:
+                writer.writerow({'english': eng, 'chinese': chn})
+        self._log(f"📤 已导出完整映射表：{len(rows)} 条 → {Path(safe_path).name}", 'success')
+        return len(rows)
 
     def import_mapping_csv(self, csv_path: str, overwrite: bool=False) -> dict:
         # 导入是「读取」操作：允许用户从任意位置选取映射 CSV（与 load_mapping_file 行为一致）。
@@ -440,8 +797,10 @@ class MolManagerModel:
         candidate_norm = Path(norm_abs)
 
         def _check_chain_up_to(target: Path, base: Path) -> None:
+            # 🔴 BUG-5：绝不能用 resolve()（会把 junction 中间层折叠掉，使其从 parts 消失），
+            # 必须用 absolute()（不跟随 symlink/junction），与 enforce_no_symlink_target 一致。
             try:
-                rel = target.resolve(strict=False).relative_to(base.resolve(strict=False))
+                rel = target.absolute().relative_to(base.absolute())
                 parts_a = list(rel.parts)
             except (OSError, ValueError):
                 parts_a = list(target.parts)
@@ -451,8 +810,9 @@ class MolManagerModel:
                 if not cur.exists():
                     continue
                 enforce_no_symlink_target(cur, allow_nonexistent=True, _level="chain")
-            if target.exists():
-                enforce_no_symlink_target(target, allow_nonexistent=True, _level="leaf")
+            # 🔴 BUG-5：叶子（输出文件本身）即使尚不存在也要检查其祖先链，否则 allow_nonexistent
+            # 形同虚设、junction 仍能穿透。
+            enforce_no_symlink_target(target, allow_nonexistent=True, _level="leaf")
 
         try:
             _check_chain_up_to(candidate_norm, base_dir_resolved)
@@ -544,6 +904,10 @@ class MolManagerModel:
                     self._log(f"❌ {action_label}失败 {old_display}: {e}", 'error')
                     failed += 1
         if file_pairs:
+            # 缓存失效必须与「文件系统已发生改变」这一事实绑定，不能挂在 _add_history 上：
+            # 历史被汇聚/抑制时 _add_history 会提前 return，若失效逻辑写在里面，
+            # 后续步骤会读到脏的 scan_files 缓存（子目录内改名不会改变根目录 mtime）。
+            self.invalidate_scan_cache()
             self._add_history(history_type, file_pairs, history_desc)
         return success, failed, skipped
 
@@ -624,8 +988,16 @@ class MolManagerModel:
 
     def fix_all(self, dry_run=False, *, _filtered_changes: list[dict] | None = None):
         results = {}
-        prev_suppress = getattr(self, '_suppress_history', False)
-        self._suppress_history = True
+        # 用「历史汇聚」而非「先抑后取」：
+        # 旧实现把 _suppress_history 置 True，导致 4 个子步骤的历史根本没入栈，
+        # 随后 while self.history[-1]['description'] in (...) 弹栈合并时捞不到任何东西
+        # ——一键修复完全无法撤销；更糟的是它可能误弹出用户之前遗留的同名旧历史。
+        outer_sink = getattr(self, '_history_sink', None)
+        is_outermost = outer_sink is None
+        sink: list = [] if is_outermost else outer_sink
+        self._history_sink = sink
+        # 预置默认值：任一步骤抛异常时，后续 total 统计不会 UnboundLocalError
+        r1 = r2 = r3 = r4 = (0, 0, 0)
         try:
             self._log("🔧 步骤1: 修复纯中文文件名...", 'info')
             r1 = self.fix_chinese_names(dry_run, _filtered_changes=_filtered_changes)
@@ -640,27 +1012,25 @@ class MolManagerModel:
             r4 = self.rename_by_mapping(dry_run, _filtered_changes=_filtered_changes)
             results['rename'] = r4
         finally:
-            self._suppress_history = prev_suppress
+            self._history_sink = outer_sink
+            total = sum(r[0] for r in (r1, r2, r3, r4))
+            # 放在 finally 中提交：即便某一步骤中途抛异常，
+            # 已经真实改名的文件也必须留下可撤销的历史记录。
+            if not dry_run and is_outermost and sink:
+                self._add_history('fix', list(sink), f"一键修复（{total} 个文件）")
 
-        total = sum(r[0] for r in [r1, r2, r3, r4])
         self._log(f"🎉 一键修复完成！共修复 {total} 个文件", 'success')
-
-        if not dry_run and not prev_suppress:
-            collected = []
-            while self.history and self.history[-1]['description'] in (
-                "映射重命名", "修复命名错误", "修正中文内容", "修复中文名"
-            ):
-                collected.insert(0, self.history.pop())
-            merged_pairs = []
-            for entry in collected:
-                merged_pairs.extend(entry['files'])
-            if merged_pairs:
-                self._add_history('fix', merged_pairs, f"一键修复（{total} 个文件）")
         return results
 
     # ---------- 补全 mol ----------
     def supplement_mol(self, progress_callback=None):
-        files = [f for f in self.work_dir.iterdir() if f.suffix.lower() == '.xyz']
+        # 🔴 T08：受保护目录不参与补全（iterdir 不递归，此处仅作显式防御）
+        files = [
+            f for f in self.work_dir.iterdir()
+            if f.name not in PROTECTED_DIR_NAMES
+            and f.is_file()
+            and f.suffix.lower() == '.xyz'
+        ]
         total = len(files)
         supplemented = 0
         for idx, xyz in enumerate(files):
@@ -700,6 +1070,11 @@ class MolManagerModel:
         file_pairs = []
         processed = 0
         wd_resolved = self._work_dir_resolved
+        # 🔴 T08：受保护目录（.trash_backup / .backup）的真实路径集合，
+        #    源文件在其中、或目标要写进其中，一律拒绝移动。
+        protected_roots = {
+            (self.work_dir / n).resolve(strict=False) for n in PROTECTED_DIR_NAMES
+        }
         trash = (self.work_dir / ".trash_backup").resolve(strict=False)
         for src, dst, display_rel in moves:
             if progress_callback and total > 0:
@@ -708,18 +1083,26 @@ class MolManagerModel:
             src_name = Path(src).name
             if _ok_set is not None and (str(src_name), str(display_rel)) not in _ok_set:
                 continue
-            dst_path = Path(dst)
+            # 🔴 T08：先按「名字」快速拒绝——src / dst 路径里只要出现受保护目录段就跳过。
+            #    这一层不依赖文件系统状态，即使 resolve 失败也能兜住。
+            if self._touches_protected(src) or self._touches_protected(dst):
+                self._log(f"⚠️ 跳过受保护的备份目录内容: {src_name}", 'warning')
+                continue
+            # 审计 1.2 修复：统一通过安全输出路径解析校验落点，
+            # 复用 commonpath + 符号链接链检查（不再是手写 relative_to 的差池版本）。
             try:
-                dst_real = dst_path.parent.resolve(strict=False)
-                try:
-                    dst_real.relative_to(wd_resolved)
-                except ValueError:
-                    self._log(f"⚠️ 拒绝移动 {src_name}: 目标解析后不在工作目录中", 'warning')
-                    continue
-            except OSError:
-                pass
+                dst_path = self.resolve_secure_output_path(
+                    dst, allow_outside_work_dir=False, create_parent=True
+                )
+            except ValueError as _ve:
+                self._log(f"⚠️ 拒绝移动 {src_name}: 目标路径非法/越界（{_ve}）", 'warning')
+                continue
             try:
                 src_real = Path(src).resolve(strict=True)
+                # 🔴 T08：resolve 后再查一次——防止 src 通过相对路径/大小写差异绕过名字检查
+                if src_real in protected_roots or self._is_inside_protected(src_real):
+                    self._log(f"⚠️ 跳过保护目录 {src_name}", 'warning')
+                    continue
                 if src_real == trash:
                     self._log(f"⚠️ 跳过保护目录 {src_name}", 'warning')
                     continue
@@ -738,9 +1121,12 @@ class MolManagerModel:
                 self._log(f"⚠️ 跳过 {Path(src).name}: 目标已存在", 'warning')
                 continue
             try:
-                shutil.move(str(src), str(dst))
+                # 审计 #2 修复：实际移动必须使用已通过 resolve_secure_output_path 校验、
+                # 且 mkdir/exists 检查一致的绝对路径 dst_path，而不是原始 str(dst)
+                # （str(dst) 在 cwd != work_dir 时会解析到错误位置，造成 cwd 错配 TOCTOU）。
+                shutil.move(str(src), str(dst_path))
                 self._log(f"📁 移动: {Path(src).name} -> {display_rel}", 'info')
-                file_pairs.append((str(src), str(dst)))
+                file_pairs.append((str(src), str(dst_path)))
                 moved += 1
             except Exception as e:
                 self._log(f"❌ 移动失败 {Path(src).name}: {e}", 'error')
@@ -758,6 +1144,9 @@ class MolManagerModel:
         }
         moves = []
         for entry in self.work_dir.iterdir():
+            # 🔴 T08：受保护目录（含其内容）不参与整理
+            if entry.name in PROTECTED_DIR_NAMES:
+                continue
             if not entry.is_file():
                 continue
             ext = entry.suffix.lower()
@@ -783,6 +1172,9 @@ class MolManagerModel:
     def organize_by_basename(self, progress_callback=None, *, _filtered_changes: list[dict] | None = None):
         groups = {}
         for entry in self.work_dir.iterdir():
+            # 🔴 T08：受保护目录（含其内容）不参与分组
+            if entry.name in PROTECTED_DIR_NAMES:
+                continue
             if not entry.is_file():
                 continue
             groups.setdefault(entry.stem, []).append(entry)
@@ -866,6 +1258,21 @@ class MolManagerModel:
                 result = result.replace('{' + key + '}', str(val))
             return result
 
+        # 审计 2.4：若含描述符占位符（{mw}/{logP}/...），先在重命名前统一预读所有文件的
+        # 描述符并缓存到 desc_cache（ob_utils 层也有 LRU 缓存兜底）。这样：
+        # ① 不受支持的格式 / 解析失败会在重命名前暴露，避免「重了一半才报错」；
+        # ② 给用户的耗时预期（逐文件串行调用 OpenBabel，与文件数线性相关）。
+        # 注意：每个不同文件仍需一次 OpenBabel 调用（无批量描述符 API），此处仅将成本前置并复用缓存。
+        if has_placeholder:
+            self._log(
+                f"正在为 {len(file_list)} 个文件预计算描述符（首次访问需逐文件调用 OpenBabel，"
+                "与文件数线性相关，请稍候）…", 'info')
+            for f in file_list:
+                try:
+                    _get_desc(str(self.work_dir / f['name']))
+                except Exception as _de:
+                    self._log(f"⚠️  预计算描述符失败 {f['name']}: {_de}", 'warning')
+
         for idx, f in enumerate(sorted(file_list, key=lambda x: x['name']), 1):
             try:
                 self._strict_basename(f['name'])
@@ -943,6 +1350,11 @@ class MolManagerModel:
             except ValueError as exc:
                 errors.append(f"非法文件名 {name!r}: {exc}")
                 continue
+            # 🔴 T08：受保护目录（.trash_backup / .backup）内容一律拒绝删除。
+            #    先做字符串级判断，再做 resolve 级判断，双保险。
+            if self._touches_protected(name):
+                errors.append(f"拒绝删除受保护的备份目录内容: {name}")
+                continue
             src = self.work_dir / name
             if not src.exists():
                 errors.append(f"文件不存在: {name}")
@@ -952,6 +1364,9 @@ class MolManagerModel:
                 src_real.relative_to(wd_resolved)
             except (OSError, ValueError):
                 errors.append(f"文件解析后不在工作目录中，拒绝删除: {name}")
+                continue
+            if self._is_inside_protected(src_real):
+                errors.append(f"拒绝删除受保护的备份目录内容: {name}")
                 continue
             try:
                 if src_real == trash_resolved:
@@ -983,12 +1398,24 @@ class MolManagerModel:
                 continue
             dst = trash / name
             counter = 1
+            # 上限保护：回收站同名冲突极多、或文件系统异常导致 exists() 恒真时，
+            # 无上限自增会让 UI 线程死循环卡死。超过上限直接跳过该文件并报错。
+            _MAX_TRASH_SUFFIX = 10000
             while dst.exists():
+                if counter > _MAX_TRASH_SUFFIX:
+                    dst = None
+                    break
                 stem, ext = src.stem, src.suffix
                 name_as_path = Path(name)
                 new_name = name_as_path.parent / f"{stem}_{counter}{ext}"
                 dst = trash / new_name
                 counter += 1
+            if dst is None:
+                errors.append(
+                    f"删除失败 {name}: 回收站中同名文件超过 {_MAX_TRASH_SUFFIX} 个，"
+                    f"请先清理 .trash_backup 目录"
+                )
+                continue
             try:
                 dst.parent.mkdir(parents=True, exist_ok=True)
             except OSError as _e_mk:
@@ -1009,7 +1436,14 @@ class MolManagerModel:
     def remove_duplicate_files(self, ext_list=None, progress_callback=None):
         if ext_list is None:
             ext_list = list(SUPPORTED_EXTS)
-        files_to_check = [p for p in self.work_dir.iterdir() if p.suffix.lower() in ext_list]
+        # 🔴 T08：受保护目录（.trash_backup / .backup）不参与去重删除。
+        #    iterdir 本身不递归，但显式挡一道，避免将来改成 rglob 时留坑。
+        files_to_check = [
+            p for p in self.work_dir.iterdir()
+            if p.name not in PROTECTED_DIR_NAMES
+            and p.is_file()
+            and p.suffix.lower() in ext_list
+        ]
         if not files_to_check:
             self._log("📂 没有找到需要检查的文件", 'info')
             return 0, []
@@ -1045,11 +1479,198 @@ class MolManagerModel:
         self.invalidate_scan_cache()
         return deleted, errors
 
+    # ---------- F06：外部文件导入（拖放 / 菜单兜底共用同一条实现） ----------
+    def _resolve_import_target_dir(self, target_dir=None) -> Path:
+        """
+        解析并校验导入落地目录。**必须**满足三条硬约束（T18 验收项）：
+
+          1. 落在工作目录内（含工作目录本身），禁止把外部文件导到工作目录之外；
+          2. 相对工作目录的任一层都不得命中 ``PROTECTED_DIR_NAMES``
+             —— 导入的文件永远不能落进 ``.backup`` / ``.trash_backup``，
+             否则备份区会被用户数据污染，回滚时反而覆盖真数据；
+          3. 目录不存在则自动创建。
+
+        抛出 ValueError 表示目标非法（调用方应把错误如实告诉用户）。
+        """
+        wd = Path(self.work_dir)
+        raw = Path(target_dir) if target_dir else wd
+        if not raw.is_absolute():
+            raw = wd / raw
+        try:
+            dest = raw.resolve()
+        except OSError:
+            dest = raw
+        # --- 约束 1：必须在工作目录内 ---
+        if dest != wd and wd not in dest.parents:
+            raise ValueError(f"导入目标目录必须位于工作目录内: {dest}")
+        # --- 约束 2：不得落进受保护目录 ---
+        if dest != wd:
+            try:
+                rel = dest.relative_to(wd)
+            except ValueError:
+                raise ValueError(f"无法解析导入目标的相对路径: {dest}")
+            if is_protected_relpath(str(rel)):
+                raise ValueError(f"禁止把文件导入受保护目录: {dest}")
+        # --- 约束 3：不存在则创建 ---
+        dest.mkdir(parents=True, exist_ok=True)
+        return dest
+
+    def _unique_target_path(self, target_dir: Path, name: str) -> Path:
+        """同名冲突时生成 ``xxx (1).ext`` / ``xxx (2).ext``，绝不静默覆盖用户已有文件。"""
+        stem = Path(name).stem
+        suffix = Path(name).suffix
+        candidate = target_dir / name
+        idx = 1
+        while candidate.exists():
+            candidate = target_dir / f"{stem} ({idx}){suffix}"
+            idx += 1
+            if idx > 9999:
+                raise OSError(f"无法为 {name} 生成不冲突的文件名（已尝试 9999 次）")
+        return candidate
+
+    def import_external_files(self, paths, *, target_dir=None, mode: str = "copy",
+                              overwrite: bool = False, progress_callback=None) -> dict:
+        """
+        把外部文件导入工作目录（F06 拖放导入 / 菜单兜底导入的**唯一**落地实现）。
+
+        约定与安全边界：
+          - 只处理**文件**；目录的递归展开由 `core.drop_handler` 负责（本方法不做遍历）；
+          - 拒绝 symlink / Windows junction 源（避免跟随到外部目录）；
+          - 落地目录经 `_resolve_import_target_dir` 校验，永不落进 ``.backup`` / ``.trash_backup``；
+          - 同名默认改名（``xxx (1).ext``），`overwrite=True` 时才覆盖，且覆盖前打 ``export`` 快照；
+          - 单个文件失败不中断整批，最后统一汇总返回。
+
+        撤销语义（与 `undo_last` 严格对齐）：
+          - ``mode="copy"`` → 历史类型记为 ``'import'``，撤销 = 删除工作目录里的副本
+            （外部原件仍在，删副本不会丢数据）；
+          - ``mode="move"`` → 历史类型复用既有的 ``'move'``，撤销 = 搬回原位置。
+
+        参数:
+            paths:             文件路径可迭代对象（str / Path 混合均可）。
+            target_dir:        落地目录，默认工作目录根。
+            mode:              ``"copy"``（默认，安全）或 ``"move"``。
+            overwrite:         同名是否覆盖，默认 False（改名）。
+            progress_callback: ``(percent: float, message: str)``，可为 None。
+
+        返回:
+            ``{'imported': [(src, dst)…], 'skipped': [str…], 'errors': [str…],
+               'count': int, 'target_dir': str, 'mode': str}``
+        """
+        mode = str(mode or "copy").lower()
+        if mode not in ("copy", "move"):
+            raise ValueError(f"不支持的导入模式: {mode!r}（仅支持 'copy' / 'move'）")
+
+        dest_root = self._resolve_import_target_dir(target_dir)
+        try:
+            items = [Path(p) for p in (paths or [])]
+        except TypeError:
+            raise ValueError("paths 必须是可迭代的路径集合")
+
+        imported: List[Tuple[str, str]] = []
+        skipped: List[str] = []
+        errors: List[str] = []
+        total = len(items)
+
+        for idx, src in enumerate(items):
+            if progress_callback and total > 0:
+                try:
+                    progress_callback((idx / total) * 100.0, f"导入: {src.name}")
+                except InterruptedError:
+                    raise
+                except Exception:
+                    pass
+            try:
+                if not src.exists():
+                    skipped.append(f"{src.name}：文件不存在")
+                    continue
+                if not src.is_file():
+                    skipped.append(f"{src.name}：不是文件")
+                    continue
+                # 🔴 BUG-3：原仅查叶子（is_symlink/is_windows_junction），漏掉祖先链 junction，
+                # 也漏掉「源文件位于受保护目录（.backup/.trash_backup）」的情况。
+                # 改为：① 字符串级命中受保护目录即拒；② enforce_no_symlink_target 逐级查祖先链。
+                try:
+                    src_resolved = src.resolve()
+                except OSError:
+                    src_resolved = src
+                if self._touches_protected(src) or self._is_inside_protected(src_resolved):
+                    skipped.append(f"{src.name}：位于受保护目录（.backup/.trash_backup），已拒绝")
+                    continue
+                try:
+                    enforce_no_symlink_target(src)
+                except ValueError:
+                    skipped.append(f"{src.name}：符号链接 / junction，已拒绝")
+                    continue
+                # 已经在落地目录里的文件不用导（自己拷自己会清空文件）
+                if src_resolved.parent == dest_root:
+                    skipped.append(f"{src.name}：已在目标目录中")
+                    continue
+
+                if overwrite:
+                    dst = dest_root / src.name
+                    if dst.exists():
+                        # F17：覆盖用户已有文件前先快照（失败只警告，不阻断）
+                        self.create_backup_snapshot(
+                            "export", [dst], f"导入覆盖 {dst.name} 前的自动快照"
+                        )
+                else:
+                    dst = self._unique_target_path(dest_root, src.name)
+
+                if mode == "copy":
+                    shutil.copy2(src_resolved, dst)
+                else:
+                    shutil.move(str(src_resolved), str(dst))
+                imported.append((str(src_resolved), str(dst)))
+                self._log(
+                    f"📥 已导入: {src.name}"
+                    + (f" → {dst.name}" if dst.name != src.name else ""),
+                    'info',
+                )
+            except InterruptedError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{src.name}: {exc}")
+                self._log(f"❌ 导入失败 {src.name}: {exc}", 'error')
+
+        if progress_callback:
+            try:
+                progress_callback(100.0, "导入完成")
+            except InterruptedError:
+                raise
+            except Exception:
+                pass
+
+        # 写历史：copy → 'import'（撤销=删副本）；move → 'move'（复用既有撤销逻辑）
+        if imported:
+            op_type = 'import' if mode == 'copy' else 'move'
+            self._add_history(
+                op_type, imported,
+                f"{'导入' if mode == 'copy' else '移入'} {len(imported)} 个外部文件",
+            )
+        self.invalidate_scan_cache()
+        self._log(
+            f"✅ 导入完成：成功 {len(imported)} 个，跳过 {len(skipped)} 个，失败 {len(errors)} 个",
+            'success' if not errors else 'warning',
+        )
+        return {
+            'imported': imported,
+            'skipped': skipped,
+            'errors': errors,
+            'count': len(imported),
+            'target_dir': str(dest_root),
+            'mode': mode,
+        }
+
     # ---------- 历史记录 ----------
     def _add_history(self, op_type, file_pairs, description=''):
-        if getattr(self, '_suppress_history', False):
-            return
         if not file_pairs:
+            return
+        # 汇聚模式：交给发起方合并提交，而不是丢弃（丢弃会导致操作无法撤销）
+        sink = getattr(self, '_history_sink', None)
+        if sink is not None:
+            sink.extend(file_pairs)
+            return
+        if getattr(self, '_suppress_history', False):
             return
         self.history.append({
             'type': op_type,
@@ -1104,6 +1725,30 @@ class MolManagerModel:
                 except Exception as e:
                     self._log(f"❌ 恢复失败 {Path(src).name}: {e}", 'error')
                     error_count += 1
+        elif op_type == 'import':
+            # F06 导入（复制模式）的撤销：删掉工作目录里的**副本**，外部原件一动不动。
+            # 🔴 数据安全兜底：如果外部原件已经不在了（用户导入后把源文件删了/移走了），
+            #    此时删副本 = 唯一一份数据消失，绝不允许 —— 改为把副本搬回原位置。
+            for src, dst in file_pairs:
+                try:
+                    src_p, dst_p = Path(src), Path(dst)
+                    if not dst_p.exists():
+                        self._log(f"⚠️ 撤销导入失败: 副本不存在 {dst}", 'warning')
+                        error_count += 1
+                        continue
+                    if src_p.exists():
+                        dst_p.unlink()
+                        self._log(f"↩️ 撤销导入: 已移除副本 {dst_p.name}", 'info')
+                    else:
+                        src_p.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(str(dst_p), str(src_p))
+                        self._log(
+                            f"↩️ 撤销导入: 源文件已不存在，副本已移回 {src_p}", 'warning'
+                        )
+                    success_count += 1
+                except Exception as e:
+                    self._log(f"❌ 撤销导入失败 {Path(dst).name}: {e}", 'error')
+                    error_count += 1
         else:
             self._log(f"❌ 不支持撤销的操作类型: {op_type}", 'error')
         self._log(f"🔁 撤销完成: 成功 {success_count}, 失败 {error_count}", 'info' if error_count==0 else 'warning')
@@ -1150,6 +1795,26 @@ class MolManagerModel:
                         error_count += 1
                 except Exception as e:
                     self._log(f"❌ 重做失败 {Path(src).name}: {e}", 'error')
+                    error_count += 1
+        elif op_type == 'import':
+            # 重做导入 = 再复制一次。源文件不在了就只能放弃（不能凭空造数据）。
+            for src, dst in file_pairs:
+                try:
+                    src_p, dst_p = Path(src), Path(dst)
+                    if dst_p.exists():
+                        self._log(f"⚠️ 重做导入跳过 {dst_p.name}: 目标已存在", 'warning')
+                        error_count += 1
+                        continue
+                    if not src_p.exists():
+                        self._log(f"⚠️ 重做导入失败: 源文件不存在 {src}", 'warning')
+                        error_count += 1
+                        continue
+                    dst_p.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_p, dst_p)
+                    self._log(f"↪️ 重做导入: {dst_p.name}", 'info')
+                    success_count += 1
+                except Exception as e:
+                    self._log(f"❌ 重做导入失败 {Path(src).name}: {e}", 'error')
                     error_count += 1
         else:
             self._log(f"❌ 不支持重做的操作类型: {op_type}", 'error')
@@ -1328,6 +1993,30 @@ class MolManagerModel:
         output_path = (preview_dir / f"{stem}.png").resolve()
         return ob_utils.render_png_2d(str(input_path), str(output_path), width, height)
 
+    # ---------- 清理孤立 2D 预览（审计 2.3）----------
+    def cleanup_stale_previews(self) -> int:
+        """删除 .preview 中已无对应源文件的孤立缩略图，避免无限堆积（审计 2.3）。
+
+        返回删除的文件数。.preview 已加入 PROTECTED_DIR_NAMES，不会被扫描/重命名/
+        删除逻辑误当作普通文件处理。
+        """
+        preview_dir = (self.work_dir / ".preview")
+        if not preview_dir.is_dir():
+            return 0
+        removed = 0
+        try:
+            for png in preview_dir.glob("*.png"):
+                stem = png.stem
+                if not any((self.work_dir / f"{stem}{e}").exists() for e in SUPPORTED_EXTS):
+                    try:
+                        png.unlink()
+                        removed += 1
+                    except OSError:
+                        continue
+        except OSError:
+            pass
+        return removed
+
     def _read_summary_json(self, path: Path) -> dict:
         import json
         try:
@@ -1342,6 +2031,16 @@ class MolManagerModel:
         if not self.work_dir.exists():
             return rows
         for summary_json in self.work_dir.rglob("*_summary.json"):
+            # 🔴 T08：rglob 会递归进 .backup / .trash_backup，把快照副本当成
+            #    真实计算结果列出来（同一算例出现多份）。这里显式过滤掉。
+            try:
+                if self._touches_protected(
+                    summary_json.relative_to(self.work_dir)
+                ):
+                    continue
+            except (ValueError, OSError):
+                if self._touches_protected(summary_json):
+                    continue
             try:
                 summary_dir = summary_json.parent
                 base_with_suffix = summary_json.stem
@@ -1382,11 +2081,18 @@ class MolManagerModel:
                     "summary": str(summary_json),
                     **extra
                 }
+                try:
+                    row["_mtime_ns"] = summary_json.stat().st_mtime_ns
+                except OSError:
+                    row["_mtime_ns"] = 0
                 rows.append(row)
             except Exception:
                 continue
 
-        rows.sort(key=lambda r: (r.get("base", ""), r.get("task_type", "")))
+        # 审计 UX5 修复：按结果文件（summary.json）修改时间倒序，确保最新计算结果排在顶部
+        rows.sort(key=lambda r: r.get("_mtime_ns", 0), reverse=True)
+        for r in rows:
+            r.pop("_mtime_ns", None)
         return rows
 
     def compute_deltas(self, rows: list[dict], operation: str) -> list[dict]:
@@ -1499,6 +2205,16 @@ class MolManagerModel:
     def copy_from_left_to_right(self, names: list[str], left, right):
         left_path = Path(left)
         right_path = Path(right)
+        # 🔴 BUG-4 / BUG-6 守卫：源/目标两侧目录都不得命中受保护目录（.backup/.trash_backup）。
+        # 使用 is_protected 双保险——先字符串级（_touches_protected）再 resolve 级
+        # （_is_inside_protected，对 NTFS 大小写不敏感，可挡下 .BACKUP/.Backup/.TRASH_BACKUP
+        # 等变体），同时 enforce_no_symlink_target 拦下 symlink/junction 穿透，防止覆盖/污染备份。
+        if self.is_protected(left) or self.is_protected(right):
+            raise ValueError(
+                f"同步目录命中受保护目录（.backup/.trash_backup），拒绝操作: {left!r} / {right!r}"
+            )
+        enforce_no_symlink_target(left)
+        enforce_no_symlink_target(right, allow_nonexistent=True)
         right_path.mkdir(parents=True, exist_ok=True)
         success = 0
         errors: list[str] = []
@@ -1524,6 +2240,16 @@ class MolManagerModel:
     def copy_from_right_to_left(self, names: list[str], left, right):
         left_path = Path(left)
         right_path = Path(right)
+        # 🔴 BUG-4 / BUG-6 守卫：源/目标两侧目录都不得命中受保护目录（.backup/.trash_backup）。
+        # 使用 is_protected 双保险——先字符串级（_touches_protected）再 resolve 级
+        # （_is_inside_protected，对 NTFS 大小写不敏感，可挡下 .BACKUP/.Backup/.TRASH_BACKUP
+        # 等变体），同时 enforce_no_symlink_target 拦下 symlink/junction 穿透，防止覆盖/污染备份。
+        if self.is_protected(left) or self.is_protected(right):
+            raise ValueError(
+                f"同步目录命中受保护目录（.backup/.trash_backup），拒绝操作: {left!r} / {right!r}"
+            )
+        enforce_no_symlink_target(left)
+        enforce_no_symlink_target(right, allow_nonexistent=True)
         left_path.mkdir(parents=True, exist_ok=True)
         success = 0
         errors: list[str] = []
@@ -1549,6 +2275,16 @@ class MolManagerModel:
     def sync_overwrite_left_to_right(self, names: list[str], left, right):
         left_path = Path(left)
         right_path = Path(right)
+        # 🔴 BUG-4 / BUG-6 守卫：源/目标两侧目录都不得命中受保护目录（.backup/.trash_backup）。
+        # 使用 is_protected 双保险——先字符串级（_touches_protected）再 resolve 级
+        # （_is_inside_protected，对 NTFS 大小写不敏感，可挡下 .BACKUP/.Backup/.TRASH_BACKUP
+        # 等变体），同时 enforce_no_symlink_target 拦下 symlink/junction 穿透，防止覆盖/污染备份。
+        if self.is_protected(left) or self.is_protected(right):
+            raise ValueError(
+                f"同步目录命中受保护目录（.backup/.trash_backup），拒绝操作: {left!r} / {right!r}"
+            )
+        enforce_no_symlink_target(left)
+        enforce_no_symlink_target(right, allow_nonexistent=True)
         right_path.mkdir(parents=True, exist_ok=True)
         success = 0
         errors: list[str] = []
@@ -1574,6 +2310,16 @@ class MolManagerModel:
     def sync_overwrite_right_to_left(self, names: list[str], left, right):
         left_path = Path(left)
         right_path = Path(right)
+        # 🔴 BUG-4 / BUG-6 守卫：源/目标两侧目录都不得命中受保护目录（.backup/.trash_backup）。
+        # 使用 is_protected 双保险——先字符串级（_touches_protected）再 resolve 级
+        # （_is_inside_protected，对 NTFS 大小写不敏感，可挡下 .BACKUP/.Backup/.TRASH_BACKUP
+        # 等变体），同时 enforce_no_symlink_target 拦下 symlink/junction 穿透，防止覆盖/污染备份。
+        if self.is_protected(left) or self.is_protected(right):
+            raise ValueError(
+                f"同步目录命中受保护目录（.backup/.trash_backup），拒绝操作: {left!r} / {right!r}"
+            )
+        enforce_no_symlink_target(left)
+        enforce_no_symlink_target(right, allow_nonexistent=True)
         left_path.mkdir(parents=True, exist_ok=True)
         success = 0
         errors: list[str] = []

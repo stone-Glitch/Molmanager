@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import math
 import os
 import shutil
@@ -8,11 +9,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
-from utils.path_utils import secure_output_path, default_base_dir_from_input
+from utils.path_utils import secure_output_path, default_base_dir_from_input, resolve_secure_input_file
 
 import logging
 from utils.logger import default_logger as logger, performance_timer
-from chem.psi4_compute import _lerp_coords as _base_lerp_coords, _parse_xyz, _write_xyz
+from chem.psi4.utils import _lerp_coords, _parse_xyz, _write_xyz
 import chem.openbabel_utils as ob_utils
 
 
@@ -90,33 +91,6 @@ def _pick_font_cached(size: int):
                 font = None
     _FONT_CACHE[size] = font
     return font
-
-
-_LERP_COORDS_CACHE_MAX = 2048
-_LERP_COORDS_CACHE: dict[Any, list[list[float]]] = {}
-
-
-def _lerp_coords(R, P, t: float):
-    one_minus_t = 1.0 - t
-    n = len(R)
-    try:
-        key = (id(R), id(P), t)
-    except TypeError:
-        key = None
-    if key is not None and key in _LERP_COORDS_CACHE:
-        return _LERP_COORDS_CACHE[key]
-    result = [[one_minus_t * R[i][0] + t * P[i][0],
-               one_minus_t * R[i][1] + t * P[i][1],
-               one_minus_t * R[i][2] + t * P[i][2]] for i in range(n)]
-    if key is not None:
-        if len(_LERP_COORDS_CACHE) >= _LERP_COORDS_CACHE_MAX:
-            try:
-                k = next(iter(_LERP_COORDS_CACHE))
-                del _LERP_COORDS_CACHE[k]
-            except StopIteration:
-                pass
-        _LERP_COORDS_CACHE[key] = result
-    return result
 
 
 def _cosine_ease(t: float) -> float:
@@ -464,12 +438,11 @@ def generate_xyz_trajectory(
         "error": None,
     }
     try:
-        r_p = Path(reactant_xyz)
-        p_p = Path(product_xyz)
-        if not r_p.exists():
-            result["error"] = f"反应物文件不存在: {r_p}"; return result
-        if not p_p.exists():
-            result["error"] = f"产物文件不存在: {p_p}"; return result
+        try:
+            r_p = resolve_secure_input_file(reactant_xyz)
+            p_p = resolve_secure_input_file(product_xyz)
+        except ValueError as _ve:
+            result["error"] = str(_ve); return result
         n_r, atoms_r, R = _parse_xyz(r_p.read_text(encoding="utf-8"))
         n_p, atoms_p, P = _parse_xyz(p_p.read_text(encoding="utf-8"))
         if n_r != n_p or atoms_r != atoms_p:
@@ -606,9 +579,9 @@ def _concat_xyz_files(paths: list[str | os.PathLike[str]],
     all_coords: list[list[float]] = []
     offset = 0.0
     for p in paths:
-        fp = Path(p)
-        if not fp.exists():
-            raise FileNotFoundError(f"文件不存在: {fp}")
+        # 审计 1.1 路径遍历修复：读取前校验为真实存在的普通文件，
+        # 拒绝目录 / 设备 / 不存在路径（防止越权读取）。
+        fp = resolve_secure_input_file(p)
         n, atoms, coords = _parse_xyz(fp.read_text(encoding="utf-8"))
         for (sym, xyz) in zip(atoms, coords):
             all_atoms.append(sym)
@@ -881,15 +854,14 @@ def generate_reaction_animation(
     }
     frames_root: Path | None = None
     try:
-        r_p = Path(reactant_xyz)
-        p_p = Path(product_xyz)
-        if not r_p.exists():
-            result["error"] = f"反应物文件不存在: {r_p}"
+        try:
+            r_p = resolve_secure_input_file(reactant_xyz)
+            p_p = resolve_secure_input_file(product_xyz)
+        except ValueError as _ve:
+            result["error"] = str(_ve)
             return result
-        if not p_p.exists():
-            result["error"] = f"产物文件不存在: {p_p}"
-            return result
-        n_r, atoms_r, R = _parse_xyz(r_p.read_text(encoding="utf-8"))
+        _reactant_text = r_p.read_text(encoding="utf-8")
+        n_r, atoms_r, R = _parse_xyz(_reactant_text)
         n_p, atoms_p, P = _parse_xyz(p_p.read_text(encoding="utf-8"))
         if n_r != n_p or atoms_r != atoms_p:
             result["error"] = f"原子顺序不一致 (R:{n_r} P:{n_p})，请先做分子叠加"
@@ -956,7 +928,9 @@ def generate_reaction_animation(
             xyz_fp = xyz_dir / f"frame_{idx:04d}.xyz"
             xyz_fp.write_text(xyz_text, encoding="utf-8")
             raw_fp = raw_dir / f"frame_{idx:04d}.png"
-            _sig = (tuple(atoms_r), width, height)
+            # 审计 P-5：把反应物文本内容的哈希纳入 2D 渲染缓存键，
+            # 避免「元素序列相同、尺寸相同但分子不同」的误命中（即便本缓存为函数局部、已探针门控，亦向前兼容）。
+            _sig = (tuple(atoms_r), width, height, hashlib.md5(_reactant_text.encode("utf-8")).digest())
             if _cache_enabled and _sig in _raw_cache:
                 raw_fp.write_bytes(_raw_cache[_sig])
             else:
@@ -1087,10 +1061,8 @@ def preview_first_frame(
     result = {"success": False, "output": None, "error": None}
     try:
         import tempfile
-        r_p = Path(reactant_xyz)
-        p_p = Path(product_xyz)
-        if not r_p.exists() or not p_p.exists():
-            raise FileNotFoundError("反应物或产物文件不存在")
+        r_p = resolve_secure_input_file(reactant_xyz)
+        p_p = resolve_secure_input_file(product_xyz)
         n_r, atoms_r, R = _parse_xyz(r_p.read_text(encoding="utf-8"))
         n_p, atoms_p, P = _parse_xyz(p_p.read_text(encoding="utf-8"))
         # 若顺序不一致，尝试自动对齐（仅针对单分子）

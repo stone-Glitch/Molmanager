@@ -12,6 +12,7 @@ from .core import (
     convert_with_obabel,
     read_xyz_content,
     run_psi4_task,
+    run_psi4_task_cancellable,
     parse_psi4_output,
     _run_process_with_timeout,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "convert_with_obabel",
     "read_xyz_content",
     "run_psi4_task",
+    "run_psi4_task_cancellable",
     "parse_psi4_output",
     "_run_process_with_timeout",
     # 扫描

@@ -6,7 +6,9 @@
 """
 
 import json
+import os
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
@@ -26,7 +28,6 @@ class PresetManager:
 
     def _get_preset_dir(self) -> Path:
         """获取预设存储目录（跨平台）"""
-        import sys
         if sys.platform == 'win32':
             base = Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming'))
         else:

@@ -21,6 +21,12 @@ class Controller:
         self.helpers = helpers
         self.model = MolManagerModel(work_dir=self.app.config_data.get("work_dir", "output"))
         self.model.set_log_callback(self.helpers.on_log)
+        # F17：把 config["backup"] 灌给 model（开关 / 每类保留份数 / 单文件上限）。
+        # 配置读不出来时 model 内部会自动回落默认值，这里不需要额外兜底。
+        try:
+            self.model.configure_backup(self.app.config_data.get("backup", {}))
+        except Exception as _e_backup_cfg:  # noqa: BLE001
+            logger.debug("初始化备份配置失败（使用默认值）: %s", _e_backup_cfg)
         if not isinstance(self.app.config_data.get("recent_work_dirs"), list):
             self.app.config_data["recent_work_dirs"] = []
         self.push_recent_work_dir(str(self.model.work_dir))
@@ -69,9 +75,16 @@ class Controller:
             self.app.mapping_file_var.set(f)
 
     def load_mapping_file(self):
-        path = Path(self.app.mapping_file_var.get())
-        if not path.exists():
+        raw = self.app.mapping_file_var.get().strip()
+        if not raw:
             self.helpers.on_log("❌ 请先选择映射文件", 'error')
+            return
+        path = Path(raw)
+        # 🔴 校验必须是真实存在的「文件」：空串 / '.' / 目录都会让 Path(...).exists()
+        # 为 True（当前目录必然存在），从而绕过上面的守卫去 open() 一个目录 →
+        # Windows 上 PermissionError: [Errno 13] Permission denied: '.'。
+        if not path.is_file():
+            self.helpers.on_log(f"❌ 映射文件无效或不存在: {path}", 'error')
             return
         try:
             count, dup = self.model.load_mapping_file(path)
@@ -106,8 +119,16 @@ class Controller:
                 # 提前获取异常对象和堆栈字符串，避免 lambda 延迟绑定取到已被清理的 e
                 err_obj = e
                 err_tb = traceback.format_exc()
-                self.app.after(0, lambda _e=err_obj, _tb=err_tb:
-                               self.helpers.on_log(f"❌ 扫描失败: {_e}\n{_tb}", 'error'))
+                # 【加固】窗口正在关闭 / 已 destroy 时，app.after 本身会抛
+                # TclError("application has been destroyed") 或
+                # RuntimeError("main thread is not in main loop")，
+                # 会把"扫描失败"这种普通错误升级成 worker 线程未捕获异常并刷屏。
+                # 这里兜底：回调派发不了就直接写日志文件，不再向上抛。
+                try:
+                    self.app.after(0, lambda _e=err_obj, _tb=err_tb:
+                                   self.helpers.on_log(f"❌ 扫描失败: {_e}\n{_tb}", 'error'))
+                except Exception:
+                    logger.error("扫描失败（且无法回调到 UI）: %s\n%s", err_obj, err_tb)
         self.helpers.run_task(_scan)
 
     # ----- 修复 -----
@@ -381,6 +402,140 @@ class Controller:
     def get_undo_redo_state(self) -> dict:
         return {'undo_count': len(self.model.history), 'redo_count': len(self.model.redo_stack)}
 
+    # ================ F06：拖放导入 / 菜单兜底导入（T18） ================
+    def handle_dropped_paths(self, paths, *, source: str = "drop") -> None:
+        """
+        处理「一批外部路径」→ 分类 → 确认 → 后台导入 → 刷新列表。
+
+        这是 F06 的**唯一**业务入口，拖放（``<<Drop>>`` 事件）和菜单兜底
+        （文件选择框）都汇流到这里，保证两条路径的规则完全一致：
+        白名单、目录递归展开、去重、受保护目录拒绝，全部由 `core.drop_handler`
+        统一裁决 —— controller 只负责「问用户 + 调 model + 刷 UI」。
+
+        参数:
+            paths:  tkdnd 的原始 data 字符串，或 str/Path 的列表。
+            source: ``"drop"`` / ``"menu"``，只用于日志区分来源。
+
+        契约：**永不抛异常**。任何失败都转成日志 / 提示框，绝不能让一次误拖
+        把主窗口打崩（架构 §3.2）。
+        """
+        try:
+            from core.drop_handler import DropHandler
+        except Exception as exc:  # noqa: BLE001
+            self.helpers.on_log(f"⚠️ 拖放模块不可用（已忽略本次导入）: {exc}", 'warning')
+            return
+
+        cfg = getattr(self.app, "config_data", {}) or {}
+        if not DropHandler.is_enabled(cfg):
+            self.helpers.on_log("⚠️ 拖放导入已在配置中关闭（dnd.enabled = false）", 'warning')
+            return
+
+        # ---- 1) 分类：白名单 / 目录展开 / 去重 / 受保护目录拒绝 ----
+        try:
+            handler = DropHandler.from_config(cfg, work_dir=self.model.work_dir)
+            if isinstance(paths, (str, bytes)):
+                result = handler.process_drop_data(paths)
+            else:
+                result = handler.process(paths)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("解析拖入路径失败: %s", exc)
+            self.helpers.on_log(f"❌ 解析拖入内容失败: {exc}", 'error')
+            return
+
+        tag = "拖入" if source == "drop" else "选择"
+        self.helpers.on_log(f"📥 {tag}内容分析：{result.summary()}", 'info')
+        for line in result.rejection_lines():
+            self.helpers.on_log(f"　└ 已忽略 · {line}", 'warning')
+
+        # ---- 2) 一个都不能导 → 说清楚为什么，然后收工 ----
+        if not result.has_accepted():
+            detail = "\n".join(f"· {line}" for line in result.rejection_lines()) or \
+                     "· 没有识别到任何文件"
+            try:
+                messagebox.showinfo(
+                    "没有可导入的文件",
+                    f"本次{tag}的内容都不符合导入条件：\n\n{detail}\n\n"
+                    f"提示：可导入的扩展名由配置项 dnd.extensions 控制。",
+                    parent=self.app,
+                )
+            except Exception:
+                pass
+            return
+
+        # ---- 3) 确认（导入会真的写盘，必须让用户点头）----
+        preview = "、".join(result.accepted_names()[:5])
+        if result.accepted_count > 5:
+            preview += " …"
+        lines = [
+            f"即将把 {result.accepted_count} 个文件**复制**到工作目录：",
+            f"　{self.model.work_dir}",
+            "",
+            f"文件示例：{preview}",
+        ]
+        if result.scanned_dirs:
+            lines.append(f"（已递归展开 {result.scanned_dirs} 个文件夹）")
+        if result.rejected_count:
+            lines.append(f"（另有 {result.rejected_count} 个不符合条件的项目已忽略）")
+        if result.truncated:
+            lines.append("⚠️ 数量已达单次上限，列表被截断，请分批导入。")
+        lines += ["", "原文件保留在原位置不动，导入后可用 Ctrl+Z 撤销。", "", "是否继续？"]
+        try:
+            if not messagebox.askyesno("确认导入", "\n".join(lines), parent=self.app):
+                self.helpers.on_log("已取消导入", 'info')
+                return
+        except Exception:
+            pass  # 无法弹确认框（极端环境）时按「继续」处理，避免功能完全不可用
+
+        # ---- 4) 后台导入（复制模式最安全：外部原件不动）----
+        accepted = list(result.accepted)
+
+        def _task(**kwargs):
+            progress_cb = kwargs.get('_progress_callback')
+            info = self.model.import_external_files(
+                accepted, mode="copy", progress_callback=progress_cb
+            )
+            for msg in info['skipped'][:5]:
+                self.helpers.on_log(f"⏭️ 跳过 {msg}", 'warning')
+            for msg in info['errors'][:5]:
+                self.helpers.on_log(f"❌ {msg}", 'error')
+            self.helpers.on_log(
+                f"🎉 导入完成：{info['count']} 个文件已进入工作目录（Ctrl+Z 可撤销）",
+                'success' if not info['errors'] else 'warning',
+            )
+            self.scan_files()
+
+        self.helpers.run_task(_task)
+
+    def import_files_from_dialog(self) -> None:
+        """
+        菜单兜底入口：没装 tkinterdnd2（或用户不习惯拖拽）时，用文件选择框导入。
+
+        走的是和拖放**完全相同**的 `handle_dropped_paths`，因此规则不会漂移。
+        """
+        try:
+            from core.drop_handler import normalize_extensions
+            exts = normalize_extensions(
+                (getattr(self.app, "config_data", {}) or {}).get("dnd", {}).get("extensions")
+            )
+        except Exception:
+            exts = ()
+        if exts:
+            pattern = " ".join(f"*{e}" for e in exts)
+            filetypes = [("可导入的分子/计算文件", pattern), ("所有文件", "*.*")]
+        else:
+            filetypes = [("所有文件", "*.*")]
+        try:
+            files = filedialog.askopenfilenames(
+                title="选择要导入到工作目录的文件（也可直接拖入窗口）",
+                filetypes=filetypes,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.helpers.on_log(f"❌ 打开文件选择框失败: {exc}", 'error')
+            return
+        if not files:
+            return
+        self.handle_dropped_paths(list(files), source="menu")
+
     def delete_selected(self):
         selected = self.helpers.get_selected_filenames()
         if not selected:
@@ -506,7 +661,10 @@ class Controller:
         if work is None:
             return []
         if only_selected:
-            items = list(self.app.tree.selection())
+            # 复选框多选模型：以勾选集合（文件名）为准，映射回当前可见行的 iid
+            names = set(self.app.helpers.get_selected_filenames())
+            items = [iid for iid in self.app.tree.get_children()
+                     if str(self.app.tree.item(iid, "values")[1]) in names]
         else:
             items = list(self.app.tree.get_children())
         ret: list[tuple[str, str]] = []

@@ -19,89 +19,7 @@ from pathlib import Path
 
 from utils.logger import default_logger as logger
 from utils.path_utils import is_windows_junction
-
-
-def _cleanup_stale_tempdirs(max_age_seconds: int = 3 * 24 * 3600) -> int:
-    """
-    启动时清理过期的 psi4_temp_* 临时目录，返回删除的数量。
-    安全加固（修复 CWE-59 符号链接跟随 / CWE-367 TOCTOU / 审计 1.2 Windows junction）：
-      • 仅在系统临时目录（tempfile.gettempdir / %TEMP% / TMPDIR / TMP）内匹配，
-        不再触碰 Path.cwd()，避免误伤工作区或用户创建的同名目录。
-      • 先用 resolve(strict=True) 拿真实路径，
-        随后 relative_to 校验真实路径仍在系统临时目录下。
-      • 拒绝所有 is_symlink 为 True 的路径（含 Windows junction），
-        避免跟随到外部目录。
-      • age 检查与 rmtree 都作用在同一个 real（已 resolve）的 Path 对象上，
-        缩小两次文件系统检查之间的竞争窗口。
-      • 【审计 1.2 新增】Windows 下显式检测 reparse point（junction），避免
-        Path.is_symlink 漏检 NTFS reparse point。
-    """
-    removed = 0
-    roots: set[Path] = set()
-    for envvar in ('TMPDIR', 'TEMP', 'TMP'):
-        v = os.environ.get(envvar)
-        if v:
-            try:
-                roots.add(Path(v).resolve())
-            except OSError:
-                continue
-    try:
-        roots.add(Path(tempfile.gettempdir()).resolve())
-    except OSError:
-        pass
-    # 去掉重复后做有效性过滤
-    roots = {r for r in roots if r and r.is_dir()}
-    if not roots:
-        return 0
-    now = time.time()
-    seen: set[Path] = set()
-    for root in roots:
-        try:
-            candidates = list(root.glob("psi4_temp_*"))
-        except OSError:
-            continue
-        for d in candidates:
-            try:
-                # 【审计 1.2 junction 检测】先在未 resolve 的路径上用 lstat
-                if is_windows_junction(d):
-                    continue
-                real = d.resolve(strict=True)
-                # resolve 之后如果本身是 symlink（极少，但防御），或原 path 是 symlink
-                if d.is_symlink() or real.is_symlink():
-                    continue
-                # 【审计 1.2 junction 检测】resolve 后的路径也跑一遍
-                if is_windows_junction(real):
-                    continue
-                if real in seen:
-                    continue
-                seen.add(real)
-                # (1) 解析后仍必须在该临时根目录内
-                try:
-                    real.relative_to(root)
-                except ValueError:
-                    continue
-                # (3) 必须是目录
-                if not real.is_dir():
-                    continue
-                # (4) 真实目录名仍保持 psi4_temp_ 前缀
-                if not real.name.startswith("psi4_temp_"):
-                    continue
-                # (5) 年龄 & 删除（均作用于已 resolve 的 real）
-                try:
-                    st = real.stat(follow_symlinks=False)
-                except OSError:
-                    continue
-                if now - st.st_mtime >= max_age_seconds:
-                    try:
-                        shutil.rmtree(real, ignore_errors=True)
-                        removed += 1
-                    except OSError:
-                        pass
-            except Exception:
-                continue
-    if removed:
-        logger.info("清理过期临时目录 %d 个（> %.1f 天）", removed, max_age_seconds / 86400.0)
-    return removed
+from utils.path_utils import cleanup_stale_tempdirs
 
 
 class SplashScreen:
@@ -387,9 +305,15 @@ def main():
     # M-3 修复：清理过期临时目录：改为非守护线程（daemon=False）
     # daemon 线程会在解释器退出时被硬杀，正在 rmtree/stat 时被强杀可能留下 Fatal Python error，
     # 且清理操作本身耗时极短（几百毫秒级），等它结束是安全的。
+    def _run_tmp_cleanup():
+        # 顶层兜底：避免清理线程内未捕获异常导致线程无声崩溃（报告 MINOR 加固）
+        try:
+            cleanup_stale_tempdirs()
+        except Exception as _ce:
+            logger.debug("临时目录清理线程异常（已忽略）: %s", _ce)
     try:
         import threading as _th
-        _th.Thread(target=_cleanup_stale_tempdirs, daemon=False, name="TmpCleanup").start()
+        _th.Thread(target=_run_tmp_cleanup, daemon=False, name="TmpCleanup").start()
     except Exception as e:
         logger.debug("启动临时目录清理线程失败（将跳过清理）: %s", e)
 

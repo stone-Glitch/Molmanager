@@ -9,13 +9,18 @@ UI 构建器 - 大字体、扁平卡片风格，无 Canvas 装饰
 
 import math
 import sys
+import time
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from utils.constants import SUPPORTED_EXTS
+import ui.ui_theme as ui_theme
 from ui.ui_theme import (
-    DARK, dark_card, section_title,
+    DARK, COLORS, dark_card, section_title,
     primary_button, secondary_button, danger_button,
     success_button, warning_button, themed_button,
+    apply_theme, set_current_theme, get_current_theme,
+    load_theme_preference, save_theme_preference, refresh_themed_widgets,
+    CHECK_GLYPH,
 )
 
 
@@ -144,6 +149,29 @@ def resolve_font_specs(app, force_pt: int | None = None) -> dict:
 
 
 # ------------------------- 🧭 自绘菜单栏（设置 / 帮助：字体完全可控）-------------------------
+def _toggle_theme(app) -> None:
+    """在「设置」菜单中切换浅色/深色主题：持久化 + 应用 + 刷新工厂控件 + 提示重启。
+
+    与字体大小对话框一致，部分已显示的界面需重启后完全生效。
+    """
+    try:
+        from ui.dialogs.common import _restart_app
+        import tkinter.messagebox as _mb
+        _new = "light" if get_current_theme() == "dark" else "dark"
+        save_theme_preference(_new)
+        set_current_theme(_new)
+        apply_theme(app, _new)
+        refresh_themed_widgets()
+        _label = "浅色" if _new == "light" else "深色"
+        if _mb.askyesno("已切换主题",
+                        f"已切换为「{_label}」主题。\n\n"
+                        "部分已显示的界面需重启后完全生效，是否立即重启？",
+                        parent=app):
+            _restart_app(app)
+    except Exception as _e:
+        print("[ui_builder] toggle_theme failed:", _e)
+
+
 def build_menu_bar(app) -> None:
     """
     用自绘 Frame + tk.Menubutton 做顶部菜单栏（Windows 原生 Menu 的 cascade 字体不可控）。
@@ -187,9 +215,9 @@ def build_menu_bar(app) -> None:
         )
         mb.pack(side=side, padx=0, pady=0)
         menu = tk.Menu(mb, tearoff=0,
-                       bg="#161B22", fg="#E6EDF3",
+                       bg=COLORS.get("card_bg", "#161B22"), fg=COLORS.get("text", "#E6EDF3"),
                        activebackground=COLORS.get("primary", "#2DD4BF"),
-                       activeforeground="#0F1419",
+                       activeforeground=COLORS.get("btn_text", "#0F1419"),
                        font=MENU_ITEM, bd=1, relief=tk.SOLID)
         mb.configure(menu=menu)
         return mb, menu
@@ -216,10 +244,35 @@ def build_menu_bar(app) -> None:
             )
         except Exception:
             pass
+        # 双主题切换（与 UI 设计系统一致：浅色/深色一键切换并记忆）
+        menu_set.add_separator()
+        menu_set.add_command(
+            label="  🌓 切换浅色 / 深色主题",
+            command=lambda: _toggle_theme(app),
+        )
         # 手动 OB 路径快捷入口
         menu_set.add_command(
             label="  🧭 OpenBabel 可执行路径…",
             command=lambda: _open_ob_path_dialog(app),
+        )
+        # F06 导入外部文件（T18）：拖放的**兜底入口**。
+        # 没装 tkinterdnd2、或用户不习惯拖拽时，这里走的是同一套 drop_handler 规则。
+        menu_set.add_command(
+            label="  📥 导入外部文件到工作目录…（也可直接拖入）",
+            command=lambda: _safe_call(app, "import_files_from_menu"),
+        )
+        # F17 备份管理（T12）：查看自动快照 / 回滚误操作
+        menu_set.add_separator()
+        menu_set.add_command(
+            label="  🗂️ 备份管理（快照 / 回滚）…",
+            command=lambda: _safe_call(app, "show_backup_dialog_from_menu"),
+        )
+        # F18 在线更新检查（T16）：**手动**检查，必定给出明确反馈
+        # （与启动 2s 后的静默检查区分：静默检查无更新时完全无声）
+        menu_set.add_separator()
+        menu_set.add_command(
+            label="  🔄 检查更新…",
+            command=lambda: _safe_call(app, "check_update_from_menu"),
         )
     except Exception:
         pass
@@ -848,40 +901,9 @@ class CollapsibleFrame(tk.LabelFrame):
         self._apply_state()
 
 
-# ------------------------- 🎨 颜色调色板（深色护眼：与 UI_DESIGN.md 一致） -------------------------
-COLORS = {
-    "bg": "#0F1419",
-    "card_bg": "#161B22",
-    "card_border": "#232B3A",
-    "primary": "#2DD4BF",
-    "success": "#3FB950",
-    "warning": "#D29922",
-    "danger": "#F85149",
-    "text": "#E6EDF3",
-    "text_light": "#9DA7B3",
-    # 深色主题别名键（与 ui_theme.DARK 对齐，供新版组件/侧边栏使用）
-    "surface": "#161B22",
-    "elevated": "#1C2330",
-    "input": "#0D1117",
-    "border": "#232B3A",
-    "accent": "#2DD4BF",
-    "accent_hover": "#5EEAD4",
-    "link": "#58A6FF",
-    "text_secondary": "#9DA7B3",
-    "text_hint": "#8B97AC",
-    # 顶部菜单栏（含下拉 Menubutton）专用键；缺失时旧兜底 #E1EBFF 会让菜单条/下拉按钮变浅色，
-    # 故显式设为深色，与整体暗色主题一致
-    "menu_bar_bg": "#161B22",
-    "menu_hover_bg": "#1C2330",
-    "error": "#F85149",
-    "error_hover": "#FF7B72",
-    # 颜色编码：按钮背景
-    "btn_recommend_bg": "#3FB950",   # 绿色：一键修复等推荐操作
-    "btn_info_bg": "#2DD4BF",        # 青绿：信息/扫描
-    "btn_warn_bg": "#D29922",        # 橙色：警告操作
-    "btn_danger_bg": "#F85149",      # 红色：删除
-    "btn_text": "#0F1419",           # 强调色按钮上的深字（与亮色底对比充足）
-}
+# ------------------------- 🎨 颜色调色板（双主题，随 ui_theme 当前主题切换） -------------------------
+# COLORS 现为 ui.ui_theme 的 ThemeColors 代理：COLORS["bg"] / COLORS.get("bg", d)
+# 始终返回「当前主题」的调色板值，构建新控件与运行时查询自动跟随主题。
 
 
 def _make_scrolled_frame(master, bg, use_x=True, use_y=True):
@@ -942,9 +964,9 @@ def _make_scrolled_frame(master, bg, use_x=True, use_y=True):
 
 
 def build_sidebar(app, body):
-    """左侧图标导航栏：文件管理 / 计算与动画 / 高级工具（取代原顶部 Notebook 标签）。"""
+    """左侧图标导航栏：文件管理 / 计算与动画 / 高级工具 / 任务队列（取代原顶部 Notebook 标签）。"""
     F = getattr(app, "_fonts", {})
-    NAV = (("📁", "文件管理"), ("🔬", "计算与动画"), ("⚙️", "高级工具"))
+    NAV = (("📁", "文件管理"), ("🔬", "计算与动画"), ("⚙️", "高级工具"), ("📊", "任务队列"))
     nav = tk.Frame(body, bg=COLORS["surface"], relief=tk.FLAT, bd=0,
                    highlightbackground=COLORS["border"], highlightthickness=1)
     nav.grid(row=0, column=0, sticky="ns")
@@ -1011,13 +1033,70 @@ def build_ui(app):
         print("[ui_builder] resolve_font_specs failed:", _tb.format_exc())
     apply_aurora_theme_if_available(app)
 
-    # —— 深色护眼主题（在 aurora 之后生效，覆盖其 Aurora.* 样式；详见 UI_DESIGN.md）——
+    # —— 双主题：先据持久化偏好设定当前主题，再应用（覆盖 aurora 的 Aurora.* 样式）——
     try:
         import ui.ui_theme as ui_theme
-        ui_theme.apply_dark_theme(app)
+        ui_theme.set_current_theme(ui_theme.load_theme_preference())
+        ui_theme.apply_theme(app, ui_theme.get_current_theme())
     except Exception as _te:
         import traceback as _tb
-        print("[ui_builder] apply_dark_theme failed:", _tb.format_exc())
+        print("[ui_builder] apply_theme failed:", _tb.format_exc())
+
+    # —— 设计落地 Phase 5：把 run_task→task_manager.submit 的所有后台任务接入统一任务队列 ——
+    # 仅包装 submit（实例属性），不改动既有逻辑；on_task_done/error 负责把活动任务标记成功/失败。
+    try:
+        import time as _tm
+        _tm_mgr = app.task_manager
+        _orig_submit = _tm_mgr.submit
+
+        def _spec_from_config(a):
+            try:
+                m = getattr(a, "psi4_last_method", "") or ""
+                b = getattr(a, "psi4_last_basis", "") or ""
+                if m or b:
+                    return ("%s/%s" % (m, b)).strip("/") or "—"
+            except Exception:
+                pass
+            return "—"
+
+        def _wrap_submit(func, *args, progress_callback=None, **kwargs):
+            job = {
+                "id": len(_tm_mgr.jobs) + 1,
+                "name": "任务 #%d" % (len(_tm_mgr.jobs) + 1),
+                "kind": "后台任务",
+                "spec": _spec_from_config(app),
+                "status": "running",
+                "progress": 0,
+                "started": _tm.time(),
+                "finished": None,
+                "log": [],
+                "error": "",
+            }
+            with _tm_mgr._jobs_lock:
+                _tm_mgr.jobs.append(job)
+                _tm_mgr._active_job = job
+            _orig_pcb = progress_callback
+
+            def _pc(percent, msg=""):
+                try:
+                    if percent is not None:
+                        job["progress"] = int(percent)
+                    if msg:
+                        job["log"].append(msg)
+                except Exception:
+                    pass
+                if callable(_orig_pcb):
+                    try:
+                        _orig_pcb(percent, msg)
+                    except Exception:
+                        pass
+
+            return _orig_submit(func, *args, progress_callback=_pc, job=job, **kwargs)
+
+        _tm_mgr.submit = _wrap_submit
+    except Exception as _se:
+        import traceback as _tb
+        print("[ui_builder] 任务队列接入失败（已跳过，不影响其余功能）:", _tb.format_exc())
 
     # —— 0. 顶部菜单栏（自绘 Menubutton，平台无关；字体完全可控）——
     try:
@@ -1053,7 +1132,8 @@ def build_ui(app):
     app._pages = []
     for _builder in (build_tab_file_management,
                      build_tab_compute_and_animation,
-                     build_tab_advanced_tools):
+                     build_tab_advanced_tools,
+                     build_tab_compute_queue):
         _sf, _inner = _make_scrolled_frame(content, COLORS["bg"])
         _sf.grid(row=0, column=0, sticky="nsew")
         _builder(app, _inner)
@@ -1061,6 +1141,7 @@ def build_ui(app):
 
     # 页面切换（侧边栏导航调用）
     def _show_page(i):
+        app._cur_page = i  # 记录当前页，供任务队列轮询节流
         for _idx, _pf in enumerate(app._pages):
             if _idx == i:
                 _pf.grid(row=0, column=0, sticky="nsew")
@@ -1068,6 +1149,12 @@ def build_ui(app):
                 _pf.grid_remove()
         try:
             app._update_nav(i)
+        except Exception:
+            pass
+        # 切到队列页时立即刷新一次
+        try:
+            if i == 3 and hasattr(app, "refresh_queue"):
+                app.refresh_queue()
         except Exception:
             pass
     app._show_page = _show_page
@@ -1200,6 +1287,30 @@ def build_toolbar(app, parent):
               tip="调整需要显示/扫描的文件扩展名"
               ).grid(row=0, column=13, sticky="w", padx=2, pady=6)
 
+    # —— 命令面板入口（设计落地 Phase 1）——
+    try:
+        from ui.command_palette import open_command_palette as _open_cmd_palette
+        _row0_btn("⌘ 命令面板", lambda: _open_cmd_palette(app),
+                  bg=COLORS["accent"], fg=COLORS["btn_text"],
+                  tip="Ctrl/Cmd+K 唤起命令面板：动作 / 导航 / 文件一搜即达"
+                  ).grid(row=0, column=14, sticky="w", padx=(10, 2), pady=6)
+    except Exception as _cpe:
+        import traceback as _tb
+        print("[ui_builder] 命令面板按钮构建失败（已跳过）:", _tb.format_exc())
+
+    # —— 主题 / 密度快速切换（设计落地 Phase 3，复用 ui_theme 助手）——
+    try:
+        from ui.ui_theme import toggle_theme as _toggle_theme, toggle_density as _toggle_density
+        _row0_btn("🌓 主题", lambda: _toggle_theme(app),
+                  tip="切换深 / 浅色主题（即时生效并记忆）"
+                  ).grid(row=0, column=15, sticky="w", padx=2, pady=6)
+        _row0_btn("📐 密度", lambda: _toggle_density(app),
+                  tip="切换舒适 / 紧凑信息密度（即时重排并记忆）"
+                  ).grid(row=0, column=16, sticky="w", padx=2, pady=6)
+    except Exception as _te:
+        import traceback as _tb
+        print("[ui_builder] 主题/密度按钮构建失败（已跳过）:", _tb.format_exc())
+
 
 # ===========================================================
 # 📁 Tab1：文件管理（新手默认页面）
@@ -1329,6 +1440,88 @@ def build_tab_file_management(app, parent):
     # —— R2：文件列表 + 日志（垂直分割） ——
     _build_paned_file_and_log(app, parent, row=2, column=0)
 
+    # —— 空状态引导卡（设计落地 Phase 4）：工作目录无文件时显示，有文件时隐藏 ——
+    es = dark_card(parent)
+    es.grid(row=2, column=0, sticky="nsew", padx=8, pady=(8, 4))
+    es.grid_remove()  # 默认隐藏，交由 refresh_empty_state 控制
+    es.grid_rowconfigure(0, weight=1)
+    es.grid_columnconfigure(0, weight=1)
+    app._empty_state = es
+
+    _es_inner = tk.Frame(es, bg=COLORS["surface"])
+    _es_inner.grid(row=0, column=0, sticky="nsew", padx=24, pady=24)
+    _es_inner.grid_columnconfigure(0, weight=1)
+
+    tk.Label(_es_inner, text="📭  工作目录还没有文件",
+             bg=COLORS["surface"], fg=COLORS["text"],
+             font=("Microsoft YaHei", 16, "bold"), anchor="w").grid(
+        row=0, column=0, sticky="w", pady=(0, 4))
+    tk.Label(_es_inner,
+             text="把分子 / 计算结果文件放进工作目录，或直接选择目录开始。三步即可上手：",
+             bg=COLORS["surface"], fg=COLORS["text_secondary"],
+             font=("Microsoft YaHei", 12), anchor="w", wraplength=560,
+             justify="left").grid(row=1, column=0, sticky="w", pady=(0, 14))
+
+    steps = [
+        ("①", "选择工作目录", "点右上「📂 浏览…」或下方按钮，指定存放分子文件的文件夹"),
+        ("②", "一键修复全部", "自动补全中文名、修正命名错误、整理内容（可逐项预览）"),
+        ("③", "按类型整理", "按扩展名归档到 mol_files / xyz_files / fchk_files 等子目录"),
+    ]
+    for i, (num, title, desc) in enumerate(steps):
+        _sc = tk.Frame(_es_inner, bg=COLORS["elevated"], bd=0,
+                       highlightbackground=COLORS["card_border"], highlightthickness=1)
+        _sc.grid(row=2 + i, column=0, sticky="ew", pady=5)
+        tk.Label(_sc, text=num, bg=COLORS["elevated"], fg=COLORS["accent"],
+                 font=("Microsoft YaHei", 18, "bold"), width=2, anchor="center").pack(
+            side=tk.LEFT, padx=12, pady=10)
+        _txt = tk.Frame(_sc, bg=COLORS["elevated"])
+        _txt.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 12), pady=10)
+        tk.Label(_txt, text=title, bg=COLORS["elevated"], fg=COLORS["text"],
+                 font=("Microsoft YaHei", 13, "bold"), anchor="w").pack(anchor="w")
+        tk.Label(_txt, text=desc, bg=COLORS["elevated"], fg=COLORS["text_secondary"],
+                 font=("Microsoft YaHei", 11), anchor="w", wraplength=520,
+                 justify="left").pack(anchor="w", pady=(2, 0))
+
+    _es_btn = primary_button(
+        _es_inner, "📂  选择工作目录", app.controller.browse_work_dir,
+        tip="选择存放分子文件的文件夹")
+    _es_btn.grid(row=2 + len(steps), column=0, sticky="w", pady=(14, 0))
+
+    def refresh_empty_state():
+        """根据 tree 是否空，切换「空状态引导卡」与「文件列表 Paned」的显示。"""
+        try:
+            tree = getattr(app, "tree", None)
+            n = len(tree.get_children()) if tree is not None else 0
+            paned = getattr(app, "_file_list_paned", None)
+            _es = getattr(app, "_empty_state", None)
+            if n == 0:
+                if _es is not None:
+                    _es.grid(row=2, column=0, sticky="nsew", padx=8, pady=(8, 4))
+                if paned is not None:
+                    paned.grid_remove()
+            else:
+                if _es is not None:
+                    _es.grid_remove()
+                if paned is not None:
+                    paned.grid(row=2, column=0, sticky="nsew", pady=(0, 4))
+        except Exception:
+            pass
+
+    app.refresh_empty_state = refresh_empty_state
+    refresh_empty_state()  # 初始判定（此时 tree 多半为空）
+
+    # 包裹 apply_filter：每次填充 tree 后刷新空状态（扫描/筛选均在主线程完成）
+    try:
+        _orig_apply = app.helpers.apply_filter
+
+        def _wrapped_apply():
+            _orig_apply()
+            refresh_empty_state()
+
+        app.helpers.apply_filter = _wrapped_apply
+    except Exception:
+        pass
+
 
 # ===========================================================
 # 🔬 Tab2：计算与动画
@@ -1399,6 +1592,7 @@ def build_tab_compute_and_animation(app, parent):
         app.controller.show_psi4_dialog()
 
     run_btn = themed_button(row1, "▶  运行所选文件", _run_quick_preset, "success")
+    app.run_selected_btn = run_btn
     run_btn.grid(row=0, column=3, padx=10, pady=8, sticky="e")
     add_tooltip(run_btn, "会自动打开 PSI4 完整对话框（专家参数可按需修改），默认使用预设里的方法/基组/溶剂")
 
@@ -1640,11 +1834,12 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
 
     paned = ttk.PanedWindow(parent, orient=tk.VERTICAL)
     paned.grid(row=row, column=column, sticky="nsew", pady=(0, 4))
+    app._file_list_paned = paned  # 暴露引用，供空状态引导卡切换显示/隐藏
     parent.grid_rowconfigure(row, weight=1)
     app._file_log_paned_built = True
 
     # ---------- 文件列表 ----------
-    list_frame = tk.LabelFrame(paned, text="📄 文件列表（右键删除 / 双击编辑中文名）", bg=COLORS["card_bg"],
+    list_frame = tk.LabelFrame(paned, text="📄 文件列表（勾选多选 · 双击编辑中文名 · 右键删除勾选）", bg=COLORS["card_bg"],
                                font=getattr(app, '_fonts', {}).get('H1', ('Microsoft YaHei', 14, 'bold')), relief=tk.GROOVE, bd=2)
     paned.add(list_frame, weight=2)
 
@@ -1663,23 +1858,260 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
     ttk.Button(filter_row, text="清除",
                command=lambda: (app.filter_keyword_var.set(""), app.helpers.apply_filter()),
                width=8).pack(side=tk.LEFT)
+
+    def _toggle_bar():
+        # 重新展开底部浮动批量条（标签随选中数变化）
+        app.batch_bar_open = True
+        _tree_update_check_state()
+    app.batch_toggle_btn = ttk.Button(filter_row, text="批量操作 ▾", command=_toggle_bar, width=12)
+    app.batch_toggle_btn.pack(side=tk.LEFT, padx=(10, 0))
     if not getattr(app, "filter_count_var", None):
         app.filter_count_var = tk.StringVar(value="共 0 / 0 个")
     tk.Label(filter_row, textvariable=app.filter_count_var,
              bg=COLORS["card_bg"], fg=COLORS["primary"],
              font=getattr(app, '_fonts', {}).get('BOLD', ('Microsoft YaHei', 14, 'bold'))).pack(side=tk.LEFT, padx=(16, 0))
 
-    columns = ("文件名", "状态", "英文名", "中文名")
+    # ---------- 批量操作条（复选框联动） ----------
+    app.selection_count_var = getattr(app, "selection_count_var", None) or tk.StringVar(value="已选 0 项")
+
+    def _run_checked():
+        if not getattr(app, "checked_names", None):
+            app.helpers.on_log("⚠️ 请先在左侧勾选要计算的文件的复选框", 'warning')
+            return
+        app.controller.show_psi4_dialog()
+
+    def _delete_checked():
+        if not getattr(app, "checked_names", None):
+            app.helpers.on_log("⚠️ 请先勾选要删除的文件的复选框", 'warning')
+            return
+        app.controller.delete_selected()
+
+    # （批量操作条改为底部「浮动 · 可隐藏」条，见下方 Treeview 创建之后的浮动条创建块）
+
+    # ---------- 文件 Treeview（含多选复选框列） ----------
+    # 勾选状态以「文件名」为键存于 app.checked_names（跨筛选/重渲染保持），
+    # 作为所有批量操作（计算/导出/删除/描述符）的唯一真值来源。
+    if not hasattr(app, "checked_names") or app.checked_names is None:
+        app.checked_names = set()
+    # 浮动批量条：True=允许显示（选中自动浮现）；用户点 ✕ 收起后置 False，下次勾选再自动重开
+    app.batch_bar_open = getattr(app, "batch_bar_open", True)
+    app._pending_toggle_id = None
+
+    def _tree_toggle_row(iid):
+        try:
+            vals = app.tree.item(iid, "values")
+            if not vals or len(vals) < 2:
+                return
+            name = vals[1]  # 文件名（select 列之后）
+        except Exception:
+            return
+        if name in app.checked_names:
+            app.checked_names.discard(name)
+            app.tree.set(iid, "select", CHECK_GLYPH["off"])
+        else:
+            app.checked_names.add(name)
+            app.tree.set(iid, "select", CHECK_GLYPH["on"])
+        app.batch_bar_open = True
+        _tree_update_check_state()
+
+    def _tree_toggle_all():
+        children = app.tree.get_children()
+        if not children:
+            return
+        all_on = all(app.tree.set(c, "select") == CHECK_GLYPH["on"] for c in children)
+        new_on = not all_on
+        names = set()
+        for c in children:
+            app.tree.set(c, "select", CHECK_GLYPH["on"] if new_on else CHECK_GLYPH["off"])
+            if new_on:
+                try:
+                    v = app.tree.item(c, "values")
+                    if v and len(v) >= 2:
+                        names.add(v[1])
+                except Exception:
+                    pass
+        app.checked_names = names
+        app.batch_bar_open = True
+        _tree_update_check_state()
+
+    def _tree_update_check_state():
+        children = app.tree.get_children()
+        n = len(app.checked_names)
+        # 表头半选态：基于当前可见行
+        if not children:
+            head = CHECK_GLYPH["off"]
+        else:
+            on_vis = sum(1 for c in children if app.tree.set(c, "select") == CHECK_GLYPH["on"])
+            if on_vis == len(children):
+                head = CHECK_GLYPH["on"]
+            elif on_vis > 0:
+                head = CHECK_GLYPH["partial"]
+            else:
+                head = CHECK_GLYPH["off"]
+        try:
+            app.tree.heading("select", text=head)
+        except Exception:
+            pass
+        try:
+            app.selection_count_var.set(f"已选 {n} 项")
+        except Exception:
+            pass
+        # 计算按钮联动（文件页批量条 + 计算页运行按钮）
+        enabled = n > 0
+        for btn in (getattr(app, "batch_run_btn", None),
+                    getattr(app, "batch_del_btn", None),
+                    getattr(app, "run_selected_btn", None)):
+            if btn is not None:
+                try:
+                    btn.config(state="normal" if enabled else "disabled")
+                except Exception:
+                    pass
+        try:
+            rb = getattr(app, "run_selected_btn", None)
+            if rb is not None:
+                rb.config(text=f"▶  运行所选 {n} 个文件" if n else "▶  运行所选文件")
+        except Exception:
+            pass
+        # 浮动条显隐：选中≥1 且未手动收起 → 浮现；否则收起
+        try:
+            bar = getattr(app, "batch_bar", None)
+            if bar is not None:
+                if getattr(app, "batch_bar_open", True) and n > 0:
+                    bar.place(relx=0.0, rely=1.0, x=10, y=-10, anchor="sw")
+                    bar.lift()
+                else:
+                    bar.place_forget()
+        except Exception:
+            pass
+        # 过滤条「批量操作」按钮标签随选中数变化
+        try:
+            tb = getattr(app, "batch_toggle_btn", None)
+            if tb is not None:
+                tb.config(text=f"批量操作 ▾ ({n})" if n else "批量操作 ▾")
+        except Exception:
+            pass
+
+    # 暴露给 app_helpers.render_files：重渲染后刷新表头半选态与计数
+    app._tree_update_check_state = _tree_update_check_state
+
+    def _tree_hide_bar():
+        # 手动收起浮动批量条（下次勾选会自动重开）
+        app.batch_bar_open = False
+        try:
+            app.batch_bar.place_forget()
+        except Exception:
+            pass
+
+    def _update_chn_in_models(name, new_chn):
+        # 中文名仅作显示字段；同步到主列表与各视图，跨筛选/重渲染保持
+        for lst in (getattr(app, "current_files", None), getattr(app, "last_scan_result", None)):
+            if not lst:
+                continue
+            for f in lst:
+                if isinstance(f, dict) and f.get("name") == name:
+                    f["chn"] = new_chn
+
+    def _open_chn_editor(iid, name, chn):
+        top = tk.Toplevel(app)
+        top.title("编辑中文名")
+        top.transient(app)
+        top.resizable(False, False)
+        try:
+            top.grab_set()
+        except Exception:
+            pass
+        frm = tk.Frame(top, bg=COLORS["bg"], padx=14, pady=12)
+        frm.pack(fill=tk.BOTH, expand=True)
+        tk.Label(frm, text=f"文件：{name}", bg=COLORS["bg"], fg=COLORS["text_secondary"],
+                 font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 11))).pack(anchor="w")
+        tk.Label(frm, text="中文名（显示）：", bg=COLORS["bg"], fg=COLORS["text"],
+                 font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 12))).pack(anchor="w", pady=(8, 2))
+        var = tk.StringVar(value=chn or "")
+        ent = ttk.Entry(frm, textvariable=var, width=42,
+                        font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 12)))
+        ent.pack(fill=tk.X, pady=(0, 10))
+        ent.focus_set()
+        ent.select_range(0, tk.END)
+
+        def _commit():
+            new = var.get().strip()
+            try:
+                app.tree.set(iid, "中文名", new)
+            except Exception:
+                pass
+            _update_chn_in_models(name, new)
+            try:
+                top.destroy()
+            except Exception:
+                pass
+            try:
+                app.helpers.on_log(f"✏️ 已更新「{name}」的中文名为：{new or '（空）'}", 'info')
+            except Exception:
+                pass
+
+        def _cancel():
+            try:
+                top.destroy()
+            except Exception:
+                pass
+
+        btns = tk.Frame(frm, bg=COLORS["bg"])
+        btns.pack(anchor="e")
+        themed_button(btns, "✔ 确定", _commit, "success").pack(side=tk.LEFT, padx=4)
+        themed_button(btns, "取消", _cancel, "secondary").pack(side=tk.LEFT, padx=4)
+        ent.bind("<Return>", lambda e: _commit())
+        ent.bind("<Escape>", lambda e: _cancel())
+
+    def _tree_on_click(event):
+        region = app.tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+        row = app.tree.identify_row(event.y)
+        if not row:
+            return
+        rid = row
+        # 防抖：220ms 内若发生双击则取消本次切换（双击用于编辑中文名，避免复选框闪烁）
+        if getattr(app, "_pending_toggle_id", None) is not None:
+            try:
+                app.tree.after_cancel(app._pending_toggle_id)
+            except Exception:
+                pass
+        app._pending_toggle_id = app.tree.after(220, lambda: _tree_toggle_row(rid))
+
+    def _tree_on_double(event):
+        # 取消可能挂起的单击切换
+        if getattr(app, "_pending_toggle_id", None) is not None:
+            try:
+                app.tree.after_cancel(app._pending_toggle_id)
+            except Exception:
+                pass
+            app._pending_toggle_id = None
+        region = app.tree.identify("region", event.x, event.y)
+        if region != "cell":
+            return
+        row = app.tree.identify_row(event.y)
+        if not row:
+            return
+        vals = app.tree.item(row, "values")
+        if not vals or len(vals) < 5:
+            return
+        _open_chn_editor(row, vals[1], vals[4])
+
+    columns = ("select", "文件名", "状态", "英文名", "中文名")
     app.tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=18)
     import ui.ui_theme as _ut; _ut.bind_treeview_hover(app.tree)
+    app.tree.heading("select", text=CHECK_GLYPH["off"], command=_tree_toggle_all)
     app.tree.heading("文件名", text="文件名")
     app.tree.heading("状态", text="状态")
     app.tree.heading("英文名", text="英文名")
     app.tree.heading("中文名", text="中文名")
-    app.tree.column("文件名", width=350, anchor=tk.W)
-    app.tree.column("状态", width=160, anchor=tk.CENTER)
-    app.tree.column("英文名", width=220, anchor=tk.W)
-    app.tree.column("中文名", width=220, anchor=tk.W)
+    app.tree.column("select", width=40, anchor=tk.CENTER, stretch=False)
+    app.tree.column("文件名", width=330, anchor=tk.W)
+    app.tree.column("状态", width=150, anchor=tk.CENTER)
+    app.tree.column("英文名", width=210, anchor=tk.W)
+    app.tree.column("中文名", width=210, anchor=tk.W)
+    app.tree.bind("<Double-1>", _tree_on_double)
+    app.tree.bind("<Button-1>", _tree_on_click)
 
     style = ttk.Style()
     style.configure("Treeview", font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 12)), rowheight=30)
@@ -1690,9 +2122,37 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
     app.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     vsb.pack(side=tk.RIGHT, fill=tk.Y)
 
+    # ---------- 批量操作浮动条（复选框联动，可隐藏） ----------
+    # 浮动覆盖在文件列表底部左侧（避开右侧滚动条）；选中≥1 自动浮现，点 ✕ 收起；
+    # 过滤条「批量操作 ▾」按钮可重新展开，标签随选中数变化。
+    batch_bar = tk.Frame(list_frame, bg=COLORS["card_bg"], relief=tk.RAISED, bd=2,
+                         highlightbackground=COLORS["card_border"], highlightthickness=1)
+    app.batch_bar = batch_bar
+    tk.Label(batch_bar, textvariable=app.selection_count_var,
+             bg=COLORS["card_bg"], fg=COLORS["accent"],
+             font=getattr(app, '_fonts', {}).get('BOLD', ('Microsoft YaHei', 12, 'bold'))).pack(side=tk.LEFT, padx=(10, 8))
+    app.batch_run_btn = themed_button(batch_bar, "▶ 计算所选", _run_checked, "success")
+    app.batch_run_btn.pack(side=tk.LEFT, padx=4)
+    app.batch_del_btn = themed_button(batch_bar, "🗑 删除所选", _delete_checked, "danger")
+    app.batch_del_btn.pack(side=tk.LEFT, padx=4)
+    close_btn = tk.Button(batch_bar, text="✕", command=_tree_hide_bar,
+                          relief=tk.FLAT, bd=0, cursor="hand2", padx=6, pady=2,
+                          bg=COLORS["card_bg"], fg=COLORS["text_secondary"],
+                          font=getattr(app, '_fonts', {}).get('BOLD', ('Microsoft YaHei', 12, 'bold')))
+    close_btn.pack(side=tk.LEFT, padx=(4, 8))
+    # 主题刷新时同步浮动条 / 关闭按钮配色
+    _ut._register(batch_bar, lambda w: w.config(bg=COLORS["card_bg"], highlightbackground=COLORS["card_border"]))
+    _ut._register(close_btn, lambda w: w.config(bg=COLORS["card_bg"], fg=COLORS["text_secondary"]))
+    # 浮动定位（覆盖 Treeview 底部，初始隐藏，选中后由 _tree_update_check_state 显示）
+    batch_bar.place(relx=0.0, rely=1.0, x=10, y=-10, anchor="sw")
+    batch_bar.lift()
+
     app.context_menu = tk.Menu(app, tearoff=0)
-    app.context_menu.add_command(label="🗑️ 删除选中文件", command=app.controller.delete_selected)
+    app.context_menu.add_command(label="🗑️ 删除勾选文件", command=app.controller.delete_selected)
     app.tree.bind("<Button-3>", app.controller.show_context_menu)
+
+    # 初始刷新（统一表头/计数/按钮状态）
+    _tree_update_check_state()
 
     # ---------- 日志 ----------
     log_frame = tk.LabelFrame(paned, text="📋 日志（所有操作/错误实时显示）", bg=COLORS["card_bg"],
@@ -1704,14 +2164,287 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
     ttk.Button(log_toolbar, text="🗑️ 清空日志", command=app.helpers.clear_log,
                width=12).pack(side=tk.LEFT)
 
+    # ---------- F15 日志过滤条（T06 挂载点）----------
+    # 放在「清空日志」工具条下面、日志正文上面，形成 [工具条] / [过滤条] / [正文] 三层。
+    # 采用局部导入：过滤条是增值功能，模块导入失败也不能让整个 build_ui 崩掉。
+    try:
+        from ui.log_filter_bar import build_log_filter_bar
+        build_log_filter_bar(app, log_frame, COLORS)
+    except Exception as _e_filter_bar:
+        try:
+            from utils.logger import default_logger as _log
+            _log.warning("⚠️ 日志过滤条挂载失败（日志面板仍可用）: %s", _e_filter_bar)
+        except Exception:
+            pass
+
+    # 日志台始终深色（科学工具约定：深色控制台 + 浅色工作区，护眼且突出输出）
     app.log_text = scrolledtext.ScrolledText(log_frame, height=10, wrap=tk.WORD,
-                                             font=getattr(app, '_fonts', {}).get('LOG', ('Consolas', 13)), bg=COLORS["input"], fg=COLORS["text"])
+                                             font=getattr(app, '_fonts', {}).get('LOG', ('Consolas', 13)),
+                                             bg="#0F172A", fg="#C8D3E0")
     app.log_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
 
-    app.log_text.tag_config("info", foreground=COLORS["text"])
-    app.log_text.tag_config("success", foreground=COLORS["success"])
-    app.log_text.tag_config("error", foreground=COLORS["danger"])
-    app.log_text.tag_config("warning", foreground=COLORS["warning"])
+    app.log_text.tag_config("info", foreground="#8AB4F8")
+    app.log_text.tag_config("success", foreground="#3FB950")
+    app.log_text.tag_config("error", foreground="#F85149")
+    app.log_text.tag_config("warning", foreground="#D29922")
+
+
+# ===========================================================
+# 📊 Tab4：任务队列（设计落地 Phase 5）
+# ===========================================================
+def _status_cn(st):
+    return {"running": "运行中", "success": "成功", "failed": "失败",
+            "cancelled": "已取消", "queued": "排队"}.get(st, st)
+
+
+def _open_queue_log_drawer(app, job):
+    """队列任务日志右侧滑出面板（设计落地 Phase 5）。"""
+    # 防重复：同一任务已开则置顶
+    for w in app.winfo_children():
+        if getattr(w, "_is_log_drawer", False) and getattr(w, "_drawer_job_id", None) == job.get("id"):
+            try:
+                w.lift()
+            except Exception:
+                pass
+            return
+    dlg = tk.Toplevel(app)
+    dlg._is_log_drawer = True
+    dlg._drawer_job_id = job.get("id")
+    dlg.transient(app)
+    dlg.overrideredirect(True)
+    dlg.title("任务日志")
+    P = ui_theme.get_palette()
+    dlg.configure(bg=P["border_strong"])
+
+    try:
+        sw = app.winfo_screenwidth()
+        sh = app.winfo_screenheight()
+    except Exception:
+        sw, sh = 1920, 1080
+    H = min(600, sh - 60)
+    W = 420
+    x = max(0, sw - W - 10)
+    y = 30
+    dlg.geometry(f"{W}x{H}+{x}+{y}")
+
+    # 头部
+    head = tk.Frame(dlg, bg=P["surface"], bd=0)
+    head.pack(fill=tk.X, padx=1, pady=1)
+    tk.Label(head, text="📜 任务日志 · %s" % job.get("name", ""),
+             bg=P["surface"], fg=P["text"],
+             font=("Microsoft YaHei", 12, "bold"), anchor="w",
+             padx=12, pady=8).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    def _close():
+        try:
+            dlg.destroy()
+        except Exception:
+            pass
+
+    tk.Button(head, text="✕", command=_close, relief=tk.FLAT, bd=0,
+              bg=P["surface"], fg=P["text_secondary"],
+              activebackground=P["border"], activeforeground=P["accent"],
+              font=("Microsoft YaHei", 12), cursor="hand2",
+              width=3, padx=6, pady=4).pack(side=tk.RIGHT, padx=6, pady=4)
+
+    # 日志正文
+    body = tk.Frame(dlg, bg=P["input"], bd=1, relief=tk.SOLID,
+                    highlightbackground=P["border"], highlightthickness=1)
+    body.pack(fill=tk.BOTH, expand=True, padx=1, pady=(0, 1))
+    txt = tk.Text(body, bg=P["input"], fg=P["text"], relief=tk.FLAT, bd=0,
+                  font=("Consolas", 10), wrap=tk.WORD, state=tk.DISABLED)
+    txt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8, pady=8)
+    sb = tk.Scrollbar(body, command=txt.yview, bg=P["surface"],
+                      troughcolor=P["bg"], bd=0, relief=tk.FLAT)
+    sb.pack(side=tk.RIGHT, fill=tk.Y)
+    txt.config(yscrollcommand=sb.set)
+    logs = job.get("log") or []
+    txt.configure(state=tk.NORMAL)
+    if logs:
+        for ln in logs:
+            txt.insert(tk.END, ln + "\n")
+    else:
+        txt.insert(tk.END, "（暂无日志输出）")
+    txt.configure(state=tk.DISABLED)
+
+    dlg.bind("<Escape>", lambda e: _close())
+
+
+def build_tab_compute_queue(app, parent):
+    """
+    任务队列页（统一后台任务可视化，设计落地 Phase 5）：
+      - 工具条：取消当前任务 / 清除已完成 / 并发度下拉（1/2/4/8，持久化）
+      - 任务表：# / 名称 / 类型 / 方法-基组 / 状态 / 进度 / 耗时 / 操作
+      - 每行操作：日志（右侧滑出抽屉）、失败行额外「诊断」（F07）
+      - 无任务时显示空状态引导
+    数据来自 app.task_manager.jobs（由 run_task→submit 接入，Phase 5 包装）。
+    """
+    parent.grid_rowconfigure(1, weight=1)
+    parent.grid_columnconfigure(0, weight=1)
+    F = getattr(app, "_fonts", {}) or {}
+
+    # —— 工具条 ——
+    tool = tk.Frame(parent, bg=COLORS["card_bg"], bd=1, relief=tk.SOLID,
+                    highlightbackground=COLORS["card_border"], highlightthickness=1)
+    tool.grid(row=0, column=0, sticky="ew", padx=8, pady=(10, 6))
+    tool.grid_columnconfigure(5, weight=1)
+
+    def _cancel_current():
+        try:
+            app.task_manager.request_cancel()
+            app.helpers.on_log("⏹ 已请求取消当前任务", "warning")
+        except Exception:
+            pass
+
+    def _clear_finished():
+        try:
+            with app.task_manager._jobs_lock:
+                app.task_manager.jobs = [j for j in app.task_manager.jobs
+                                         if j.get("status") == "running"]
+            refresh_queue()
+            app.helpers.on_log("🧹 已清除已完成任务", "info")
+        except Exception:
+            pass
+
+    themed_button(tool, "⏹ 取消当前任务", _cancel_current, "warning",
+                  tip="请求取消正在运行的任务（协作式，下次进度上报时中止）").pack(
+        side=tk.LEFT, padx=4, pady=6)
+    themed_button(tool, "🧹 清除已完成", _clear_finished, "secondary",
+                  tip="从列表中移除成功 / 失败 / 已取消的任务").pack(
+        side=tk.LEFT, padx=4, pady=6)
+
+    # 并发度下拉（持久化；当前常驻 worker 串行执行，此值为规划档位）
+    tk.Label(tool, text="并发度:", bg=COLORS["card_bg"], fg=COLORS["text_light"],
+             font=F.get("SMALL", ("Microsoft YaHei", 11))).pack(side=tk.LEFT, padx=(16, 4), pady=6)
+    _conc_var = tk.StringVar(value=str(int(app.config_data.get("queue_concurrency", 2) or 2)))
+    _conc = ttk.Combobox(tool, textvariable=_conc_var, values=["1", "2", "4", "8"],
+                         width=5, state="readonly", font=F.get("BASE", ("Microsoft YaHei", 12)))
+    _conc.pack(side=tk.LEFT, padx=2, pady=6)
+    add_tooltip(_conc, "同时运行的任务数（1=串行，2/4/8=并行）。实时生效并保存到配置。")
+
+    def _on_conc(_e=None):
+        try:
+            v = int(_conc_var.get())
+            app.config_data["queue_concurrency"] = v
+            from utils.config import save_config
+            save_config(app.config_data)
+            # 实时驱动常驻 worker 池并发度（无需重启）
+            tm = getattr(app, "task_manager", None)
+            if tm is not None and hasattr(tm, "set_concurrency"):
+                tm.set_concurrency(v)
+            app.helpers.on_log("🔧 并发度已设为 %d（实时生效，已保存）" % v, "info")
+        except Exception:
+            pass
+
+    _conc.bind("<<ComboboxSelected>>", _on_conc)
+
+    # —— 任务表 ——
+    tbl_card = dark_card(parent)
+    tbl_card.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
+    tbl_card.grid_rowconfigure(0, weight=1)
+    tbl_card.grid_columnconfigure(0, weight=1)
+
+    cols = ("#", "名称", "类型", "方法-基组", "状态", "进度", "耗时", "操作")
+    tree = ttk.Treeview(tbl_card, columns=cols, show="headings", height=14)
+    for c, w in zip(cols, (4, 22, 12, 18, 10, 10, 10, 22)):
+        tree.heading(c, text=c)
+        tree.column(c, width=w,
+                    anchor=tk.W if c in ("名称", "类型", "方法-基组") else tk.CENTER)
+    tree.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+    vsb = ttk.Scrollbar(tbl_card, command=tree.yview)
+    vsb.grid(row=0, column=1, sticky="ns", pady=10)
+    tree.configure(yscrollcommand=vsb.set)
+
+    # 状态色标签
+    P = ui_theme.get_palette()
+    tree.tag_configure("st_running", foreground=P["link"])
+    tree.tag_configure("st_success", foreground=P["success"])
+    tree.tag_configure("st_failed", foreground=P["danger"])
+    tree.tag_configure("st_cancelled", foreground=P["text_muted"])
+
+    app._queue_tree = tree
+
+    # —— 空状态 ——
+    es = tk.Frame(tbl_card, bg=COLORS["surface"])
+    es.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+    es.grid_remove()
+    tk.Label(es, text="📭  暂无任务", bg=COLORS["surface"], fg=COLORS["text"],
+             font=("Microsoft YaHei", 15, "bold")).pack(anchor="center", pady=(40, 6))
+    tk.Label(es, text="去「计算与动画」提交 PSI4 计算，或运行文件整理 / OpenBabel 工具，\n"
+                       "任务会自动出现在这里并实时显示进度与日志。",
+             bg=COLORS["surface"], fg=COLORS["text_secondary"],
+             font=("Microsoft YaHei", 11), justify="center").pack(anchor="center")
+    app._queue_empty = es
+
+    def _fmt_dur(j):
+        try:
+            s = (j.get("finished") or time.time()) - j.get("started", time.time())
+            return "%.0fs" % max(0, s)
+        except Exception:
+            return "—"
+
+    def _open_diag(job):
+        try:
+            app.show_error_diagnosis(job.get("error", ""),
+                                     summary="任务失败：%s" % job.get("name", ""))
+        except Exception:
+            pass
+
+    def _on_click(event):
+        region = tree.identify_region(event.x, event.y)
+        if region != "cell":
+            return
+        row = tree.identify_row(event.y)
+        col = tree.identify_column(event.x)
+        if not row or col != "#8":  # 仅「操作」列响应
+            return
+        job = getattr(tree, "_job_map", {}).get(row)
+        if not job:
+            return
+        if job.get("status") == "failed" and "诊断" in tree.set(row, "操作"):
+            _open_diag(job)
+        else:
+            _open_queue_log_drawer(app, job)
+
+    tree.bind("<Button-1>", _on_click)
+
+    def refresh_queue():
+        jobs = getattr(app.task_manager, "jobs", [])
+        with app.task_manager._jobs_lock:
+            snapshot = list(jobs)
+        tree.delete(*tree.get_children())
+        tree._job_map = {}
+        if not snapshot:
+            es.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+            return
+        es.grid_remove()
+        for j in snapshot:
+            st = j.get("status", "running")
+            tag = {"running": "st_running", "success": "st_success",
+                   "failed": "st_failed", "cancelled": "st_cancelled"}.get(st, "st_running")
+            op = "日志 · 诊断" if st == "failed" else "日志"
+            vals = (j.get("id", ""), j.get("name", ""), j.get("kind", ""),
+                    j.get("spec", "—"), _status_cn(st), "%d%%" % j.get("progress", 0),
+                    _fmt_dur(j), op)
+            iid = tree.insert("", tk.END, values=vals, tags=(tag,))
+            tree._job_map[iid] = j
+
+    app.refresh_queue = refresh_queue
+
+    # 周期性刷新（仅队列页可见时刷新，省开销）
+    def _poll():
+        try:
+            if getattr(app, "_cur_page", 0) == 3:
+                refresh_queue()
+        except Exception:
+            pass
+        try:
+            app.after(700, _poll)
+        except Exception:
+            pass
+
+    refresh_queue()
+    app.after(700, _poll)
 
 
 # ===========================================================
@@ -1780,6 +2513,47 @@ def build_status_bar_new(app):
     add_tooltip(ob_frame,
                 "OpenBabel 状态：\n  ● 绿色 = 可用\n  ● 红色 = 不可用\n点击查看诊断 / 手动设置 obabel 路径")
 
+    # —— UX1：拖放状态指示灯（绿/红圆点，点击看 tkinterdnd2 依赖说明）——
+    def _set_dnd_status(_app):
+        _ok = bool(getattr(_app, "dnd_available", False))
+        try:
+            _app.dnd_status_var.set("🖱️ 拖放就绪" if _ok else "🖱️ 拖放不可用（需 tkinterdnd2）")
+            _color = "#3fb950" if _ok else "#f85149"
+            if getattr(_app, "dnd_dot_canvas", None) is not None:
+                _app.dnd_dot_canvas.itemconfig("dot", fill=_color, outline=_color)
+        except Exception:
+            pass
+    app.dnd_status_var = tk.StringVar(value="🖱️ 拖放：检测中…")
+    dnd_frame = tk.Frame(status_frame, bg=COLORS["surface"], bd=0)
+    dnd_frame.pack(side=tk.RIGHT, padx=(0, 6), pady=4)
+    dnd_dot = tk.Canvas(dnd_frame, width=14, height=14, bg=COLORS["surface"], highlightthickness=0, bd=0, cursor="hand2")
+    dnd_dot.pack(side=tk.LEFT, padx=(0, 3))
+    dnd_dot.create_oval(1, 1, 13, 13, fill=COLORS["text_hint"], outline=COLORS["text_hint"], tags="dot")
+    app.dnd_dot_canvas = dnd_dot
+    dnd_text = tk.Label(dnd_frame, textvariable=app.dnd_status_var,
+                        bg=COLORS["surface"], fg=COLORS["text"], font=IND_BOLD, cursor="hand2")
+    dnd_text.pack(side=tk.LEFT)
+
+    def _on_click_dnd(_evt=None):
+        # 点击打开 tkinterdnd2 依赖说明（无论可用与否都可点，便于排查）
+        try:
+            from tkinter import messagebox as _mb
+            _mb.showinfo(
+                "拖放导入依赖",
+                "拖放导入需要 tkinterdnd2 组件。\n\n"
+                "若状态为「不可用」，请在该程序使用的 Python 环境中执行：\n"
+                "    pip install tkinterdnd2\n\n"
+                "安装后重启程序即可从文件管理器直接拖入文件/文件夹。\n"
+                "（也可通过菜单「文件 → 导入」按钮兜底导入，功能不受影响）",
+            )
+        except Exception:
+            pass
+    dnd_dot.bind("<Button-1>", _on_click_dnd)
+    dnd_text.bind("<Button-1>", _on_click_dnd)
+    add_tooltip(dnd_frame,
+                "拖放导入状态：\n  ● 绿色 = 可用（可直接拖入文件）\n  ● 红色 = 不可用（需 pip install tkinterdnd2，或改用菜单导入）")
+    _set_dnd_status(app)
+
     # 进度条
     app.progress_var = getattr(app, "progress_var", None) or tk.DoubleVar(value=0.0)
     app.progress_bar = ttk.Progressbar(status_frame, variable=app.progress_var, maximum=100, length=220)
@@ -1793,6 +2567,20 @@ def build_status_bar_new(app):
     # 先 pack 拿到布局参数，再立刻隐藏；helpers 用 set_cancel_visible 重新 pack / pack_forget
     app.cancel_button.pack(side=tk.RIGHT, padx=4, pady=4)
     app.cancel_button.pack_forget()
+
+    # —— UX5：结果浏览器常驻入口（点击查看最新计算结果，避免入口埋在菜单深层）——
+    def _open_results():
+        try:
+            if hasattr(app, "controller") and hasattr(app.controller, "show_results_browser_dialog"):
+                app.controller.show_results_browser_dialog()
+        except Exception as _e:
+            try:
+                from tkinter import messagebox as _mb
+                _mb.showerror("结果浏览", f"打开结果浏览器失败：{_e}")
+            except Exception:
+                pass
+    ttk.Button(status_frame, text="📂 结果", command=_open_results,
+               ).pack(side=tk.RIGHT, padx=(0, 4), pady=4)
 
     ttk.Button(status_frame, text="清除日志", command=app.helpers.clear_log,
                ).pack(side=tk.RIGHT, padx=(0, 8), pady=4)

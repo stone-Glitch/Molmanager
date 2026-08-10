@@ -517,13 +517,26 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
 
     def _fill_psi4():
         try:
-            import chem.psi4 as psi4
-            v = getattr(psi4, "__version__", None)
-            psi_status_var.set("✅ 可用" if v else "✅ 可导入")
-            psi_text_var.set(
-                f"Python 包 psi4 已导入（版本 {v or '未声明'}）。\n"
-                "如果运行任务失败，一般是内存不足、方法/基组不兼容或任务超时。"
-            )
+            # 同 app_helpers：不真的 import（约 10 秒，会冻结对话框），
+            # 只用 find_spec 探测是否安装；已加载过才读版本号。
+            import importlib.util as _ilu
+            import sys as _sys
+            _mod = _sys.modules.get("psi4")
+            if _mod is not None:
+                v = getattr(_mod, "__version__", None)
+                psi_status_var.set("✅ 可用" if v else "✅ 可导入")
+                psi_text_var.set(
+                    f"Python 包 psi4 已导入（版本 {v or '未声明'}）。\n"
+                    "如果运行任务失败，一般是内存不足、方法/基组不兼容或任务超时。"
+                )
+            elif _ilu.find_spec("psi4") is not None:
+                psi_status_var.set("✅ 可用")
+                psi_text_var.set(
+                    "Python 包 psi4 已安装（尚未加载，首次量化计算时载入约需 10 秒）。\n"
+                    "如果运行任务失败，一般是内存不足、方法/基组不兼容或任务超时。"
+                )
+            else:
+                raise ImportError("找不到 psi4 包")
         except Exception as _pe:
             psi_status_var.set("⚠️ 未导入")
             psi_text_var.set(

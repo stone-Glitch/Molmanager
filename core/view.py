@@ -9,7 +9,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from utils.logger import default_logger as logger
-from utils.config import load_config, save_config
+from utils.config import load_config, save_config, CONFIG_FILE
 from core.task_manager import TaskManager
 from core.controller import Controller
 from ui.dialogs import Dialogs
@@ -19,6 +19,31 @@ from ui.wizard import maybe_show_first_run_wizard  # 首次使用向导
 # _apply_aurora_theme 不再调用（新版清爽扁平 UI 统一用 LabelFrame + ttk 原生样式，
 # 不再依赖 Aurora Frost 的 Canvas / 粒子装饰），但保留导入避免旧插件/脚本误用。
 # 如需启用旧版主题，可在 build_ui() 之前手工调用 _apply_aurora_theme(self)。
+
+# ============================================================================
+# F06 拖放导入：tkinterdnd2 是**可选依赖**（架构 §3.2）
+# ----------------------------------------------------------------------------
+# 设计要点（三条硬约束）：
+#   1. 探测放在模块级、包在 try 里 —— 没装 tkinterdnd2 时程序必须照常启动，
+#      仅仅是"拖不进来"，不能有任何报错/弹窗（静默降级）。
+#   2. mixin 顺序必须是 (DnDWrapper, tk.Tk)：DnDWrapper 只提供
+#      drop_target_register / dnd_bind 等方法且**没有** __init__，
+#      放前面才能保证这些方法不被 tk.Tk 的同名属性遮挡，
+#      同时 super().__init__() 仍会顺着 MRO 落到 tk.Tk.__init__。
+#   3. tkdnd 的 Tcl 运行库要等 Tk 根创建之后才能 _require()，
+#      所以这里只做 import 探测，真正加载在 MainView._init_dnd_runtime()。
+# ============================================================================
+try:
+    from tkinterdnd2 import TkinterDnD as _TkinterDnD, DND_FILES as _DND_FILES
+    _DND_BASES: tuple = (_TkinterDnD.DnDWrapper, tk.Tk)
+    DND_IMPORT_OK: bool = True
+    _DND_IMPORT_ERROR: str = ""
+except Exception as _dnd_imp_err:  # noqa: BLE001 - 缺依赖是预期情况，不是错误
+    _TkinterDnD = None
+    _DND_FILES = "DND_Files"          # 常量字面量，缺包时也不会 NameError
+    _DND_BASES = (tk.Tk,)
+    DND_IMPORT_OK = False
+    _DND_IMPORT_ERROR = str(_dnd_imp_err)
 
 
 def _clamp_geometry_to_screen(root, geom: str, min_w: int = 960, min_h: int = 680) -> str:
@@ -57,11 +82,22 @@ def _clamp_geometry_to_screen(root, geom: str, min_w: int = 960, min_h: int = 68
         return geom
 
 
-class MainView(tk.Tk):
+class MainView(*_DND_BASES):
+    """
+    主窗口。
+
+    基类由上面的 `_DND_BASES` 动态决定：
+      - 装了 tkinterdnd2  → ``(TkinterDnD.DnDWrapper, tk.Tk)``，支持拖放导入；
+      - 没装             → ``(tk.Tk,)``，功能完全一致，只是拖不进文件。
+    两种情况下 `super().__init__()` 都会落到 ``tk.Tk.__init__``（DnDWrapper 无 __init__）。
+    """
+
     def __init__(self):
         try:
             super().__init__()
             self.config_data = load_config()
+            # tkdnd 运行库必须在 Tk 根建立之后加载；失败即静默降级
+            self._init_dnd_runtime()
             self.title("🫧  分子与计算文件管理器 ｜ Aurora Frost")
             _saved_geom = self.config_data.get("window_geometry", "1100x780")
             _safe_geom = _clamp_geometry_to_screen(self, _saved_geom)
@@ -172,6 +208,9 @@ class MainView(tk.Tk):
             # 构建界面（清爽扁平布局，稳定无 Canvas 嵌套）
             build_ui(self)
 
+            # F06：控件建好之后再注册拖放目标（tree 等此刻才存在）
+            self._setup_drag_and_drop()
+
             # ---- 启动后强制刷新布局三板斧（无 Aurora Canvas，纯 Frame/LabelFrame 布局）----
             try:
                 self.update_idletasks()
@@ -257,6 +296,16 @@ class MainView(tk.Tk):
 
             self.after(300, _delayed_init)
 
+            # -------------------- F18（T16）：启动 2 秒后静默检查更新 --------------------
+            # 「永不打扰」三条铁律（架构 §3.4）：
+            #   ① 网络请求全在后台线程，绝不阻塞 UI；
+            #   ② 断网 / 超时 / 限流 / 未配置更新源 → 一律静默，无弹窗无红色日志；
+            #   ③ 只有真的检测到新版本才弹一次对话框，且用户可「跳过此版本」永久闭嘴。
+            try:
+                self.after(2000, self._schedule_silent_update_check)
+            except Exception as _upd_e:
+                logger.debug("排期静默更新检查失败（非致命）: %s", _upd_e)
+
             # -------------------- 首次使用向导（非阻塞，仅当 config_data["first_run"] 不是 False 时弹） --------------------
             maybe_show_first_run_wizard(self)
 
@@ -341,6 +390,12 @@ class MainView(tk.Tk):
             self.bind("<Control-Shift-Z>", self._on_ctrl_y)   # 另一种常见的「重做」习惯
             self.bind("<F5>", self._on_f5)
             self.bind("<Control-f>", self._on_ctrl_f)
+            # F15：日志过滤关键词框（Ctrl+F 已被文件列表搜索占用，这里必须避让）
+            self.bind("<Control-Shift-F>", self._on_ctrl_shift_f)
+            # 命令面板（设计落地 Phase 1）：Ctrl/Cmd+K 全局唤起
+            from ui.command_palette import open_command_palette as _open_cmd_palette
+            self.bind("<Control-k>", lambda e: _open_cmd_palette(self))
+            self.bind("<Command-k>", lambda e: _open_cmd_palette(self))
 
             self.protocol("WM_DELETE_WINDOW", self.on_close)
         except Exception as e:
@@ -363,6 +418,216 @@ class MainView(tk.Tk):
                 pass
             # 再原样抛出去，让 main.py 的 load_main 捕获，弹出 showerror 友好提示
             raise
+
+    # ===================== F06：拖放导入（T18） =====================
+    def _init_dnd_runtime(self) -> None:
+        """
+        加载 tkdnd 的 Tcl 运行库（必须在 Tk 根创建之后）。
+
+        ⚠️ 契约：**任何失败都只降级不报错**。`self.dnd_available` 是唯一的开关，
+        后续所有拖放相关代码都先看它，缺依赖时整条链路彻底静默。
+        """
+        self.dnd_available = False
+        self.TkdndVersion = None
+        if not DND_IMPORT_OK or _TkinterDnD is None:
+            # 审计 UX1 修复：原仅 debug 级别，用户拖入文件无反应却毫无提示。
+            # 提升到 info 并明确给出安装命令，便于排查。
+            logger.info(
+                "拖放导入不可用：未安装 tkinterdnd2（其余功能不受影响）。"
+                "如需拖放导入，请在该 Python 环境执行 `pip install tkinterdnd2` 后重启程序。"
+            )
+            self._refresh_dnd_status_bar()
+            return
+        try:
+            # _require() 会 `package require tkdnd`，把 Tcl 侧扩展挂到本解释器上。
+            # 用私有函数是 tkinterdnd2 官方推荐的「mixin 到自有 Tk 子类」写法。
+            self.TkdndVersion = _TkinterDnD._require(self)
+            self.dnd_available = True
+            logger.debug("tkdnd 运行库已加载，版本 %s", self.TkdndVersion)
+            self._refresh_dnd_status_bar()
+        except Exception as exc:  # noqa: BLE001
+            self.dnd_available = False
+            logger.debug("tkdnd 运行库加载失败，拖放导入已静默禁用: %s", exc)
+            self._refresh_dnd_status_bar()
+
+    def _setup_drag_and_drop(self) -> None:
+        """
+        把主窗口与文件列表注册成拖放目标。
+
+        注册多个控件是因为 tkdnd 按「鼠标下的控件」派发事件：只注册根窗口时，
+        用户拖到 Treeview 上方松手会没反应 —— 而那恰恰是最自然的落点。
+        """
+        if not getattr(self, "dnd_available", False):
+            return
+        try:
+            from core.drop_handler import DropHandler
+            if not DropHandler.is_enabled(getattr(self, "config_data", {})):
+                logger.debug("配置 dnd.enabled = false，跳过拖放目标注册")
+                return
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("读取拖放开关失败，按默认启用处理: %s", exc)
+
+        widgets = [self]
+        for attr in ("tree", "main_notebook", "log_text"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                widgets.append(w)
+
+        registered = 0
+        for w in widgets:
+            try:
+                w.drop_target_register(_DND_FILES)
+                w.dnd_bind("<<Drop>>", self._on_dnd_drop)
+                registered += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("注册拖放目标失败（已跳过该控件）: %s", exc)
+        if registered:
+            logger.info("🖱️ 拖放导入已就绪：把文件或文件夹直接拖进窗口即可导入")
+        else:
+            self.dnd_available = False
+            logger.debug("没有任何控件注册成功，拖放导入已禁用")
+        self._refresh_dnd_status_bar()
+
+    def _on_dnd_drop(self, event):
+        """
+        ``<<Drop>>`` 事件回调：只做「取数据 + 转交 controller」，不做任何业务判断。
+
+        路径解析（含带空格路径的花括号包裹）、白名单、目录展开、受保护目录拒绝
+        全部在 `core.drop_handler` 里，这样菜单兜底导入才能复用同一套规则。
+        """
+        try:
+            data = getattr(event, "data", "") or ""
+            self.controller.handle_dropped_paths(data, source="drop")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("处理拖放事件失败: %s", exc)
+            try:
+                self.helpers.on_log(f"❌ 处理拖入文件失败: {exc}", "error")
+            except Exception:
+                pass
+        # tkdnd 约定：回调应返回本次采用的动作（通常是 event.action）
+        return getattr(event, "action", None)
+
+    def _refresh_dnd_status_bar(self) -> None:
+        """UX1：根据 dnd_available 同步状态栏拖放指示灯（状态栏未构建时自动跳过）。"""
+        if not hasattr(self, "dnd_status_var") or not hasattr(self, "dnd_dot_canvas"):
+            return
+        try:
+            ok = bool(getattr(self, "dnd_available", False))
+            self.dnd_status_var.set("🖱️ 拖放就绪" if ok else "🖱️ 拖放不可用（需 tkinterdnd2）")
+            color = "#3fb950" if ok else "#f85149"
+            self.dnd_dot_canvas.itemconfig("dot", fill=color, outline=color)
+        except Exception:
+            pass
+
+    def import_files_from_menu(self) -> None:
+        """菜单栏「设置 → 📥 导入外部文件…」：拖放的兜底入口（无依赖也能用）。"""
+        try:
+            self.controller.import_files_from_dialog()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("菜单导入外部文件失败: %s", exc)
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("导入失败", f"无法打开文件选择框：\n{exc}", parent=self)
+            except Exception:
+                pass
+
+    # ===================== F18：在线更新检查（T16） =====================
+    def _schedule_silent_update_check(self) -> None:
+        """
+        启动 2 秒后的**静默**检查（after(2000) 回调）。
+
+        全程 try 包裹 + 后台线程执行：离线时既不卡界面，也不产生任何弹窗
+        或 ERROR 级日志；只有真检测到新版本才会走到 `notify_update_result`。
+        """
+        try:
+            from utils import updater
+            from ui.dialogs.update_dialog import notify_update_result
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("更新模块不可用，跳过启动检查: %s", exc)
+            return
+
+        cfg = getattr(self, "config_data", None)
+
+        def _work(**_kw):
+            return updater.check_update(cfg, force=False)
+
+        def _done(info):
+            try:
+                notify_update_result(self, info, manual=False)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("处理静默更新结果失败（已忽略）: %s", exc)
+
+        def _err(msg):
+            # check_update 本身承诺永不抛，这里纯属兜底，绝不升级成用户可见错误
+            logger.debug("静默更新检查异常（已忽略）: %s", msg)
+
+        try:
+            self.task_manager.run_async(_work, on_done=_done, on_error=_err)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("提交静默更新检查任务失败（已忽略）: %s", exc)
+
+    def check_update_from_menu(self) -> None:
+        """
+        菜单栏「设置 → 🔄 检查更新」：**手动**检查。
+
+        与静默检查的本质区别：手动检查**必须**给出明确反馈 ——
+        有新版本 → 弹更新对话框；已是最新 → 弹「已是最新版本」；
+        没配更新源 / 缺 requests / 网络不可达 → 弹说明为什么没查成。
+        """
+        try:
+            from utils import updater
+            from ui.dialogs.update_dialog import notify_update_result, show_check_failed_dialog
+        except Exception as exc:  # noqa: BLE001
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("检查更新", f"更新模块不可用：\n{exc}", parent=self)
+            except Exception:
+                pass
+            return
+
+        # 防重入：连点菜单不应该并发发起多次请求
+        if getattr(self, "_update_check_running", False):
+            try:
+                from tkinter import messagebox
+                messagebox.showinfo("检查更新", "正在检查更新，请稍候…", parent=self)
+            except Exception:
+                pass
+            return
+        self._update_check_running = True
+
+        cfg = getattr(self, "config_data", None)
+        try:
+            self.helpers.on_log("🔄 正在检查更新…", "info")
+        except Exception:
+            pass
+
+        def _work(**_kw):
+            return updater.check_update(cfg, force=True)
+
+        def _done(info):
+            self._update_check_running = False
+            try:
+                notify_update_result(self, info, manual=True)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("显示更新结果失败: %s", exc)
+
+        def _err(msg):
+            self._update_check_running = False
+            try:
+                show_check_failed_dialog(self, "")
+            except Exception:
+                pass
+            logger.debug("手动更新检查异常: %s", msg)
+
+        try:
+            self.task_manager.run_async(_work, on_done=_done, on_error=_err)
+        except Exception as exc:  # noqa: BLE001
+            self._update_check_running = False
+            logger.warning("提交更新检查任务失败: %s", exc)
+            try:
+                show_check_failed_dialog(self, "")
+            except Exception:
+                pass
 
     # ----- 快捷键处理 -----
     def _on_ctrl_g(self):
@@ -447,12 +712,28 @@ class MainView(tk.Tk):
             logger.debug("Ctrl+F 聚焦搜索框失败: %s", e)
         return "break"
 
+    def _on_ctrl_shift_f(self, event=None):
+        """
+        Ctrl+Shift+F: 把光标送到**日志过滤条**的关键词输入框。
+
+        ⚠️ 命名/快捷键避让（架构 §6.1）：Ctrl+F 已归「文件列表搜索框」，
+        日志过滤只能用 Ctrl+Shift+F，两者绝不能互抢。
+        """
+        try:
+            bar = getattr(self, "log_filter_bar", None)
+            if bar is not None and hasattr(bar, "focus_keyword"):
+                bar.focus_keyword()
+        except Exception as e:
+            logger.debug("Ctrl+Shift+F 聚焦日志过滤框失败: %s", e)
+        return "break"
+
     def _show_help(self):
         """F1: 显示快捷键帮助（此处列出的键必须与实际 bind 一一对应）"""
         help_text = """⌨️ 快捷键帮助
 
 F5              重新扫描工作目录
 Ctrl+F          跳到文件搜索框
+Ctrl+Shift+F    跳到日志过滤关键词框
 Ctrl+Z          撤销上一步文件操作
 Ctrl+Y          重做（也可用 Ctrl+Shift+Z）
 Ctrl+G          打开反应动画对话框
@@ -467,8 +748,27 @@ F1              显示此帮助
         except Exception:
             pass
 
+    def _snapshot_config_before_save(self, reason: str = "") -> None:
+        """
+        F17：覆盖配置文件之前先给旧版本拍一张快照（trigger='config'）。
+
+        ⚠️ 契约：备份失败**只警告不抛**（架构 §6.4），绝不能让「保存配置」失败。
+        只在「用户显式保存 / 退出保存」这两个低频点调用，不挂在 save_config 内部，
+        否则 push_recent_work_dir 等高频调用会把快照目录刷爆。
+        """
+        try:
+            model = getattr(getattr(self, "controller", None), "model", None)
+            if model is None or not hasattr(model, "create_backup_snapshot"):
+                return
+            if not CONFIG_FILE.is_file():
+                return  # 首次运行还没有配置文件，没什么可备份的
+            model.create_backup_snapshot("config", [CONFIG_FILE], reason or "保存配置前的自动快照")
+        except Exception as e:  # noqa: BLE001
+            logger.debug("配置快照失败（不影响保存）: %s", e)
+
     def _save_config(self):
         """保存当前配置到文件（内部使用）"""
+        self._snapshot_config_before_save("手动保存配置前的自动快照")
         config = dict(self.config_data)
         config.update({
             "work_dir": self.work_dir_var.get(),
@@ -486,15 +786,15 @@ F1              显示此帮助
         save_config(config)
 
     # ----- 任务回调（转发给 helpers） -----
-    def on_task_done(self, result):
-        self.helpers.on_task_done(result)
+    def on_task_done(self, result, job=None):
+        self.helpers.on_task_done(result, job=job)
 
-    def on_task_error(self, error):
-        self.helpers.on_task_error(error)
+    def on_task_error(self, error, job=None):
+        self.helpers.on_task_error(error, job=job)
 
-    def on_task_cancelled(self):
+    def on_task_cancelled(self, job=None):
         """任务被用户取消（由 TaskManager 路由过来）。"""
-        self.helpers.on_task_cancelled()
+        self.helpers.on_task_cancelled(job=job)
 
     def set_cancel_visible(self, visible: bool):
         """显示 / 隐藏状态栏的「取消」按钮。"""
@@ -521,6 +821,22 @@ F1              显示此帮助
             except Exception:
                 pass
 
+    def show_backup_dialog_from_menu(self) -> None:
+        """菜单栏「设置 → 🗂️ 备份管理…」调用：打开快照列表 / 回滚对话框（F17）。"""
+        try:
+            dlg = getattr(self, "dialogs", None)
+            if dlg is None:
+                from ui.dialogs import Dialogs
+                dlg = Dialogs(self, self.controller)
+            dlg.show_backup_manager_dialog()
+        except Exception as e:
+            logger.warning("打开备份管理对话框失败: %s", e)
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("打开失败", f"无法打开备份管理：\n{e}")
+            except Exception:
+                pass
+
     def show_font_size_dialog_from_menu(self) -> None:
         """菜单栏「设置 → 字体大小…」调用：打开滑块对话框。"""
         try:
@@ -531,6 +847,18 @@ F1              显示此帮助
             try:
                 from tkinter import messagebox
                 messagebox.showerror("打开失败", f"无法打开字体大小设置：\n{e}")
+            except Exception:
+                pass
+
+    def show_error_diagnosis(self, error_text: str, summary: str = None, hint: str = None) -> None:
+        """F07 入口：打开错误诊断弹窗（JSON 规则库驱动）。可在任务失败 / 队列诊断时调用。"""
+        try:
+            from ui.dialogs.error_diagnosis import show_error_diagnosis as _show
+            _show(self, error_text, summary=summary, hint=hint)
+        except Exception as e:
+            try:
+                from tkinter import messagebox
+                messagebox.showerror("诊断失败", f"无法打开错误诊断：\n{e}")
             except Exception:
                 pass
 
@@ -557,6 +885,23 @@ F1              显示此帮助
                 self.update()
         except Exception:
             pass
+
+        # ———— 【关键】必须在 task_manager.stop() **之前** 摘除 GUI 日志 handler ————
+        # 死锁链（实测会让进程永久挂起、窗口关不掉）：
+        #   stop() 内主线程 join(worker) → worker 退出前 logger.info("...已停止")
+        #   → GuiLogHandler.emit → 跨线程调用 app.after(0, flush)
+        #   → tkinter 把该调用投递到主线程 Tcl 事件队列并阻塞等待结果
+        #   → 而主线程此刻卡在 join()，根本没在跑事件循环 → 双方互等。
+        # 摘掉 handler 后，_resolve_app() 返回 None，关闭期间任何后台线程的日志
+        # 都只走 console/file handler，不再触碰 Tk，从源头消除该死锁。
+        # 顺带也解决了原来的问题：handler 经 `lambda: self` 强引用本窗口，
+        # 不摘除则整棵 UI 对象树无法回收；且 destroy 后再写日志会抛 TclError。
+        try:
+            from utils.logger import detach_gui_handler
+            detach_gui_handler()
+        except Exception:
+            pass
+
         try:
             # stop() 内部会等 5 秒（100ms × 50 次），大部分情况下几秒内 worker 就会正常退出
             self.task_manager.stop()
@@ -574,6 +919,8 @@ F1              显示此帮助
             pass
         # —— 先基于「已 deep_merge 过」的 config_data 来保存，避免只存一半字段丢失
         #    font_size / obabel_path / recent_work_dirs / preview_before_operation / font_follow_dpi 等 ——
+        # F17：覆盖前先给旧配置拍快照（失败只警告，绝不阻断关闭流程）
+        self._snapshot_config_before_save("退出保存配置前的自动快照")
         try:
             config = dict(self.config_data) if isinstance(self.config_data, dict) else {}
         except Exception:
@@ -600,12 +947,20 @@ F1              显示此帮助
         # M-3 修复：关闭前同步跑一遍过期临时目录清理（>6 小时的就清掉）
         # 同步跑清理线程是同步执行耗时很短，不会卡死（几百毫秒；保证程序退出之前能清得更干净。
         try:
-            _cleanup_stale_tempdirs(max_age_seconds=6 * 3600)
+            from utils.path_utils import cleanup_stale_tempdirs
+            cleanup_stale_tempdirs(max_age_seconds=6 * 3600)
         except Exception as e:
             try:
                 logger.debug("关闭时清理临时目录失败：%s", e)
             except Exception:
                 pass
+        # 兜底：正常情况下上面（stop() 之前）已经摘过了，这里再调一次是幂等的，
+        # 防止有人从别的分支跳进来直接执行到 destroy。
+        try:
+            from utils.logger import detach_gui_handler
+            detach_gui_handler()
+        except Exception:
+            pass
         self.destroy()
 
 

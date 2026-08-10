@@ -14,6 +14,7 @@
 import csv
 import logging
 import os
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from datetime import datetime
@@ -27,6 +28,7 @@ from utils.logger import (
     LEVEL_SUCCESS,
 )
 from utils.dialog_geom import fit_dialog_geometry
+from ui.ui_theme import CHECK_GLYPH
 
 
 _LOG_BATCH_WINDOW_MS = 20
@@ -234,6 +236,11 @@ class AppHelpers:
             self.app.status_var.set(f"处理中... {percent:.0f}%")
         if percent >= 100:
             self.app.status_var.set("就绪")
+            # 审计 UX5：任务完成提示用户到状态栏「📂 结果」按钮查看最新结果
+            try:
+                self.app.action_tip_var.set("✅ 计算完成！点状态栏「📂 结果」查看最新结果")
+            except Exception:
+                pass
             # 1 秒后把进度条归 0：用默认参数把 progress_var 绑定住，避免后续回调里 self/app 指向变化
             self.app.after(1000, lambda pv=self.app.progress_var: pv.set(0))
 
@@ -289,31 +296,42 @@ class AppHelpers:
 
     def render_files(self, entries: list):
         self.app.current_files = entries
+        tree = self.app.tree
         # 一次性清空（delete 对几万条仍是 O(N)，但比逐条 insert 快得多）
-        children = self.app.tree.get_children()
+        children = tree.get_children()
         if children:
-            self.app.tree.delete(*children)
+            tree.delete(*children)
         total = len(self.app.last_scan_result)
         self.app.filter_count_var.set(f"共 {len(entries)} / {total} 个")
+        # 复选框状态以文件名为键（跨筛选/重渲染保持），渲染时回显字形
+        checked = getattr(self.app, "checked_names", None) or set()
+
+        def _vals(f):
+            glyph = CHECK_GLYPH["on"] if f['name'] in checked else CHECK_GLYPH["off"]
+            return (glyph, f['name'], f['status'], f['eng'], f['chn'])
+
         if not entries:
             return
+        # 重渲染后刷新表头半选态与计数（文件名为键，勾选集合跨重渲染保持）
+        _refresh = getattr(self.app, "_tree_update_check_state", None)
         # 条目很少（<= 一批）：直接插入，省掉 after 调度开销
         if len(entries) <= self._RENDER_BATCH_SIZE:
             for f in entries:
-                self.app.tree.insert("", tk.END,
-                                     values=(f['name'], f['status'], f['eng'], f['chn']))
+                tree.insert("", tk.END, values=_vals(f))
+            if _refresh:
+                _refresh()
             return
         # 分批：通过 after_idle 调度，每批插入后让出一次主线程 event loop，保持 UI 响应
-        tree = self.app.tree
         END = tk.END
 
         def _insert_batch(start_i: int):
             end_i = min(start_i + self._RENDER_BATCH_SIZE, len(entries))
             for idx in range(start_i, end_i):
-                f = entries[idx]
-                tree.insert("", END, values=(f['name'], f['status'], f['eng'], f['chn']))
+                tree.insert("", END, values=_vals(entries[idx]))
             if end_i < len(entries):
                 self.app.after_idle(_insert_batch, end_i)
+            elif _refresh:
+                _refresh()
 
         self.app.after_idle(_insert_batch, 0)
 
@@ -342,12 +360,12 @@ class AppHelpers:
 
     # ---------- 获取选中文件 ----------
     def get_selected_filenames(self):
-        selected = []
-        for item in self.app.tree.selection():
-            values = self.app.tree.item(item, 'values')
-            if values:
-                selected.append(values[0])
-        return selected
+        # 复选框多选模型：以 app.checked_names（文件名集合）为唯一真值来源，
+        # 覆盖所有批量操作（计算/导出/删除/描述符/分析），并跨筛选/重渲染保持。
+        names = getattr(self.app, "checked_names", None)
+        if names:
+            return sorted(names)
+        return []
 
     def get_selected_files(self) -> list[str]:
         """返回选中文件的完整路径列表（绝对/工作目录下的规范化路径）。"""
@@ -598,9 +616,21 @@ class AppHelpers:
             _do_confirm()
 
     # ---------- 任务回调 ----------
-    def on_task_done(self, result):
+    def on_task_done(self, result, job=None):
         try:
-            self.app.set_cancel_visible(False)
+            # 并发下：仅当「没有任何任务在跑」时才隐藏取消按钮，
+            # 否则并行任务进行中按钮会误消失，用户无法取消剩余任务。
+            if not self.app.task_manager.is_busy():
+                self.app.set_cancel_visible(False)
+        except Exception:
+            pass
+        # 设计落地 Phase 5：标记对应任务成功（并发下优先用结果回传的 job，回退到 _active_job）
+        try:
+            j = job if job is not None else getattr(self.app.task_manager, "_active_job", None)
+            if j is not None and j.get("status") == "running":
+                j["status"] = "success"
+                j["progress"] = 100
+                j["finished"] = time.time()
         except Exception:
             pass
         self.app.status_var.set("就绪")
@@ -608,37 +638,53 @@ class AppHelpers:
             # 用默认参数绑定 progress_var，避免 lambda 延迟时 self/app 变化
             self.app.after(1000, lambda pv=self.app.progress_var: pv.set(0))
 
-    def on_task_cancelled(self):
+    def on_task_cancelled(self, job=None):
         """任务被用户取消：复位进度与状态，隐藏取消按钮。"""
         try:
-            self.app.set_cancel_visible(False)
+            # 并发下：仅当「没有任何任务在跑」时才隐藏取消按钮，
+            # 否则并行任务进行中按钮会误消失，用户无法取消剩余任务。
+            if not self.app.task_manager.is_busy():
+                self.app.set_cancel_visible(False)
         except Exception:
             pass
         self.app.status_var.set("已取消")
         self.app.progress_var.set(0)
         self.on_log("⏹ 任务已取消（部分结果可能未保存）", 'warning')
 
-    def on_task_error(self, error):
+    def on_task_error(self, error, job=None):
         try:
-            self.app.set_cancel_visible(False)
+            # 并发下：仅当「没有任何任务在跑」时才隐藏取消按钮，
+            # 否则并行任务进行中按钮会误消失，用户无法取消剩余任务。
+            if not self.app.task_manager.is_busy():
+                self.app.set_cancel_visible(False)
+        except Exception:
+            pass
+        # 设计落地 Phase 5：活动任务标记失败并记录错误原文（供 F07 诊断）
+        try:
+            j = job if job is not None else getattr(self.app.task_manager, "_active_job", None)
+            if j is not None and j.get("status") == "running":
+                j["status"] = "failed"
+                j["error"] = str(error)
+                j["finished"] = time.time()
         except Exception:
             pass
         self.app.status_var.set("出错")
         self.on_log(f"❌ 后台任务出错: {error}", 'error')
-        # 新手友好：把技术错误翻译成大白话弹框
+        # 新手友好：先翻译，再唤起 F07 错误诊断弹窗（规则库驱动，非模态）。
+        title, body, hint = "出错啦", "后台任务出错。", "可以把这段文字发给开发者。"
         try:
             from ui.dialogs import Dialogs
             title, body, hint = Dialogs.friendly_error(error)
-            from tkinter import messagebox as _mb
-            try:
-                _mb.showerror(title, f"{body}\n\n{hint}", parent=self.app)
-            except Exception:
-                print(f"[{title}] {body}\n{hint}")
         except Exception:
-            # 翻译链路失败，fallback 为最朴素 messagebox
+            pass
+        try:
+            # F07 诊断弹窗（非模态，展示原文 + 原因 + 一键修复 + 复制）
+            self.app.show_error_diagnosis(str(error), summary=title, hint=body)
+        except Exception:
+            # 诊断链路失败，fallback 为最朴素 messagebox
             try:
                 from tkinter import messagebox as _mb2
-                _mb2.showerror("出错啦", f"后台任务出错：\n{error}\n\n可以把这段文字发给开发者。", parent=self.app)
+                _mb2.showerror(title, f"{body}\n\n{hint}", parent=self.app)
             except Exception:
                 pass
 
@@ -666,10 +712,21 @@ class AppHelpers:
         psi4_ok = False
         psi4_msg = "未检测 PSI4"
         try:
-            import chem.psi4 as psi4  # type: ignore
-            _v = getattr(psi4, "__version__", None)
-            psi4_ok = True
-            psi4_msg = f"psi4 已导入 (version {_v or '未声明'})"
+            # 注意：这里绝不能真的 `import psi4`——真实 psi4 库导入耗时约 10 秒，
+            # 而本方法是在主线程 after(350ms) 上执行的，会让窗口刚打开就冻结 10 秒。
+            # 改用 find_spec 做「是否安装」的廉价探测；若别处已导入过则顺带读版本号。
+            import importlib.util as _ilu
+            import sys as _sys
+            _mod = _sys.modules.get("psi4")
+            if _mod is not None:
+                _v = getattr(_mod, "__version__", None)
+                psi4_ok = True
+                psi4_msg = f"psi4 已导入 (version {_v or '未声明'})"
+            elif _ilu.find_spec("psi4") is not None:
+                psi4_ok = True
+                psi4_msg = "psi4 已安装（首次进行量化计算时加载，约需 10 秒）"
+            else:
+                psi4_msg = "未安装 psi4（不影响文件整理与 OpenBabel 工具）"
         except Exception as _pe:
             psi4_msg = f"未导入 psi4（不影响文件整理与 OpenBabel 工具）: {_pe}"
 

@@ -37,6 +37,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, Optional, List, Tuple
 
 from utils.path_utils import get_app_data_dir
+# F15：级别 + 关键词匹配纯函数（无 Tk 依赖，可单测）。
+# ⚠️ log_filter 只 import typing，不反向 import logger，故无循环导入风险。
+from utils import log_filter
 
 # GUI 依赖：如果是非 GUI 环境（cli 脚本 / 测试），不 import tkinter，
 # 但 GuiLogHandler 需要 tk.END 等常量，这里在模块开头先确定值。
@@ -316,6 +319,17 @@ class GuiLogHandler(logging.Handler):
     """
     把日志转发到 Tk Text 控件。
     注意：用 `after(0)` 把 widget 写入推回主线程，避免子线程直接改 Tk widget。
+
+    【F15 日志过滤 · T04】记录结构由 3 元组升级为 **4 元组**：
+        ``(levelno, levelname, display_msg, raw_message)``
+    第 4 位是未经 formatter 加工的原始 message，**关键词匹配只对它做**，
+    这样过滤结果不受级别前缀 / tag 着色影响（架构 §3.1、C4）。
+
+    过滤有两层，二者是 AND 关系：
+      1. ``_active`` —— 既有的「按级别开关芯片」（逐级别 on/off），
+         由 app_helpers._toggle_log_level 驱动，行为保持不变；
+      2. ``_filter_level`` / ``_filter_keyword`` —— 新增的过滤条
+         （级别阈值 + 关键词），由 ui/log_filter_bar.LogFilterBar 驱动。
     """
 
     def __init__(self, get_app_callable: Callable[[], Any]):
@@ -337,11 +351,15 @@ class GuiLogHandler(logging.Handler):
         # _queue / _all_records 会被 emit（多线程）+ _flush/repaint/clear（主线程）同时读写，
         # 所有读写必须进入同一把 _lock，避免 list 内部结构被 race 破坏。
         self._lock = threading.Lock()
-        self._queue: list[tuple[int, str, str]] = []
-        self._all_records: list[tuple[int, str, str]] = []
+        # 4 元组：(levelno, levelname, display_msg, raw_message)
+        self._queue: list[tuple[int, str, str, str]] = []
+        self._all_records: list[tuple[int, str, str, str]] = []
         self._max_records = 50000
+        # —— F15 过滤条状态（与 _active 芯片是 AND 关系）——
+        self._filter_level: str = log_filter.LEVEL_ALL
+        self._filter_keyword: str = ""
 
-    def get_all_records(self) -> list[tuple[int, str, str]]:
+    def get_all_records(self) -> list[tuple[int, str, str, str]]:
         with self._lock:
             return list(self._all_records)
 
@@ -350,14 +368,76 @@ class GuiLogHandler(logging.Handler):
         out = []
         with self._lock:
             snap = list(self._all_records)
-        for lvl, lvl_name, msg in snap:
+        for rec in snap:
+            lvl, lvl_name, msg = rec[0], rec[1], rec[2]
+            raw = rec[3] if len(rec) >= 4 else msg
             out.append({
                 "time": datetime.now().strftime(DATE_FORMAT),
                 "level": lvl_name,
                 "level_no": lvl,
-                "message": msg.rstrip("\n"),
+                "message": str(msg).rstrip("\n"),
+                "raw_message": str(raw).rstrip("\n"),
             })
         return out
+
+    # ---------------- F15：过滤条（级别阈值 + 关键词）----------------
+
+    def set_filter(self, level: Optional[str] = None, keyword: Optional[str] = None) -> None:
+        """
+        设置过滤条件。参数为 None 表示「该维度不变」。
+
+        只更新状态，**不触发重绘**——由调用方（LogFilterBar）显式调 `repaint_all()`，
+        避免连续设置两个维度时重绘两次。
+        """
+        with self._lock:
+            if level is not None:
+                self._filter_level = log_filter.normalize_level(level)
+            if keyword is not None:
+                try:
+                    self._filter_keyword = str(keyword)
+                except Exception:
+                    self._filter_keyword = ""
+
+    def get_filter(self) -> tuple[str, str]:
+        """返回当前过滤条件 ``(level, keyword)``。"""
+        with self._lock:
+            return self._filter_level, self._filter_keyword
+
+    def reset_filter(self) -> None:
+        """清空过滤条件（恢复「全部 + 无关键词」）。不触发重绘。"""
+        with self._lock:
+            self._filter_level = log_filter.LEVEL_ALL
+            self._filter_keyword = ""
+
+    def _visible(self, rec: tuple, active_snap: Dict[str, bool],
+                 level: str, keyword: str) -> bool:
+        """单条记录是否应显示：级别芯片 AND 过滤条。"""
+        try:
+            if not active_snap.get(rec[1], True):
+                return False
+        except (IndexError, TypeError):
+            return True
+        return log_filter.match_record(rec, level=level, keyword=keyword)
+
+    def get_filtered(self) -> list[tuple[int, str, str, str]]:
+        """返回当前过滤条件下可见的全部记录（不含级别芯片被关掉的）。"""
+        with self._lock:
+            snap = list(self._all_records)
+            active_snap = dict(self._active)
+            level, keyword = self._filter_level, self._filter_keyword
+        return [r for r in snap if self._visible(r, active_snap, level, keyword)]
+
+    def count_visible(self) -> tuple[int, int]:
+        """返回 ``(可见条数, 总条数)``，供过滤条右侧计数标签使用。"""
+        with self._lock:
+            snap = list(self._all_records)
+            active_snap = dict(self._active)
+            level, keyword = self._filter_level, self._filter_keyword
+        matched = 0
+        for r in snap:
+            if self._visible(r, active_snap, level, keyword):
+                matched += 1
+        return matched, len(snap)
 
     def set_active(self, level_name: str, active: bool) -> None:
         k = level_name.upper()
@@ -379,7 +459,13 @@ class GuiLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
-            rec = (record.levelno, record.levelname, msg)
+            # 第 4 位：未经 formatter 加工的原始 message，供 F15 关键词匹配用。
+            # getMessage() 可能因 %-格式化参数不匹配而抛，故兜底回落到 display_msg。
+            try:
+                raw = record.getMessage()
+            except Exception:
+                raw = msg
+            rec = (record.levelno, record.levelname, msg, raw)
             schedule_flush = False
             with self._lock:
                 self._all_records.append(rec)
@@ -393,12 +479,22 @@ class GuiLogHandler(logging.Handler):
             if schedule_flush:
                 app = self._resolve_app()
                 if app is not None and hasattr(app, "after"):
-                    app.after(0, self._flush)
+                    # 【加固】app.after 在以下场景会抛异常，且都属于"良性"情况：
+                    #   • RuntimeError: main thread is not in main loop（未跑 mainloop / 关闭中）
+                    #   • TclError: application has been destroyed（窗口已销毁）
+                    # 此时日志已经进了 _all_records/_queue，file/stream handler 也照常写盘，
+                    # 只是暂时无法刷到 GUI 文本框。若走 handleError 会向 stderr 打印
+                    # 40 行 "--- Logging error ---" 噪音（后台线程每条日志都打一次），
+                    # 反而淹没真正的错误，因此这里静默吞掉。
+                    try:
+                        app.after(0, self._flush)
+                    except Exception:
+                        pass
         except Exception:
             self.handleError(record)
 
     def repaint_all(self) -> None:
-        """过滤芯片变化时：清屏并把 _all_records 里符合条件的重画一遍"""
+        """过滤芯片 / 过滤条变化时：清屏并把 _all_records 里符合条件的重画一遍"""
         app = self._resolve_app()
         if app is None or not hasattr(app, "log_text"):
             return
@@ -406,6 +502,7 @@ class GuiLogHandler(logging.Handler):
         with self._lock:
             snap = list(self._all_records)
             active_snap = dict(self._active)
+            f_level, f_keyword = self._filter_level, self._filter_keyword
         try:
             log_text.configure(state="normal")
             log_text.delete("1.0", _TK_END)
@@ -414,8 +511,9 @@ class GuiLogHandler(logging.Handler):
             total = len(snap)
             start_idx = max(0, total - max_lines)
             for i in range(start_idx, total):
-                lvl, lvl_name, msg = snap[i]
-                if not active_snap.get(lvl_name, True):
+                rec = snap[i]
+                lvl, lvl_name, msg = rec[0], rec[1], rec[2]
+                if not self._visible(rec, active_snap, f_level, f_keyword):
                     continue
                 tag = "info"
                 if lvl == logging.DEBUG:    tag = "debug"
@@ -458,18 +556,32 @@ class GuiLogHandler(logging.Handler):
 
     def _flush(self) -> None:
         # 先加锁，快照 + 清空 queue 原子完成，避免并发 emit 在我们 flush 到一半时丢数据
+        # 单次最多插入 MAX_FLUSH 行，其余留在队列里由 after(0) 下一波处理，
+        # 避免批量扫描等一次性几千条 insert 卡住主线程（报告 #7）。
+        MAX_FLUSH = 200
         with self._lock:
             if not self._queue:
                 return
-            buf = self._queue[:]
-            self._queue.clear()
+            buf = self._queue[:MAX_FLUSH]
+            self._queue = self._queue[MAX_FLUSH:]
+            more = bool(self._queue)
         app = self._resolve_app()
         if app is None or not hasattr(app, "log_text"):
+            # app 已销毁：把这一批放回队列（detach 时会清空，不会无限增长）
+            with self._lock:
+                self._queue = buf + self._queue
             return
         log_text = app.log_text
+        with self._lock:
+            active_snap = dict(self._active)
+            f_level, f_keyword = self._filter_level, self._filter_keyword
         try:
             log_text.configure(state="normal")
-            for lvl, lvl_name, msg in buf:
+            for rec in buf:
+                # 增量刷新同样要过滤条把关，否则过滤期间新来的日志会「漏网」显示出来
+                if not self._visible(rec, active_snap, f_level, f_keyword):
+                    continue
+                lvl, lvl_name, msg = rec[0], rec[1], rec[2]
                 tag = "info"
                 if lvl == logging.DEBUG:    tag = "debug"
                 elif lvl == LEVEL_SUCCESS:  tag = "success"
@@ -488,9 +600,18 @@ class GuiLogHandler(logging.Handler):
             if last_line > 30000:
                 log_text.delete("1.0", f"{last_line - 20000}.0")
             log_text.see(_TK_END)
+        except TclError:
+            # GUI 已销毁（destroy 期间仍可能触发 flush），widget 不可用时静默丢弃
+            pass
         finally:
             try:
                 log_text.configure(state="disabled")
+            except Exception:
+                pass
+        # 还有剩余的日志没刷完，下一波继续（分散主线程负载，避免卡顿）
+        if more:
+            try:
+                app.after(0, self._flush)
             except Exception:
                 pass
 
@@ -560,7 +681,11 @@ def setup_logging() -> logging.Logger:
 # ---------------- 问题二：启动日志回放 ----------------
 # _STARTUP_RECORDS 是 logger.py 级别全局队列，存储 setup_logging → attach_gui_handler 这段时间的所有日志，
 # 解决「用户第一次打开 GUI 时日志面板一片空白」问题（因为 banner/PSI4 导入失败等都发生在 GUI 挂载前）。
-_STARTUP_RECORDS: List[Tuple[int, str, str]] = []
+#
+# ⚠️ T04 同步点：这里的元组结构必须与 GuiLogHandler._all_records **完全一致**（4 元组），
+#    因为 attach_gui_handler 会把本队列 extend 进 _all_records。
+#    若两边元组长度不一致，repaint_all 解包时会崩，且症状是「启动即白屏」。
+_STARTUP_RECORDS: List[Tuple[int, str, str, str]] = []
 _STARTUP_RECORDS_LOCK = threading.Lock()
 _STARTUP_COLLECTED_MAX = 10000  # 再长就截断避免占内存
 
@@ -579,14 +704,19 @@ class _StartupRecordCollector(logging.Handler):
                 msg = str(record.getMessage())
             except Exception:
                 msg = ""
-        rec = (record.levelno, record.levelname, msg)
+        try:
+            raw = record.getMessage()
+        except Exception:
+            raw = msg
+        # 4 元组：与 GuiLogHandler._all_records 结构一致（T04）
+        rec = (record.levelno, record.levelname, msg, raw)
         with _STARTUP_RECORDS_LOCK:
             _STARTUP_RECORDS.append(rec)
             if len(_STARTUP_RECORDS) > _STARTUP_COLLECTED_MAX:
                 _STARTUP_RECORDS[:] = _STARTUP_RECORDS[-_STARTUP_COLLECTED_MAX // 2:]
 
 
-def drain_startup_records() -> List[Tuple[int, str, str]]:
+def drain_startup_records() -> List[Tuple[int, str, str, str]]:
     """取出启动队列并清空；只在 attach_gui_handler 回放时用一次。"""
     with _STARTUP_RECORDS_LOCK:
         snap = list(_STARTUP_RECORDS)
@@ -642,6 +772,39 @@ def get_gui_handler() -> Optional[GuiLogHandler]:
     return _GUI_HANDLER
 
 
+def detach_gui_handler() -> None:
+    """
+    从 root logger 上摘除 GUI handler 并释放它持有的 MainView 强引用。
+
+    必须在 MainView.destroy() **之前**调用，理由有二：
+      1. handler 通过 `lambda: self` 强引用 MainView，而它自己被 root logger
+         和模块级 `_GUI_HANDLER` 持有 —— 不摘除则窗口关闭后整棵 UI 对象树
+         （含最多 5 万条日志记录）都无法回收；
+      2. destroy() 之后若还有日志写入，handler 会对已销毁的 Tk widget 调用
+         after()，抛 TclError 噪声。
+    """
+    global _GUI_HANDLER
+    handler, _GUI_HANDLER = _GUI_HANDLER, None
+    if handler is None:
+        return
+    try:
+        logging.getLogger().removeHandler(handler)
+    except Exception:
+        pass
+    # 切断对 MainView 的强引用，并清空记录缓冲，让 UI 对象树可被回收
+    try:
+        handler._get_app = lambda: None
+        with handler._lock:
+            handler._queue.clear()
+            handler._all_records.clear()
+    except Exception:
+        pass
+    try:
+        handler.close()
+    except Exception:
+        pass
+
+
 __all__ = [
     "APP_DATA_DIR", "LOG_DIR", "LOG_FILE", "JSON_LOG_FILE",
     "DATE_FORMAT", "LEVEL_SUCCESS",
@@ -649,6 +812,7 @@ __all__ = [
     "GzTimedRotatingFileHandler", "GuiLogHandler",
     "LoggerContext", "setup_logging", "default_logger",
     "get_context", "set_work_dir", "performance_timer",
-    "attach_gui_handler", "get_gui_handler",
+    "attach_gui_handler", "get_gui_handler", "detach_gui_handler",
+    "drain_startup_records",
     "_HAS_TK",
 ]

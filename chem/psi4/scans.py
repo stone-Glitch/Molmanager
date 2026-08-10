@@ -13,7 +13,9 @@ from typing import Any
 
 from utils.logger import default_logger as logger, performance_timer
 from utils.path_utils import secure_output_path, default_base_dir_from_input
-from .core import run_psi4_task, read_xyz_content, sanitize_filename
+from .core import (
+    run_psi4_task, read_xyz_content, sanitize_filename, normalize_psi4_memory,
+)
 from .utils import _parse_xyz, _write_xyz, _lerp_coords, _set_dihedral_and_write
 import chem.openbabel_utils as ob_utils
 
@@ -111,9 +113,8 @@ def run_linear_scan(reactant_files, product_files, steps=20, method='b3lyp', bas
                 d3=d3,
                 charge=charge,
                 multiplicity=multiplicity,
-                memory=str(memory).strip() or "4 GB",
+                memory=normalize_psi4_memory(memory),
                 output_dir=str(frames_dir),
-                use_temp=False,
                 _progress_callback=None,
             )
         except Exception as e:
@@ -267,9 +268,8 @@ def run_rigid_scan(input_file, scan_atoms, distance_range, method='b3lyp', basis
                 d3=d3,
                 charge=charge,
                 multiplicity=multiplicity,
-                memory=str(memory).strip() or "4 GB",
+                memory=normalize_psi4_memory(memory),
                 output_dir=str(frames_dir),
-                use_temp=False,
             )
         except Exception as e:
             result["error"] = f"第 {s} 帧 PSI4 异常: {e}"

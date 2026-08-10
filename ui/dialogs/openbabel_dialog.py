@@ -290,8 +290,11 @@ def show_openbabel_dialog(app, controller):
                     controller.scan_files()
                 app.after(0, done)
             except Exception as e:
+                # 🔴 捕获异常信息：Python 3 中 except 块变量 `e` 在退出 except 后即被清除，
+                # 若放在嵌套的 fail() 里延迟调用会 NameError。先转成字符串固化。
+                err_msg = str(e)
                 def fail():
-                    app.helpers.on_log(f"❌ CSV 写出失败: {e}", 'error')
+                    app.helpers.on_log(f"❌ CSV 写出失败: {err_msg}", 'error')
                 app.after(0, fail)
         app.helpers.run_task(task_process)
 
@@ -339,7 +342,7 @@ def show_openbabel_dialog(app, controller):
     mob_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     mob_scroll = ttk.Scrollbar(mob_list_frame, orient=tk.VERTICAL, command=mob_listbox.yview)
     mob_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-    mob_listbox.configure(yscrollcommand=mb_scroll.set)
+    mob_listbox.configure(yscrollcommand=mob_scroll.set)
 
     for s in selected[1:] if len(selected) > 1 else []:
         mob_listbox.insert(tk.END, s)

@@ -16,7 +16,9 @@ import csv
 import subprocess
 import tempfile
 import shutil
+import hashlib
 import threading
+from collections import OrderedDict
 import warnings
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Any, Union
@@ -49,12 +51,31 @@ except ImportError:
         PYBEL_AVAILABLE = False
 
 # ======================== 缓存（性能优化 + 线程安全） ========================
+# 用 OrderedDict 实现真正的 LRU：命中时 move_to_end 把条目移到「最近使用」一端，
+# 逐出时 popitem(last=False) 淘汰最久未使用者。
+# 旧实现是普通 dict + next(iter(...))，那是 FIFO——批量扫描时正在反复读取的热点
+# 条目会因为「插入得早」被淘汰，命中率极低，缓存基本失去意义。
 _DESC_CACHE_MAX = 128
-_DESC_CACHE: dict[tuple[str, int, int], Dict[str, Any]] = {}
+_DESC_CACHE: "OrderedDict[tuple[str, int, int, str | None], Dict[str, Any]]" = OrderedDict()
 _DESC_CACHE_LOCK = threading.Lock()
 
+#: 仅对不超过该大小的文件做整文件内容哈希，作为缓存键的额外维度（审计 P-2）；
+#: 超过则退回 (mtime, size) 仅键，避免读取巨文件拖累性能（P-3 关注大文件场景）。
+_CONTENT_HASH_MAX_BYTES = 2 * 1024 * 1024
+
 _MOL_READ_CACHE_MAX = 256
-_MOL_READ_CACHE: dict[tuple[str, int, int, str], list] = {}
+#: 单个文件超过此大小（默认 50MB）时不进缓存，避免一个巨量 SDF 撑爆内存
+#: （审计建议：SDF 可能含成千上万个分子，整表缓存代价过高）。
+# 审计 5.1：原硬编码 50MB 无配置项；改为可通过环境变量 MM_MOL_READ_CACHE_MAX_BYTES
+# （单位字节）调整，便于用户按机器内存自定义上限，例如设为 200MB：
+#   set MM_MOL_READ_CACHE_MAX_BYTES=209715200
+_MOL_READ_CACHE_MAX_BYTES = int(
+    os.environ.get("MM_MOL_READ_CACHE_MAX_BYTES", 50 * 1024 * 1024)
+)
+#: 单文件含分子数超过此值的（典型为上千分子的巨量 SDF）不进读取缓存，仅跳过缓存、正常返回，
+#: 避免整表 pybel 分子对象撑爆内存（审计 P-3）。
+_MOL_READ_CACHE_MAX_MOLECULES = 200
+_MOL_READ_CACHE: "OrderedDict[tuple[str, int, int, str | None, str], list]" = OrderedDict()
 _MOL_READ_CACHE_LOCK = threading.Lock()
 
 _OBABEL_CLI_LOCK = threading.Lock()  # 保护 _OBABEL_CLI_EXE 单例初始化
@@ -107,10 +128,28 @@ def clear_caches() -> tuple[int, int]:
     return d, m
 
 
-def _cache_key(path_str: str) -> tuple[str, int, int] | None:
+def _cache_key(path_str: str) -> tuple[str, int, int, str | None] | None:
+    """返回 (解析后路径, mtime_ns, 大小, 内容哈希或None)。
+
+    内容哈希用于抵御「同尺寸/同 mtime 但内容被原地覆盖」导致的陈旧缓存命中（审计 P-2）；
+    仅对小文件计算，大文件（P-3 场景）跳过哈希以保性能。
+    """
     try:
         st = os.stat(path_str)
-        return (os.fspath(Path(path_str).resolve()), int(st.st_mtime_ns), int(st.st_size))
+        path_resolved = os.fspath(Path(path_str).resolve())
+        mtime_ns = int(st.st_mtime_ns)
+        size = int(st.st_size)
+        content_hash: str | None = None
+        if 0 <= size <= _CONTENT_HASH_MAX_BYTES:
+            try:
+                h = hashlib.md5()
+                with open(path_str, "rb") as _fh:
+                    for _chunk in iter(lambda: _fh.read(1 << 20), b""):
+                        h.update(_chunk)
+                content_hash = h.hexdigest()
+            except OSError:
+                content_hash = None
+        return (path_resolved, mtime_ns, size, content_hash)
     except OSError:
         return None
 
@@ -129,12 +168,13 @@ def set_manual_obabel_path(path: str | None) -> None:
     """设置用户手动指定的 obabel 可执行文件路径。传入 None 或 "" 会清除手动设置并回退到自动查找。"""
     global _MANUAL_OBABEL_PATH, _OBABEL_CLI_EXE
     v = (path or "").strip() if path else ""
-    if not v:
-        _MANUAL_OBABEL_PATH = None
-    else:
-        _MANUAL_OBABEL_PATH = v
-    # 手动路径改了，必须让下一次调用重新解析（清掉已缓存的 _OBABEL_CLI_EXE）
+    # 与 _resolve_obabel_cli 共用同一把锁，保证对两个全局变量的读写原子（审计 3.2）
     with _OBABEL_CLI_LOCK:
+        if not v:
+            _MANUAL_OBABEL_PATH = None
+        else:
+            _MANUAL_OBABEL_PATH = v
+        # 手动路径改了，必须让下一次调用重新解析（清掉已缓存的 _OBABEL_CLI_EXE）
         _OBABEL_CLI_EXE = None
 
 
@@ -212,9 +252,20 @@ def _resolve_obabel_cli() -> str:
         user_explicit=False 时：拒绝 tempdir 和 cwd（家目录放行）。
         """
         try:
-            real = p.resolve(strict=True)
-        except OSError as exc:
-            raise RuntimeError(f"obabel 路径不存在或不可读: {p}") from exc
+            # 审计 4.1：断开映射的网络驱动器（如 Z:）在 resolve(strict=True) 会抛 OSError（设备未就绪）；
+            # 改用 absolute()（不访问磁盘、绝不抛异常）拿到基础路径，再尝试 resolve(strict=False)。
+            # strict=False 不会因文件不存在而抛错；仅极少数 Windows 版本对坏链接抛 OSError，
+            # 此时退回 absolute() 结果并交由下方 exists() 判定——避免「本地 PATH 上的 obabel 因某个
+            # 坏候选路径而整体不可用」的连坐问题。
+            abs_p = p.absolute()
+        except Exception:
+            abs_p = Path(os.fspath(p))
+        try:
+            real = abs_p.resolve(strict=False)
+        except OSError:
+            real = abs_p
+        if not real.exists() or not real.is_file():
+            raise RuntimeError(f"obabel 路径不存在或不可读: {p}")
         if not real.is_file():
             raise RuntimeError(f"obabel 路径不是文件: {real}")
         if user_explicit:
@@ -333,15 +384,20 @@ def _run_obabel(args: List[str], timeout: Optional[int] = OB_DEFAULT_TIMEOUT_SEC
     real_args: list[str] = [exe]
 
     def _hygiene(token: str) -> str:
-        """剔除 CR / LF / NUL，防止命令行层被注入控制字符或截断。"""
+        """剔除控制字符与 shell 元字符，防止命令行层被注入或截断。"""
         if token is None:
             return ""
         if not isinstance(token, str):
             token = str(token)
-        for bad in ("\x00", "\r", "\n"):
-            if bad in token:
-                token = token.replace(bad, "")
-        return token
+        # 剔除控制字符（NUL/CR/LF/TAB/换页/垂直制表）
+        cleaned = "".join(ch for ch in token if ch not in "\x00\r\n\t\f\v")
+        # 纵深防御：我们生成的参数不应含 shell 元字符，若出现则剔除并告警
+        # （防止未来有外部可控参数拼接进来时产生选项注入 / 命令分隔，审计 S-1）
+        _SHELL_META = set(";|&$`()<>\\'\"")
+        if any(ch in _SHELL_META for ch in cleaned):
+            logger.warning("openbabel 参数含潜在危险字符，已剔除: %r", token)
+            cleaned = "".join(ch for ch in cleaned if ch not in _SHELL_META)
+        return cleaned
 
     def _sanitize_file_path_arg(token: str) -> str:
         """把文件路径变成绝对路径（若存在），并做 hygiene。绝对路径天然不会被当作选项。"""
@@ -424,6 +480,9 @@ def _run_obabel(args: List[str], timeout: Optional[int] = OB_DEFAULT_TIMEOUT_SEC
 # 由 model 在设置工作目录时写入 = 工作目录，使所有 ob_utils 写出操作默认以工作目录为允许根，
 # 避免「工作目录 ≠ 程序启动目录」时被路径护栏误拒
 # （例：work_dir=D:\...\化学\output，而程序 cwd=D:\...\工作区，两者为兄弟目录）。
+# 审计 5.2：此为进程级全局变量。本应用为单 MolManagerModel 实例 / 单进程架构，全局兜底足够；
+# 若将来出现「同一进程多个 Model 指向不同工作目录」的场景，全局会被后者覆盖导致路径校验混乱——
+# 届时调用方应显式传 base_dir（_secure_output_path 已支持），而非依赖此全局。当前架构下仅作便利兜底。
 _DEFAULT_BASE_DIR = None
 
 
@@ -462,7 +521,7 @@ def _secure_output_path(
       - 若为相对路径：以当前工作目录（tempfile.gettempdir fallback）为基准，
         但我们更建议调用方显式传 base_dir。
     """
-    from core.model import resolve_secure_output_path_external
+    from utils.path_utils import resolve_secure_output_path
 
     if base_dir is None:
         base_dir = _DEFAULT_BASE_DIR
@@ -476,7 +535,7 @@ def _secure_output_path(
                 raise RuntimeError
         except Exception:
             base_dir = Path(tempfile.gettempdir())
-    return resolve_secure_output_path_external(
+    return resolve_secure_output_path(
         requested_path,
         base_dir=base_dir,
         is_dir=is_dir,
@@ -520,9 +579,11 @@ def check_openbabel() -> Tuple[bool, str, Dict[str, Any]]:
     warning_list: list[str] = details["warnings"]
     diagnosis_list: list[str] = details["diagnosis"]
 
-    # 首次探测：懒加载手动路径 + 检查手动路径是否配了
-    if _MANUAL_OBABEL_PATH is None:
-        _MANUAL_OBABEL_PATH = _load_manual_from_config()
+    # 首次探测：懒加载手动路径（加锁保护全局状态，避免与 _resolve_obabel_cli / set_manual_obabel_path 竞争；
+    # 锁块仅设置 _MANUAL_OBABEL_PATH，不含后续对 _resolve_obabel_cli 的调用，避免不可重入锁死锁，审计 3.2）
+    with _OBABEL_CLI_LOCK:
+        if _MANUAL_OBABEL_PATH is None:
+            _MANUAL_OBABEL_PATH = _load_manual_from_config()
     if _MANUAL_OBABEL_PATH:
         details["manual_path_used"] = True
 
@@ -645,10 +706,15 @@ _COMMON_IN_FORMATS = COMMON_INPUT_FORMATS
 def _read_molecules(input_path: str, input_ext: str) -> list:
     """从 pybel 读入，空扩展名时先尝试常见扩展名，失败后再穷举。带 (path,mtime,size,ext) LRU 缓存；读写均加锁。"""
     ck = _cache_key(input_path)
-    cache_full_key: tuple | None = (ck[0], ck[1], ck[2], input_ext) if ck is not None else None
+    cache_full_key: tuple | None = (ck[0], ck[1], ck[2], ck[3], input_ext) if ck is not None else None
+    # 审计建议：超大文件不进缓存（仅跳过缓存，正常返回解析结果），
+    # 防止单个巨量 SDF 把 _MOL_READ_CACHE 撑爆。
+    if cache_full_key is not None and ck[2] > _MOL_READ_CACHE_MAX_BYTES:
+        cache_full_key = None
     if cache_full_key is not None:
         with _MOL_READ_CACHE_LOCK:
             if cache_full_key in _MOL_READ_CACHE:
+                _MOL_READ_CACHE.move_to_end(cache_full_key)   # LRU：标记为最近使用
                 return list(_MOL_READ_CACHE[cache_full_key])
     if input_ext:
         result = list(pybel.readfile(input_ext, input_path))
@@ -674,15 +740,17 @@ def _read_molecules(input_path: str, input_ext: str) -> list:
                         break
                 except Exception:
                     continue
-    if cache_full_key is not None:
+    # 审计 P-3：含分子数过多的文件（典型：上千分子的巨量 SDF）不进缓存，
+    # 仅跳过缓存、正常返回解析结果，避免整表 pybel 分子对象撑爆内存。
+    if cache_full_key is not None and len(result) <= _MOL_READ_CACHE_MAX_MOLECULES:
         with _MOL_READ_CACHE_LOCK:
-            if len(_MOL_READ_CACHE) >= _MOL_READ_CACHE_MAX:
+            while len(_MOL_READ_CACHE) >= _MOL_READ_CACHE_MAX:
                 try:
-                    k = next(iter(_MOL_READ_CACHE))
-                    del _MOL_READ_CACHE[k]
-                except StopIteration:
-                    pass
+                    _MOL_READ_CACHE.popitem(last=False)       # 淘汰最久未使用
+                except KeyError:
+                    break
             _MOL_READ_CACHE[cache_full_key] = list(result)
+            _MOL_READ_CACHE.move_to_end(cache_full_key)
     return result
 
 def convert_file(input_path: str, output_path: str, output_format: str, base_dir=None) -> Dict[str, Any]:
@@ -885,6 +953,7 @@ def calculate_descriptors(input_path: str) -> Dict[str, Any]:
     if ck is not None:
         with _DESC_CACHE_LOCK:
             if ck in _DESC_CACHE:
+                _DESC_CACHE.move_to_end(ck)                   # LRU：标记为最近使用
                 return dict(_DESC_CACHE[ck])
     descriptors: Dict[str, Any] = {}
     try:
@@ -941,13 +1010,13 @@ def calculate_descriptors(input_path: str) -> Dict[str, Any]:
         result = {"success": False, "message": str(e), "descriptors": {}}
     if ck is not None:
         with _DESC_CACHE_LOCK:
-            if len(_DESC_CACHE) >= _DESC_CACHE_MAX:
+            while len(_DESC_CACHE) >= _DESC_CACHE_MAX:
                 try:
-                    k = next(iter(_DESC_CACHE))
-                    del _DESC_CACHE[k]
-                except StopIteration:
-                    pass
+                    _DESC_CACHE.popitem(last=False)           # 淘汰最久未使用
+                except KeyError:
+                    break
             _DESC_CACHE[ck] = dict(result)
+            _DESC_CACHE.move_to_end(ck)
     return result
 
 

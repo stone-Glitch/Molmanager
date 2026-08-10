@@ -3,7 +3,6 @@
 """
 映射管理对话框 - 映射表导入/导出/编辑
 """
-import json
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from pathlib import Path
@@ -209,17 +208,15 @@ def show_mapping_editor_dialog(app, controller):
             parent=dialog
         ):
             return
-        out_path = Path(model.work_dir) / "分子命名映射.json"
+        # T10：保存逻辑已下沉到 model.save_mapping()。
+        # 由 model 统一负责「快照 → 原子写 → 同步内存状态」三件事，
+        # UI 层不再直接写盘，这样 F17 的备份钩子才有唯一挂载点。
         try:
-            with open(out_path, "w", encoding="utf-8") as f:
-                json.dump(new_dict, f, ensure_ascii=False, indent=2)
+            out_path = model.save_mapping(new_dict)
         except Exception as e:
             messagebox.showerror("保存失败", f"写入文件失败：{e}", parent=dialog)
             app.helpers.on_log(f"❌ 保存映射表失败: {e}", "error")
             return
-        model.set_mapping(new_dict)
-        model.invalidate_scan_cache()
-        app.helpers.on_log(f"💾 映射表已保存：{len(new_dict)} 条 → {out_path.name}", "success")
         messagebox.showinfo("保存成功", f"已保存 {len(new_dict)} 条映射到：\n{out_path}", parent=dialog)
         controller.scan_files()
 

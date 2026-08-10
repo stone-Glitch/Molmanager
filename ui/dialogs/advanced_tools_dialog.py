@@ -258,29 +258,51 @@ def show_advanced_tools_dialog(app, controller):
     def _submit_work(fn, on_done=None):
         def _on_ok(r):
             try:
+                if not dialog.winfo_exists():
+                    return
                 if on_done is not None:
                     on_done(r)
             except Exception as _e_done:
                 _log(f"✖ 回调 on_done 异常：{_e_done}", "err")
             finally:
                 try:
-                    app.after(0, lambda: _do_set_progress_in_main(0.0))
+                    if dialog.winfo_exists():
+                        app.after(0, lambda: _do_set_progress_in_main(0.0))
                 except Exception:
                     pass
 
         def _on_err(err_msg):
-            _log(f"✖ 后台任务失败：{err_msg}", "err")
             try:
-                app.after(0, lambda: _do_set_progress_in_main(0.0))
+                if not dialog.winfo_exists():
+                    return
+                _log(f"✖ 后台任务失败：{err_msg}", "err")
+                try:
+                    app.after(0, lambda: _do_set_progress_in_main(0.0))
+                except Exception:
+                    pass
             except Exception:
                 pass
 
-        _tm.run_async(
+        future = _tm.run_async(
             _wrap_throwaway_task(fn),
             on_done=_on_ok,
             on_error=_on_err,
             on_progress=None,
         )
+
+        # 对话框销毁时取消后台任务，避免回调持有已销毁窗口导致内存泄漏（报告 #8）
+        def _on_destroy(_ev=None):
+            try:
+                _tm.request_cancel()
+                if future is not None:
+                    future.cancel()
+            except Exception:
+                pass
+
+        try:
+            dialog.bind("<Destroy>", _on_destroy)
+        except Exception:
+            pass
 
     def _wrap_throwaway_task(fn):
         def _inner(*, _progress_callback=None, _log=None):
@@ -328,13 +350,12 @@ def show_advanced_tools_dialog(app, controller):
             _log(f"📚 计算 {len(files)} 个分子的 InChIKey...")
             batch = ob_utils.batch_inchikey([f for f in files])
             hits = []
-            for entry in batch:
-                key = entry.get("inchikey") or ""
+            for path, key in batch.items():
                 if not key:
                     continue
                 if key.startswith(target_prefix):
                     score = 2 if key == target_key else 1
-                    hits.append((score, entry["path"], key))
+                    hits.append((score, path, key))
             hits.sort(key=lambda x: (-x[0], x[1]))
             return ("ok", hits, target_key)
 
@@ -530,18 +551,18 @@ def show_advanced_tools_dialog(app, controller):
 
         def _done(rr):
             n = 0
-            for entry in rr:
-                k = entry.get("inchikey") or ""
-                if k:
+            rows = []
+            for path, key in rr.items():
+                if key:
                     n += 1
+                rows.append((path, key or "", "", ""))
             csv_out = os.path.join(os.path.dirname(files[0]), "InChIKey_batch.csv")
             try:
                 with open(csv_out, "w", encoding="utf-8-sig", newline="") as f:
                     w = csv.writer(f)
                     w.writerow(["file", "inchikey", "smiles_if_avail", "formula_if_avail"])
-                    for e in rr:
-                        w.writerow([e.get("path", ""), e.get("inchikey", ""),
-                                    e.get("smiles", ""), e.get("formula", "")])
+                    for p, k, sm, fo in rows:
+                        w.writerow([p, k, sm, fo])
             except Exception as e_csv:
                 _log(f"写 CSV 失败：{e_csv}", "warn")
             _log(f"✅ 已生成 InChIKey {n}/{len(files)}，CSV 已保存到 {os.path.basename(csv_out)}", "ok")

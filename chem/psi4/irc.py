@@ -98,9 +98,10 @@ def run_irc_task(
             geom_txt = r_freq.get("optimized_xyz") or read_xyz_content(ts_file)
             if geom_txt:
                 try:
-                    import chem.psi4 as psi4
+                    import psi4
                     if hasattr(psi4, "geometry") and hasattr(psi4, "irc"):
-                        psi4.set_memory(memory)
+                        from chem.psi4.core import normalize_psi4_memory
+                        psi4.set_memory(normalize_psi4_memory(memory))
                         psi4.set_options({
                             "basis": basis,
                             "geom_maxiter": max_points,

@@ -147,7 +147,7 @@ def run_reaction_energy_profile(
 
             gibbs = None
             try:
-                import chem.psi4 as psi4
+                import psi4
                 for key in ("Gibbs Free Energy", "GIBBS FREE ENERGY", "G(T)"):
                     try:
                         v = psi4.core.variable(key)
@@ -163,6 +163,14 @@ def run_reaction_energy_profile(
                     gibbs = float(r["thermo"][-1])
                 except Exception:
                     pass
+            if gibbs is None:
+                # 频率/热化学未取得自由能 → 用电子能代替，但必须显式告警并标记，
+                # 否则用户会拿到无热校正的能垒（可能偏差数十 kcal/mol）而毫无察觉（科学 1.3）。
+                logger.error(
+                    "热化学：%s 未取得 Gibbs 自由能（频率计算可能失败），退化为电子能（无热校正），"
+                    "该点自由能结果不可靠、仅作占位。", label
+                )
+                result.setdefault("thermo_fallback", []).append(label)
             energies_G[label] = (gibbs if gibbs is not None else energies_E[label]) * H_to_KCAL
         else:
             r = run_psi4_task(
@@ -203,9 +211,13 @@ def run_reaction_energy_profile(
     with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
         wr = csv.writer(f)
         wr.writerow(["label", "E_Hartree", "rel_G_kcal_mol", "note"])
-        wr.writerow(["R", energies_E.get("R"), rel.get("R", 0.0), "反应物 / Reactants"])
-        wr.writerow(["TS", energies_E.get("TS"), rel.get("TS", 0.0), "过渡态 / Transition State"])
-        wr.writerow(["P", energies_E.get("P"), rel.get("P", 0.0), "产物 / Products"])
+        fb = set(result.get("thermo_fallback", []))
+        wr.writerow(["R", energies_E.get("R"), rel.get("R", 0.0),
+                     "反应物 / Reactants" + ("（电子能·无热校正）" if "R" in fb else "")])
+        wr.writerow(["TS", energies_E.get("TS"), rel.get("TS", 0.0),
+                     "过渡态 / Transition State" + ("（电子能·无热校正）" if "TS" in fb else "")])
+        wr.writerow(["P", energies_E.get("P"), rel.get("P", 0.0),
+                     "产物 / Products" + ("（电子能·无热校正）" if "P" in fb else "")])
         wr.writerow([])
         wr.writerow(["barrier", "value_kcal_mol"])
         for k, v in result["barriers"].items():

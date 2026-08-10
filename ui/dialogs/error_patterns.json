@@ -1,0 +1,75 @@
+{
+  "version": 2,
+  "description": "F07 错误诊断规则库（与 HTML 原型 DIAG_RULES 同源；落 tkinter 时为 JSON 驱动，便于用户/开发者扩展）。匹配顺序自上而下，命中即止；__default__ 兜底。fix 字段为结构化对象：{action, label, desc, params}，由 ui/dialogs/fix_engine.py 的 apply_fix 按 action 执行真实修复。",
+  "rules": [
+    {
+      "id": "basis_not_found",
+      "pattern": "basis set .* (not available|not found)|基组.*(不存在|未找到)|Couldn't find basis|BasisSetNotFound|basis.*unavailable",
+      "title": "基组不存在 / 未安装",
+      "suggestion": "PSI4 自带基组库里没有该基组，多半是名称拼写或大小写问题。常见坑：6-31g* 必须写成 '6-31g*'（星号不能省）；def2-SVP 需要 libxc 7.0.0（见环境约束）；自定义基组需先 load。",
+      "fix": {
+        "action": "correct_basis",
+        "label": "纠正基组名称并重算",
+        "desc": "把方法/基组换成内置可用组合（如把 '6-31g**' 纠正为 '6-31g*'），记忆到配置并重新打开 PSI4 设置对话框，确认后重算。",
+        "params": { "fallback": "6-31g*" }
+      }
+    },
+    {
+      "id": "out_of_memory",
+      "pattern": "out of memory|MemoryError|内存不足|Cannot allocate|could not allocate",
+      "title": "内存不足",
+      "suggestion": "计算规模超过可用内存。PSI4 默认内存较小，大分子 / 高基组（尤其 RI / 双杂化）极易溢出。",
+      "fix": {
+        "action": "reduce_memory",
+        "label": "调小 PSI4 内存并重算",
+        "desc": "把 PSI4 默认内存下调到更稳妥的值（如 2 GB）并记忆到配置，重新打开设置对话框确认后重算；若仍溢出再考虑换更小基组 / 启用 RI 近似。",
+        "params": { "gb": 2 }
+      }
+    },
+    {
+      "id": "not_converged",
+      "pattern": "did not converge|未收敛|SMCONV|MAXITER|convergence failure|failed to converge",
+      "title": "SCF / 几何优化未收敛",
+      "suggestion": "迭代达到上限仍未收敛，常见于初始结构较差、或收敛阈值过严。过渡态优化还可能卡在虚频。",
+      "fix": {
+        "action": "relax_scf",
+        "label": "放宽 SCF 收敛条件并重算",
+        "desc": "在配置中写入 SCF 收敛辅助选项（增大 maxiter、启用阻尼），下次计算自动注入；重新打开设置对话框确认后重算。",
+        "params": { "scf_options": { "maxiter": 200, "damping_percentage": 20 } }
+      }
+    },
+    {
+      "id": "file_not_found",
+      "pattern": "No such file|文件不存在|FileNotFoundError|could not open|无法打开.*文件",
+      "title": "输入文件缺失 / 路径错误",
+      "suggestion": "计算所需的输入文件（xyz / 输出 / 映射）不在工作目录，或路径含空格/中文未被正确转义。",
+      "fix": {
+        "action": "locate_file",
+        "label": "重新定位工作目录 / 文件",
+        "desc": "打开目录选择，把工作目录指到输入文件所在位置并重新扫描文件列表。"
+      }
+    },
+    {
+      "id": "dependency_missing",
+      "pattern": "ModuleNotFound|No module named|导入失败|ImportError|DependencyError",
+      "title": "依赖缺失（OpenBabel / PSI4 未安装）",
+      "suggestion": "运行所需的 Python 包未安装，或当前环境不是 mol_manager_312。量化计算依赖 psi4，结构互转依赖 openbabel。",
+      "fix": {
+        "action": "install_dep",
+        "label": "复制依赖安装命令并打开环境诊断",
+        "desc": "把 conda 安装命令复制到剪贴板，并打开环境诊断对话框，便于在当前环境补装依赖。"
+      }
+    },
+    {
+      "id": "__default__",
+      "pattern": ".*",
+      "title": "未匹配到已知规则",
+      "suggestion": "错误未被规则库命中，可能是环境 / 依赖层面的问题，或超出了当前规则覆盖范围。",
+      "fix": {
+        "action": "none",
+        "label": "",
+        "desc": "先点「环境诊断」确认 OpenBabel / PSI4 可用；仍不行请把下方错误原文复制给开发者（已提供「复制错误」按钮）。"
+      }
+    }
+  ]
+}
