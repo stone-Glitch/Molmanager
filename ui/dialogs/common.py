@@ -7,6 +7,7 @@ import csv
 import os
 import subprocess
 import sys
+import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog, scrolledtext
 from pathlib import Path
@@ -465,7 +466,94 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
     psi_text_var = tk.StringVar(value="")
     tk.Label(psi_card, textvariable=psi_text_var, bg="#161B22", fg="#E6EDF3",
              font=BASE, justify="left", anchor="w",
-             wraplength=820).pack(fill=tk.X, padx=14, pady=(2, 14))
+             wraplength=820).pack(fill=tk.X, padx=14, pady=(2, 6))
+
+    # PSI4 快速测试：真实跑一次极小 HF/sto-3g 单点能，验证计算引擎可用
+    psi_test_var = tk.StringVar(value="")
+    psi_test_lbl = tk.Label(psi_card, textvariable=psi_test_var, bg="#161B22",
+                            fg="#9DA7B3", font=SMALL, justify="left", anchor="w",
+                            wraplength=820)
+    psi_test_lbl.pack(fill=tk.X, padx=14, pady=(0, 4))
+    psi_btn_row = tk.Frame(psi_card, bg="#161B22")
+    psi_btn_row.pack(fill=tk.X, padx=14, pady=(0, 14))
+    _psi4_test_running = {"flag": False}
+
+    def _run_psi4_quick_test():
+        if _psi4_test_running["flag"]:
+            return
+        _psi4_test_running["flag"] = True
+        psi_test_var.set("⏳ 运行中…（首次加载引擎约 10–30 秒，请勿关闭对话框）")
+        try:
+            psi_test_lbl.configure(fg="#58A6FF")
+        except Exception:
+            pass
+        psi_test_btn.configure(state="disabled")
+
+        def _finish_test(msg, ok):
+            try:
+                psi_test_var.set(msg)
+                try:
+                    from ui.ui_theme import COLORS
+                    psi_test_lbl.configure(fg=(COLORS.get("success", "#0EA288") if ok else COLORS.get("danger", "#E5484D")))
+                except Exception:
+                    psi_test_lbl.configure(fg=("#0EA288" if ok else "#E5484D"))
+            except Exception:
+                pass
+            psi_test_btn.configure(state="normal")
+            _psi4_test_running["flag"] = False
+
+        def _do():
+            import time as _time
+            import tempfile as _tf
+            try:
+                import chem.psi4_compute as _pc
+            except Exception as _imp_err:
+                dialog.after(0, lambda: _finish_test(
+                    f"❌ 无法加载 PSI4 计算模块（不影响文件整理）：{_imp_err}", False))
+                return
+            _tdir = None
+            try:
+                from utils.path_utils import make_temp_dir
+                _tdir = make_temp_dir("psi4_qtest_")
+                _xyz = os.path.join(_tdir, "h2o_quick.xyz")
+                with open(_xyz, "w", encoding="utf-8") as _f:
+                    _f.write(
+                        "3\nwater HF/sto-3g quick test\n"
+                        "O  0.000000  0.000000  0.000000\n"
+                        "H  0.757000  0.586000  0.000000\n"
+                        "H -0.757000  0.586000  0.000000\n"
+                    )
+                t0 = _time.time()
+                res = _pc.run_psi4_task(
+                    _xyz, task_type="energy", method="hf", basis="sto-3g",
+                    memory="1 GB",
+                )
+                elapsed = _time.time() - t0
+            except Exception as _e:
+                dialog.after(0, lambda: _finish_test(
+                    f"❌ 快速测试异常：{_e}", False))
+                return
+            if res.get("success"):
+                e = res.get("energy")
+                if e is not None:
+                    msg = (f"✅ 快速测试通过（HF/sto-3g 单点能）\n"
+                           f"    能量 = {e:.6f} Hartree（参考 ≈ -74.96）\n"
+                           f"    耗时 = {elapsed:.1f} 秒")
+                else:
+                    msg = (f"⚠️ 任务成功但能量为空，请检查 PSI4 输出\n"
+                           f"    耗时 = {elapsed:.1f} 秒")
+                dialog.after(0, lambda: _finish_test(msg, e is not None))
+            else:
+                msg = (f"❌ 快速测试失败\n    错误：{res.get('error', '未知')}")
+                dialog.after(0, lambda: _finish_test(msg, False))
+
+        _t = threading.Thread(target=_do, daemon=True)
+        _t.start()
+
+    psi_test_btn = ttk.Button(
+        psi_btn_row, text="▶ 运行 PSI4 快速测试", command=_run_psi4_quick_test,
+        style="Aurora.Primary.TButton")
+    psi_test_btn.pack(side=tk.LEFT, padx=4)
 
     # 安装指引
     guide_card = tk.LabelFrame(main, text="  📘 OpenBabel 安装指引 / 故障排查  ",
@@ -489,7 +577,11 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
             ob_ok, ob_msg, det = ob_utils.check_openbabel()
             ob_status_var.set(("✅ 可用" if ob_ok else "❌ 不可用"))
             try:
-                ob_status_lbl.configure(fg=("#0EA288" if ob_ok else "#E5484D"))
+                try:
+                    from ui.ui_theme import COLORS
+                    ob_status_lbl.configure(fg=(COLORS.get("success", "#0EA288") if ob_ok else COLORS.get("danger", "#E5484D")))
+                except Exception:
+                    ob_status_lbl.configure(fg=("#0EA288" if ob_ok else "#E5484D"))
             except Exception:
                 pass
             parts = [ob_msg]

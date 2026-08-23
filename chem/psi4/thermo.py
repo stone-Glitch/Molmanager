@@ -279,6 +279,19 @@ def run_reaction_energy_profile(
         yspan = max(ys_step) - min(ys_step)
         ax.set_ylim(min(ys_step) - yspan*0.3, max(ys_step) + yspan*0.3)
         ax.grid(True, axis="y", alpha=0.3)
+
+        # 科学红线 S-05：热校正失败点（仅电子能）必须在能垒图右上角用红色大字标注，绝不静默。
+        if result.get("thermo_fallback"):
+            ax.text(
+                0.99, 0.97,
+                "⚠️ 热化学校正失败\n以下点仅电子能（无热校正）：\n"
+                + "、".join(sorted(set(result["thermo_fallback"]))),
+                transform=ax.transAxes, ha="right", va="top",
+                fontsize=11, fontweight="bold", color="#d40000",
+                bbox=dict(boxstyle="round,pad=0.4", facecolor="#fff3cd",
+                          edgecolor="#d40000", linewidth=1.5, alpha=0.95)
+            )
+
         fig.tight_layout()
         fig.savefig(png_path, dpi=150)
         plt.close(fig)

@@ -94,17 +94,20 @@ def _build_commands(app):
 
     # —— 导航 ——
     nav = (
-        ("去「文件管理」", 0),
-        ("去「计算与动画」", 1),
-        ("去「高级工具」", 2),
+        ("去「工作台」", 0),
+        ("去「文件管理」", 1),
+        ("去「分子映射」", 2),
+        ("去「计算与动画」", 3),
+        ("去「高级工具」", 4),
+        ("去「任务队列」", 5),
     )
     for label, idx in nav:
         cmds.append({
             "group": "导航",
             "label": label,
             "hint": "",
-            "run": (lambda i=idx: (app._show_page(i),
-                                   _log(app, f"已切换到：{['文件管理','计算与动画','高级工具'][i]}"))),
+            "run": (lambda i=idx, lb=label: (app._show_page(i),
+                                   _log(app, f"已切换到：{lb}"))),
         })
 
     # —— 文件（动态，从 tree 读取，审查 6.1）—— 放到最后，避免覆盖动作/导航
@@ -124,7 +127,7 @@ def _build_commands(app):
                     "label": name,
                     "hint": (". " + ext) if ext else "",
                     "run": (lambda i=iid, n=name: (
-                        app._show_page(0),
+                        app._show_page(1),
                         _select_and_see(tree, i),
                         _log(app, f"定位：{n}"),
                     )),

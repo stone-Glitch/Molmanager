@@ -303,6 +303,63 @@ def build_menu_bar(app) -> None:
     except Exception:
         pass
 
+    # —— 3.5) 🧰 工具菜单（纯逻辑模块接入入口）——
+    _mb_tools, menu_tools = _make_mb(bar, "  🧰 工具  ")
+    try:
+        menu_tools.add_command(
+            label="  📁 目录树概览",
+            command=lambda: _safe_call(app, "show_tree_overview_from_menu"),
+        )
+        menu_tools.add_command(
+            label="  🔗 反向追溯（结构 ↔ 结果）",
+            command=lambda: _safe_call(app, "show_file_association_from_menu"),
+        )
+        menu_tools.add_command(
+            label="  🧠 规则引擎",
+            command=lambda: _safe_call(app, "show_rule_engine_from_menu"),
+        )
+        menu_tools.add_command(
+            label="  📜 生成 SLURM 作业脚本…",
+            command=lambda: _safe_call(app, "show_hpc_script_from_menu"),
+        )
+        menu_tools.add_command(
+            label="  🎒 项目打包（.molproj）…",
+            command=lambda: _safe_call(app, "show_project_pack_from_menu"),
+        )
+        menu_tools.add_separator()
+        menu_tools.add_command(
+            label="  📊 日志解析 / 动态元数据",
+            command=lambda: _safe_call(app, "show_log_parse_from_menu"),
+        )
+        menu_tools.add_command(
+            label="  🖼️ MO 能级图（.fchk → SVG）…",
+            command=lambda: _safe_call(app, "show_mo_diagram_from_menu"),
+        )
+        menu_tools.add_command(
+            label="  ⭐ 结构美观度评分",
+            command=lambda: _safe_call(app, "show_structure_score_from_menu"),
+        )
+        menu_tools.add_separator()
+        menu_tools.add_command(
+            label="  📚 示例分子库",
+            command=lambda: _safe_call(app, "show_example_library_from_menu"),
+        )
+        menu_tools.add_command(
+            label="  🧭 新手任务向导",
+            command=lambda: _safe_call(app, "show_wizard_steps_from_menu"),
+        )
+        menu_tools.add_command(
+            label="  🖥️ CLI 无头模式预览",
+            command=lambda: _safe_call(app, "show_cli_batch_from_menu"),
+        )
+        menu_tools.add_separator()
+        menu_tools.add_command(
+            label="  🎚️ 简易 / 专家模式切换",
+            command=lambda: _safe_call(app, "toggle_ui_mode_from_menu"),
+        )
+    except Exception:
+        pass
+
     # —— 4) 右侧状态：字体大小 + 工作目录信息（可选）——
     try:
         right_row = tk.Frame(bar, bg=COLORS.get("menu_bar_bg", "#E1EBFF"))
@@ -966,7 +1023,7 @@ def _make_scrolled_frame(master, bg, use_x=True, use_y=True):
 def build_sidebar(app, body):
     """左侧图标导航栏：文件管理 / 计算与动画 / 高级工具 / 任务队列（取代原顶部 Notebook 标签）。"""
     F = getattr(app, "_fonts", {})
-    NAV = (("📁", "文件管理"), ("🔬", "计算与动画"), ("⚙️", "高级工具"), ("📊", "任务队列"))
+    NAV = (("🏠", "工作台"), ("📁", "文件管理"), ("🧬", "分子映射"), ("🔬", "计算与动画"), ("⚙️", "高级工具"), ("📊", "任务队列"))
     nav = tk.Frame(body, bg=COLORS["surface"], relief=tk.FLAT, bd=0,
                    highlightbackground=COLORS["border"], highlightthickness=1)
     nav.grid(row=0, column=0, sticky="ns")
@@ -1008,6 +1065,85 @@ def build_sidebar(app, body):
     app._update_nav = _update_nav
     _update_nav(0)
     return nav
+
+
+def build_tab_dashboard(app, parent):
+    """🏠 工作台：概览统计（4 卡）+ 快捷操作（界面方案新增落地页）。"""
+    F = getattr(app, "_fonts", {})
+    f_h1 = F.get("H1", ("Microsoft YaHei", 20, "bold"))
+    f_bold = F.get("BOLD", ("Microsoft YaHei", 14, "bold"))
+    f_base = F.get("BASE", ("Microsoft YaHei", 13))
+    f_small = F.get("SMALL", ("Microsoft YaHei", 12))
+    f_num = ("Microsoft YaHei", 24, "bold")
+
+    tk.Label(parent, text="工作台", bg=COLORS["bg"], fg=COLORS["text"],
+             font=f_h1, anchor="w").pack(anchor="w", padx=20, pady=(18, 2))
+    tk.Label(parent, text="这里是你所有分子与计算任务的入口，一键直达高频操作。",
+             bg=COLORS["bg"], fg=COLORS["text_secondary"], font=f_base,
+             anchor="w").pack(anchor="w", padx=20, pady=(0, 14))
+
+    # —— 统计卡（4 张，读 last_scan_result）——
+    stats = tk.Frame(parent, bg=COLORS["bg"])
+    stats.pack(fill="x", padx=20, pady=4)
+    app._dash_vars = {}
+    cards = (("文件总数", "total", COLORS["text"]),
+             ("待重命名", "pending", COLORS["warning"]),
+             ("无映射", "unmapped", COLORS["danger"]),
+             ("已正确命名", "named", COLORS["success"]))
+    for idx, (label, key, color) in enumerate(cards):
+        card = tk.Frame(stats, bg=COLORS["surface"], bd=0, relief=tk.FLAT,
+                        highlightbackground=COLORS["border"], highlightthickness=1)
+        card.grid(row=0, column=idx, sticky="ew", padx=6)
+        stats.grid_columnconfigure(idx, weight=1, uniform="dash")
+        tk.Label(card, text=label, bg=COLORS["surface"], fg=COLORS["text_secondary"],
+                 font=f_small).pack(anchor="w", padx=16, pady=(14, 2))
+        var = tk.StringVar(value="0")
+        tk.Label(card, textvariable=var, bg=COLORS["surface"], fg=color,
+                 font=f_num).pack(anchor="w", padx=16, pady=(0, 14))
+        app._dash_vars[key] = var
+
+    # —— 快捷操作 ——
+    tk.Label(parent, text="快捷操作", bg=COLORS["bg"], fg=COLORS["text"],
+             font=f_bold, anchor="w").pack(anchor="w", padx=20, pady=(20, 8))
+    quick = tk.Frame(parent, bg=COLORS["bg"])
+    quick.pack(fill="x", padx=20, pady=4)
+
+    def _safe(fn):
+        try:
+            fn()
+        except Exception:
+            pass
+
+    actions = (
+        ("📥 导入文件", lambda: _safe(app.controller.import_files_from_dialog)),
+        ("🗂️ 建立映射", lambda: _safe(app.controller.show_mapping_editor_dialog)),
+        ("⚡ 运行计算", lambda: _safe(app.controller.show_psi4_dialog)),
+        ("🔬 转换工具", lambda: _safe(app.controller.show_openbabel_dialog)),
+    )
+    for idx, (label, cmd) in enumerate(actions):
+        themed_button(quick, label, cmd, "primary" if idx == 0 else "secondary").grid(
+            row=0, column=idx, sticky="ew", padx=6, pady=4)
+        quick.grid_columnconfigure(idx, weight=1, uniform="quick")
+
+    # —— 统计刷新（scan 完成后 / 切到本页时调用）——
+    def _refresh_dashboard():
+        try:
+            entries = getattr(app, "last_scan_result", []) or []
+            counts = {"total": len(entries), "pending": 0, "unmapped": 0, "named": 0}
+            for e in entries:
+                st = e.get("status", "")
+                if st in ("⏳ 待重命名", "⏳ 纯中文，待修复"):
+                    counts["pending"] += 1
+                elif st == "❌ 无映射":
+                    counts["unmapped"] += 1
+                elif st == "✅ 已正确命名":
+                    counts["named"] += 1
+            for key, var in (getattr(app, "_dash_vars", {}) or {}).items():
+                var.set(str(counts.get(key, 0)))
+        except Exception:
+            pass
+    app.refresh_dashboard = _refresh_dashboard
+    _refresh_dashboard()
 
 
 def build_ui(app):
@@ -1130,7 +1266,9 @@ def build_ui(app):
     content.grid_columnconfigure(0, weight=1)
 
     app._pages = []
-    for _builder in (build_tab_file_management,
+    for _builder in (build_tab_dashboard,
+                     build_tab_file_management,
+                     build_tab_mapping,
                      build_tab_compute_and_animation,
                      build_tab_advanced_tools,
                      build_tab_compute_queue):
@@ -1153,8 +1291,20 @@ def build_ui(app):
             pass
         # 切到队列页时立即刷新一次
         try:
-            if i == 3 and hasattr(app, "refresh_queue"):
+            if i == 5 and hasattr(app, "refresh_queue"):
                 app.refresh_queue()
+        except Exception:
+            pass
+        # 切到工作台时刷新统计
+        try:
+            if i == 0 and hasattr(app, "refresh_dashboard"):
+                app.refresh_dashboard()
+        except Exception:
+            pass
+        # 切到分子映射页时刷新条目列表
+        try:
+            if i == 2 and hasattr(app, "refresh_mapping"):
+                app.refresh_mapping()
         except Exception:
             pass
     app._show_page = _show_page
@@ -1524,6 +1674,130 @@ def build_tab_file_management(app, parent):
 
 
 # ===========================================================
+# 🧬 Tab：分子映射（设计落地：独立一级导航页）
+# ===========================================================
+def build_tab_mapping(app, parent):
+    """🧬 分子映射页：映射文件加载 + 管理操作 + 映射条目列表（eng→chn 预览）。"""
+    parent.grid_columnconfigure(0, weight=1)
+    F = getattr(app, '_fonts', {}) or {}
+
+    tk.Label(parent, text="分子映射", bg=COLORS["bg"], fg=COLORS["text"],
+             font=F.get("H1", ("Microsoft YaHei", 20, "bold")), anchor="w").pack(anchor="w", padx=20, pady=(18, 2))
+    tk.Label(parent, text="管理「英文名 / 编号 → 中文名」的映射关系，让文件列表自动显示中文名。",
+             bg=COLORS["bg"], fg=COLORS["text_secondary"], font=F.get("BASE", ("Microsoft YaHei", 13)),
+             anchor="w").pack(anchor="w", padx=20, pady=(0, 14))
+
+    # —— 卡片 1：映射文件加载 ——
+    load_card = dark_card(parent)
+    load_card.pack(fill="x", padx=12, pady=(4, 6))
+    section_title(load_card, "📥  映射文件加载").pack(anchor="w", padx=12, pady=(10, 4))
+
+    path_row = tk.Frame(load_card, bg=COLORS["surface"])
+    path_row.pack(fill="x", padx=12, pady=(0, 8))
+    tk.Label(path_row, text="映射文件路径:", bg=COLORS["surface"], fg=COLORS["text"],
+             font=F.get('BASE', ('Microsoft YaHei', 12))).pack(side=tk.LEFT, padx=(0, 6))
+    app.mapping_entry = ttk.Entry(path_row, textvariable=app.mapping_file_var,
+                                  font=F.get('BASE', ('Microsoft YaHei', 12)))
+    app.mapping_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
+
+    btn_row = tk.Frame(load_card, bg=COLORS["surface"])
+    btn_row.pack(fill="x", padx=12, pady=(0, 10))
+
+    def _btn(text, cmd, kind="secondary", tip=""):
+        b = themed_button(btn_row, text, cmd, kind)
+        b.pack(side=tk.LEFT, padx=4, pady=2)
+        if tip:
+            add_tooltip(b, tip)
+        return b
+
+    _btn("📂 浏览", app.controller.browse_mapping, "secondary",
+         tip="选择要加载的映射文件(.txt/.csv)")
+    _btn("📥 加载", app.controller.load_mapping_file, "success",
+         tip="读取映射文件，立刻生效到列表")
+    try:
+        _btn("✏️ 编辑映射", app.controller.show_mapping_editor_dialog, "secondary",
+             tip="打开映射编辑器：增删改中英文条目")
+        _btn("📊 映射管理器", app.controller.show_mapping_manager_dialog, "secondary",
+             tip="映射批量导入/导出/补全工具")
+    except Exception:
+        pass
+    try:
+        _btn("📋 生成缺失CSV", app.controller.generate_missing, "secondary",
+             tip="扫描工作目录，把找不到中文名的文件名导出为 CSV 模板")
+        _btn("⬇ 导入CSV", app.controller.show_mapping_manager_dialog, "secondary",
+             tip="从 CSV 导入中英文映射")
+    except Exception:
+        pass
+    tk.Label(btn_row, text="  已加载:", bg=COLORS["surface"], fg=COLORS["text_secondary"],
+             font=F.get('BASE', ('Microsoft YaHei', 12))).pack(side=tk.RIGHT, padx=(10, 2))
+    tk.Label(btn_row, textvariable=app.mapping_count, bg=COLORS["surface"], fg=COLORS["accent"],
+             font=F.get('BOLD', ('Microsoft YaHei', 14, 'bold'))).pack(side=tk.RIGHT, padx=(0, 6))
+
+    # —— 卡片 2：映射条目列表（eng → chn 预览）——
+    list_card = dark_card(parent)
+    list_card.pack(fill="both", expand=True, padx=12, pady=(0, 10))
+    list_card.grid_columnconfigure(0, weight=1)
+    list_card.grid_rowconfigure(1, weight=1)
+    section_title(list_card, "📋  已加载映射条目（双击打开编辑器）").grid(
+        row=0, column=0, sticky="w", padx=12, pady=(10, 4))
+
+    app.mapping_list_count = tk.StringVar(value="共 0 条")
+    tk.Label(list_card, textvariable=app.mapping_list_count, bg=COLORS["surface"],
+             fg=COLORS["text_secondary"], font=F.get("SMALL", ("Microsoft YaHei", 12))).grid(
+        row=0, column=0, sticky="e", padx=12, pady=(10, 4))
+
+    tree_frame = tk.Frame(list_card, bg=COLORS["surface"])
+    tree_frame.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 10))
+    tree_frame.grid_columnconfigure(0, weight=1)
+    tree_frame.grid_rowconfigure(0, weight=1)
+
+    app.mapping_tree = ttk.Treeview(tree_frame, columns=("英文名", "中文名"), show="headings", height=16)
+    app.mapping_tree.heading("英文名", text="英文名 / 编号")
+    app.mapping_tree.heading("中文名", text="中文名")
+    app.mapping_tree.column("英文名", width=320, anchor=tk.W)
+    app.mapping_tree.column("中文名", width=320, anchor=tk.W)
+    mvsb = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=app.mapping_tree.yview)
+    app.mapping_tree.configure(yscrollcommand=mvsb.set)
+    app.mapping_tree.grid(row=0, column=0, sticky="nsew")
+    mvsb.grid(row=0, column=1, sticky="ns")
+
+    style = ttk.Style()
+    style.configure("Treeview", font=F.get('BASE', ('Microsoft YaHei', 12)), rowheight=28)
+
+    def _on_map_dbl(_event):
+        try:
+            app.controller.show_mapping_editor_dialog()
+        except Exception:
+            pass
+
+    app.mapping_tree.bind("<Double-1>", _on_map_dbl)
+
+    def refresh_mapping():
+        try:
+            mp = getattr(app.controller.model, "mapping", None) or {}
+            tree = getattr(app, "mapping_tree", None)
+            if tree is None:
+                return
+            for iid in tree.get_children():
+                tree.delete(iid)
+            for eng in sorted(mp, key=lambda k: str(k).lower()):
+                tree.insert("", tk.END, values=(eng, mp[eng]))
+            try:
+                app.mapping_list_count.set(f"共 {len(mp)} 条")
+            except Exception:
+                pass
+            try:
+                app.mapping_count.set(str(len(mp)) if mp else "未加载")
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    app.refresh_mapping = refresh_mapping
+    refresh_mapping()
+
+
+# ===========================================================
 # 🔬 Tab2：计算与动画
 # ===========================================================
 def build_tab_compute_and_animation(app, parent):
@@ -1818,7 +2092,7 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
 
         def _jump_tab1():
             try:
-                app.main_notebook.select(0)
+                app.main_notebook.select(1)  # 文件管理（工作台已是第 0 页）
             except Exception:
                 pass
 
@@ -1893,6 +2167,9 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
     # 作为所有批量操作（计算/导出/删除/描述符）的唯一真值来源。
     if not hasattr(app, "checked_names") or app.checked_names is None:
         app.checked_names = set()
+    # P-04：可见行「已勾选」计数，O(1) 维护，避免 _tree_update_check_state 逐行扫描几千行
+    if not hasattr(app, "_vis_checked"):
+        app._vis_checked = 0
     # 浮动批量条：True=允许显示（选中自动浮现）；用户点 ✕ 收起后置 False，下次勾选再自动重开
     app.batch_bar_open = getattr(app, "batch_bar_open", True)
     app._pending_toggle_id = None
@@ -1908,9 +2185,11 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
         if name in app.checked_names:
             app.checked_names.discard(name)
             app.tree.set(iid, "select", CHECK_GLYPH["off"])
+            app._vis_checked = max(0, app._vis_checked - 1)
         else:
             app.checked_names.add(name)
             app.tree.set(iid, "select", CHECK_GLYPH["on"])
+            app._vis_checked += 1
         app.batch_bar_open = True
         _tree_update_check_state()
 
@@ -1918,12 +2197,12 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
         children = app.tree.get_children()
         if not children:
             return
+        # 仅一次 O(N) 读扫描判定当前是否全选（读比写便宜，且只扫一遍）
         all_on = all(app.tree.set(c, "select") == CHECK_GLYPH["on"] for c in children)
         new_on = not all_on
         names = set()
-        for c in children:
-            app.tree.set(c, "select", CHECK_GLYPH["on"] if new_on else CHECK_GLYPH["off"])
-            if new_on:
+        if new_on:
+            for c in children:
                 try:
                     v = app.tree.item(c, "values")
                     if v and len(v) >= 2:
@@ -1932,22 +2211,42 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
                     pass
         app.checked_names = names
         app.batch_bar_open = True
-        _tree_update_check_state()
+        # P-04：可见勾选计数同步为「全选=可见行数 / 全不选=0」，O(1) 维护
+        app._vis_checked = len(children) if new_on else 0
+        # 🔴 P-04 修复：全选/全不选的字形重绘**分批**进行（每批 400 行 + after_idle 让出
+        # 主线程事件循环），避免一次性 tree.set 几千行导致 GUI 卡死。
+        _repaint_selection_glyphs(new_on, 0)
+
+    def _repaint_selection_glyphs(new_on: bool, start: int):
+        children = app.tree.get_children()
+        n = len(children)
+        if start >= n:
+            _tree_update_check_state()
+            return
+        end = min(start + 400, n)
+        glyph = CHECK_GLYPH["on"] if new_on else CHECK_GLYPH["off"]
+        for i in range(start, end):
+            try:
+                app.tree.set(children[i], "select", glyph)
+            except Exception:
+                pass
+        if end < n:
+            app.after_idle(_repaint_selection_glyphs, new_on, end)
+        else:
+            _tree_update_check_state()
 
     def _tree_update_check_state():
         children = app.tree.get_children()
         n = len(app.checked_names)
-        # 表头半选态：基于当前可见行
+        # 表头半选态：用 checked_names 与可见行数 O(1) 推导，不再逐行 tree.set 扫描
         if not children:
             head = CHECK_GLYPH["off"]
+        elif n == 0:
+            head = CHECK_GLYPH["off"]
+        elif n >= len(children):
+            head = CHECK_GLYPH["on"]
         else:
-            on_vis = sum(1 for c in children if app.tree.set(c, "select") == CHECK_GLYPH["on"])
-            if on_vis == len(children):
-                head = CHECK_GLYPH["on"]
-            elif on_vis > 0:
-                head = CHECK_GLYPH["partial"]
-            else:
-                head = CHECK_GLYPH["off"]
+            head = CHECK_GLYPH["partial"]
         try:
             app.tree.heading("select", text=head)
         except Exception:
@@ -2434,7 +2733,7 @@ def build_tab_compute_queue(app, parent):
     # 周期性刷新（仅队列页可见时刷新，省开销）
     def _poll():
         try:
-            if getattr(app, "_cur_page", 0) == 3:
+            if getattr(app, "_cur_page", 0) == 5:  # 任务队列（工作台/文件管理/分子映射/计算/高级已占前 5 页）
                 refresh_queue()
         except Exception:
             pass
@@ -2518,7 +2817,7 @@ def build_status_bar_new(app):
         _ok = bool(getattr(_app, "dnd_available", False))
         try:
             _app.dnd_status_var.set("🖱️ 拖放就绪" if _ok else "🖱️ 拖放不可用（需 tkinterdnd2）")
-            _color = "#3fb950" if _ok else "#f85149"
+            _color = COLORS.get("success", "#3fb950") if _ok else COLORS.get("danger", "#f85149")
             if getattr(_app, "dnd_dot_canvas", None) is not None:
                 _app.dnd_dot_canvas.itemconfig("dot", fill=_color, outline=_color)
         except Exception:

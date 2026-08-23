@@ -365,8 +365,17 @@ def _build_dialog(app: Any, controller: Any) -> None:
         try:
             mapping_path = model.default_mapping_path()
             if mapping_path.is_file() and hasattr(model, "load_mapping_file"):
-                model.load_mapping_file(str(mapping_path))
-                _log(app, f"🔄 已重新载入映射表：{mapping_path.name}", "info")
+                _info = model.load_mapping_file(str(mapping_path))
+                _log(app, f"🔄 已重新载入映射表：{mapping_path.name}（{_info.get('count', '?')} 条）", "info")
+                # 科学红线 S-06：回滚后的映射若含中文名冲突，同样必须告知
+                if _info.get("dup_chn", 0) > 0:
+                    _log(
+                        app,
+                        f"⚠️ 回滚的映射表含 {_info['dup_chn']} 处中文名冲突（多英文名共用同一中文名，"
+                        f"反向映射将只保留其一）："
+                        + "；".join(f"「{c[0]}」←{c[1]}/{c[2]}" for c in _info["chn_conflicts"][:10]),
+                        "warning",
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.warning("⚠️ 回滚后重新载入映射表失败: %s", exc)
         try:

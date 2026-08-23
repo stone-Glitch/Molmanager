@@ -15,6 +15,8 @@ from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from utils.dialog_geom import fit_dialog_geometry
+
 if TYPE_CHECKING:
     from core.view import MainView
 
@@ -96,24 +98,18 @@ class FirstRunWizard:
         self.top = tk.Toplevel(self.app)
         self.top.title("🌱  欢迎使用分子与计算文件管理器 — 首次设置向导")
         self.top.configure(bg="#161B22")
-        self.top.geometry("640x440")
-        self.top.minsize(600, 420)
+        # 用 fit_dialog_geometry 钳制到屏幕并居中；加宽 + 可缩放，避免高 DPI 下内容被裁
+        self.top.geometry(fit_dialog_geometry(self.top, 700, 500, min_w=560, min_h=440))
+        self.top.minsize(560, 440)
+        self.top.resizable(True, True)
         self.top.transient(self.app)  # 始终前置于主窗口
         self.top.grab_set()            # 模态，防止新手同时乱点主窗口
-        # 居中
-        self.top.update_idletasks()
-        try:
-            sw, sh = self.app.winfo_screenwidth(), self.app.winfo_screenheight()
-            w, h = 640, 440
-            x = max(0, (sw - w) // 2)
-            y = max(0, (sh - h) // 2)
-            self.top.geometry(f"{w}x{h}+{x}+{y}")
-        except Exception:
-            pass
 
         self._build_header()
         self._body = tk.Frame(self.top, bg="#161B22", bd=1, relief=tk.SOLID)
         self._body.pack(fill=tk.BOTH, expand=True, padx=18, pady=(0, 12))
+        # 随窗口缩放动态更新长文本换行宽度，避免高 DPI / 缩窄窗口时被裁
+        self._body.bind("<Configure>", self._on_body_configure)
         self._nav = tk.Frame(self.top, bg="#161B22")
         self._nav.pack(fill=tk.X, padx=18, pady=(0, 16))
         self._prev_btn = ttk.Button(self._nav, text="◀ 上一步", command=self._go_prev, state=tk.DISABLED)
@@ -161,6 +157,41 @@ class FirstRunWizard:
             self._render_step2()
         else:
             self._render_step3()
+        # 渲染完后按 body 实际宽度统一刷新换行宽度
+        self._sync_wrap()
+
+    # ---------------- 动态换行（防裁切）----------------
+    def _sync_wrap(self):
+        """按 body 实际可用宽度统一设置 Label/Checkbutton 的 wraplength，杜绝溢出。"""
+        try:
+            avail = self._body.winfo_width() - 48  # 内容 padx 24*2
+        except Exception:
+            avail = 500
+        if avail < 160:
+            avail = 160
+
+        def _walk(w):
+            try:
+                for c in w.winfo_children():
+                    try:
+                        cls = c.winfo_class()
+                        if cls == "Label":
+                            txt = c.cget("text")
+                            if isinstance(txt, str) and txt:
+                                c.configure(wraplength=avail)
+                        elif cls == "Checkbutton":
+                            # 换行后左对齐，避免复选框居中错位
+                            c.configure(wraplength=avail, anchor="w", justify="left")
+                    except Exception:
+                        pass
+                    _walk(c)
+            except Exception:
+                pass
+
+        _walk(self._body)
+
+    def _on_body_configure(self, _event=None):
+        self._sync_wrap()
 
     # ---------------- Step1：工作目录 ----------------
     def _render_step1(self):
@@ -171,7 +202,7 @@ class FirstRunWizard:
                  text="   工作目录用来存放所有 .mol / .xyz / .fchk / .out 等计算文件。\n"
                       "   我们推荐使用独立文件夹，后续可随时在顶部工具栏切换。",
                  bg="#161B22", fg="#9DA7B3",
-                 font=('Microsoft YaHei UI', 10), justify="left").pack(anchor="w", padx=24)
+                 font=('Microsoft YaHei UI', 10), justify="left", wraplength=500).pack(anchor="w", padx=24)
 
         row = tk.Frame(self._body, bg="#161B22")
         row.pack(fill=tk.X, padx=24, pady=(20, 12))
@@ -191,7 +222,7 @@ class FirstRunWizard:
         tip = tk.Label(self._body,
                        text="💡 推荐：在「文档」下新建一个空文件夹（程序已自动尝试创建 Documents/MolManager）。",
                        bg="#161B22", fg="#58A6FF",
-                       font=('Microsoft YaHei UI', 9), justify="left")
+                       font=('Microsoft YaHei UI', 9), justify="left", wraplength=500)
         tip.pack(anchor="w", padx=24, pady=(0, 0))
 
     # ---------------- Step2：映射模板 ----------------
@@ -203,7 +234,7 @@ class FirstRunWizard:
                  text="   映射表能把「文件名 → 中文名」自动关联，列表里一眼看出每个分子是什么。\n"
                       "   初学者建议直接生成示例模板，在它基础上添加你自己的条目即可。",
                  bg="#161B22", fg="#9DA7B3",
-                 font=('Microsoft YaHei UI', 10), justify="left").pack(anchor="w", padx=24)
+                 font=('Microsoft YaHei UI', 10), justify="left", wraplength=500).pack(anchor="w", padx=24)
 
         cb = tk.Checkbutton(self._body, text="✅ 在工作目录里生成 mapping_template.txt 并默认加载它",
                             variable=self.load_sample_mapping, bg="#161B22",
@@ -233,7 +264,7 @@ class FirstRunWizard:
                  text="   以后每次打开「计算与动画」页，都会默认选中这个预设，一键即可运行。\n"
                       "   高级用户仍可在 PSI4 完整面板里自由调整所有参数。",
                  bg="#161B22", fg="#9DA7B3",
-                 font=('Microsoft YaHei UI', 10), justify="left").pack(anchor="w", padx=24)
+                 font=('Microsoft YaHei UI', 10), justify="left", wraplength=500).pack(anchor="w", padx=24)
 
         row = tk.Frame(self._body, bg="#161B22")
         row.pack(fill=tk.X, padx=24, pady=(20, 8))
@@ -246,7 +277,8 @@ class FirstRunWizard:
 
         # 显示所选预设的参数摘要
         self._preset_summary = tk.Label(self._body, text="", bg="#161B22", fg="#58A6FF",
-                                        font=('Microsoft YaHei UI', 10), justify="left", anchor="w")
+                                        font=('Microsoft YaHei UI', 10), justify="left", anchor="w",
+                                        wraplength=500)
         self._preset_summary.pack(fill=tk.X, padx=24, pady=(6, 0))
 
         def _update_summary(_e=None):

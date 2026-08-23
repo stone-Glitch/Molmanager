@@ -51,22 +51,16 @@ def run_pka_prediction(
 
     _auto_Aminus_tmp: str | None = None
     try:
-        # 若没给 A⁻，用 OB -p 12 自动去质子化
+        # 科学红线 S-02：pKa 热力学循环必须同时拥有 HA 与 A⁻ 结构。
+        # 移除旧的"固定 pH=12 自动去质子化"逻辑——自动生成的 A⁻ 往往不是真实
+        # 去质子化构象，会污染热力学循环，得到错误 pKa。强制用户提供 A⁻ 文件。
         if a_minus_file is None:
-            try:
-                with tempfile.NamedTemporaryFile(suffix=".xyz", delete=False) as _tmp_fp:
-                    a_guess = _tmp_fp.name
-                _auto_Aminus_tmp = a_guess
-                ob_utils.protonate_ph(ha_file, a_guess, ph=12.0)
-                if os.path.exists(a_guess):
-                    a_minus_file = a_guess
-                    result["auto_generated_Aminus"] = a_guess
-                else:
-                    result["error"] = "未提供 A⁻ 文件且 OB -p 12.0 无法自动生成"
-                    return result
-            except Exception as e:
-                result["error"] = f"A⁻ 结构猜测失败：{e}"
-                return result
+            result["success"] = False
+            result["error"] = (
+                "pKa 预测必须提供去质子化结构（A⁻）文件：热力学循环需要 HA 与 A⁻ 两者。"
+                "请先用编辑/优化得到 A⁻ 后传入 a_minus_file，不要再依赖自动 pH=12 去质子化。"
+            )
+            return result
 
         # 4 个任务：HA gas、A⁻ gas、HA aq、A⁻ aq
         sub: dict[str, tuple[str, str, int, int]] = {

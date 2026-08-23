@@ -703,7 +703,7 @@ class MainView(*_DND_BASES):
                 nb = getattr(self, "main_notebook", None)
                 if nb is not None:
                     try:
-                        nb.select(0)
+                        nb.select(1)  # 文件管理（工作台已是第 0 页）
                     except Exception:
                         pass
                 entry.focus_set()
@@ -861,6 +861,292 @@ F1              显示此帮助
                 messagebox.showerror("诊断失败", f"无法打开错误诊断：\n{e}")
             except Exception:
                 pass
+
+    # ==================== 纯逻辑模块接入（2026-08-16） ====================
+    # 以下 all 均为「纯逻辑模块 → 菜单入口」，惰性导入 + try/except 兜底，
+    # 任何失败只写日志/弹提示，绝不把主窗口打崩。行为需在裸金属 GUI 实测。
+    def _show_text_dialog(self, title: str, text: str) -> None:
+        """只读多行文本查看对话框（供各纯逻辑模块展示结果）。"""
+        from tkinter import Toplevel, Text, Scrollbar, BOTH, END, Y, RIGHT, LEFT, WORD
+        top = Toplevel(self)
+        top.title(title)
+        top.transient(self)
+        try:
+            top.geometry("760x540")
+        except Exception:
+            pass
+        txt = Text(top, wrap=WORD, font=("Consolas", 10))
+        sb = Scrollbar(top, command=txt.yview)
+        txt.configure(yscrollcommand=sb.set)
+        sb.pack(side=RIGHT, fill=Y)
+        txt.pack(side=LEFT, fill=BOTH, expand=True, padx=8, pady=8)
+        txt.insert(END, text)
+        txt.configure(state="disabled")
+
+    def show_file_association_from_menu(self) -> None:
+        """E-06 反向追溯：按词干把结构文件与 .log/.fchk/.out 关联。"""
+        try:
+            from utils.file_association import associate_by_stem
+            files = sorted(f['name'] for f in (getattr(self, 'last_scan_result', []) or []))
+            links = associate_by_stem(files)
+            if not links:
+                self.helpers.on_log("ℹ️ 未发现可追溯的结构/结果文件", 'info')
+                return
+            lines = []
+            for lk in links:
+                lines.append(f"■ {lk.stem}")
+                lines.append(f"   结构: {lk.structure or '（无结构文件）'}")
+                if lk.results:
+                    lines.append("   结果: " + ", ".join(lk.results))
+                if lk.extras:
+                    lines.append("   其它: " + ", ".join(lk.extras))
+            self._show_text_dialog("反向追溯（.xyz ↔ .log/.fchk/.out）", "\n".join(lines))
+        except Exception as e:
+            self.helpers.on_log(f"❌ 反向追溯失败: {e}", 'error')
+
+    def show_rule_engine_from_menu(self) -> None:
+        """E-03 规则引擎：用声明式规则匹配当前文件，展示命中结果。"""
+        try:
+            from utils.rule_engine import evaluate_rules, render_actions, load_rules
+            cfg = getattr(self, 'config_data', {}) or {}
+            rules_text = cfg.get('rules_json', '')
+            if rules_text:
+                rules, errs = load_rules(rules_text)
+                if errs:
+                    self.helpers.on_log("⚠️ 规则校验有误: " + "; ".join(errs[:3]), 'warning')
+            else:
+                rules = [
+                    {"id": "big_struct", "name": "大结构文件标记待复核",
+                     "when": {"field": "ext", "op": "in", "value": [".xyz", ".mol"]},
+                     "then": {"action": "flag", "target": "status", "label": "review"}},
+                    {"id": "orphan_result", "name": "孤立结果文件提示",
+                     "when": {"field": "ext", "op": "in", "value": [".log", ".out"]},
+                     "then": {"action": "notify"}},
+                ]
+            if not rules:
+                self.helpers.on_log("⚠️ 无可用规则（未配置 rules_json 且规则为空）", 'warning')
+                return
+            entries = getattr(self, 'last_scan_result', []) or []
+            lines = []
+            for e in entries:
+                matched = evaluate_rules(rules, e)
+                if matched:
+                    desc = ", ".join(a['rule_name'] or str(a['rule_id']) for a in render_actions(matched))
+                    lines.append(f"{e['name']} → {desc}")
+            if not lines:
+                self.helpers.on_log("ℹ️ 规则引擎：无文件命中规则", 'info')
+                return
+            self._show_text_dialog("规则引擎命中", "\n".join(lines))
+        except Exception as e:
+            self.helpers.on_log(f"❌ 规则引擎执行失败: {e}", 'error')
+
+    def show_hpc_script_from_menu(self) -> None:
+        """E-09 HPC 作业脚本生成（SLURM 示例），保存为 .sh 或弹窗预览。"""
+        try:
+            from tkinter import filedialog
+            from utils.hpc_script import generate_script
+            job = {"name": "molmanager_job", "nodes": 1, "ntasks": 4,
+                   "cpus_per_task": 4, "walltime": "12:00:00", "memory_gb": 8,
+                   "commands": ["# 在此填写要运行的命令，例如：", "python main.py --batch --fix-all"]}
+            script = generate_script("slurm", job)
+            out = filedialog.asksaveasfilename(
+                defaultextension=".sh", filetypes=[("Shell 脚本", "*.sh")],
+                initialfile="submit_slurm.sh")
+            if out:
+                with open(out, 'w', encoding='utf-8') as f:
+                    f.write(script)
+                self.helpers.on_log(f"📜 SLURM 作业脚本已生成: {out}", 'success')
+            else:
+                self._show_text_dialog("SLURM 作业脚本", script)
+        except Exception as e:
+            self.helpers.on_log(f"❌ 生成作业脚本失败: {e}", 'error')
+
+    def show_project_pack_from_menu(self) -> None:
+        """E-05 项目打包：导出 / 导入 .molproj（ZIP+清单）。"""
+        try:
+            from tkinter import filedialog, messagebox
+            from utils.project_pack import pack_project, unpack_project
+            choice = messagebox.askyesnocancel(
+                "项目打包 .molproj", "是 = 导出工作目录为 .molproj\n否 = 从 .molproj 导入\n取消 = 返回",
+                parent=self)
+            if choice is None:
+                return
+            work = str(self.controller.model.work_dir)
+            if choice:
+                out = filedialog.asksaveasfilename(
+                    defaultextension=".molproj", filetypes=[("MolManager 项目", "*.molproj")],
+                    initialfile="project.molproj")
+                if not out:
+                    return
+                manifest = pack_project(work, out)
+                self.helpers.on_log(f"🎒 项目已导出到 {out}（{manifest['file_count']} 个文件）", 'success')
+            else:
+                src = filedialog.askopenfilename(filetypes=[("MolManager 项目", "*.molproj")])
+                if not src:
+                    return
+                res = unpack_project(src, work)
+                self.helpers.on_log(
+                    f"📦 项目导入完成：{res['extracted']} 个（跳过已存在 {res['skipped']} 个）", 'success')
+                self.controller.scan_files()
+        except Exception as e:
+            self.helpers.on_log(f"❌ 项目打包失败: {e}", 'error')
+
+    def show_log_parse_from_menu(self) -> None:
+        """E-07/E-01 日志解析 + 动态元数据：解析勾选的 .log/.out/.fchk。"""
+        try:
+            from utils.metadata_index import extract_metadata, collect_columns
+            sel = self.helpers.get_selected_files()
+            lines = []
+            for p in sel:
+                if not p.lower().endswith(('.log', '.out', '.fchk')):
+                    continue
+                try:
+                    with open(p, 'r', encoding='utf-8', errors='replace') as f:
+                        content = f.read()
+                except OSError as oe:
+                    lines.append(f"■ {p}\n   （读取失败: {oe}）")
+                    continue
+                meta = extract_metadata(p, content)
+                lines.append(f"■ {p}")
+                for c in collect_columns([meta]):
+                    lines.append(f"   {c}: {meta.get(c)}")
+            if not lines:
+                self.helpers.on_log("⚠️ 请先勾选 .log/.out/.fchk 文件", 'warning')
+                return
+            self._show_text_dialog("日志解析 / 动态元数据", "\n".join(lines))
+        except Exception as e:
+            self.helpers.on_log(f"❌ 日志解析失败: {e}", 'error')
+
+    def show_mo_diagram_from_menu(self) -> None:
+        """E-13 MO 能级图：解析勾选的 .fchk 轨道能级，导出 SVG。"""
+        try:
+            from tkinter import filedialog
+            from utils.mo_diagram import parse_fchk_orbitals, parse_fchk_int, render_mo_svg
+            sel = self.helpers.get_selected_files()
+            fchk = next((p for p in sel if p.lower().endswith('.fchk')), None)
+            if not fchk:
+                fchk = filedialog.askopenfilename(filetypes=[("Gaussian fchk", "*.fchk")])
+            if not fchk:
+                return
+            with open(fchk, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+            energies = parse_fchk_orbitals(content)
+            n_el = parse_fchk_int(content, "Number of electrons") or 0
+            svg = render_mo_svg(energies, n_el, title="MO 能级图")
+            out = filedialog.asksaveasfilename(
+                defaultextension=".svg", filetypes=[("SVG 图", "*.svg")], initialfile="mo_diagram.svg")
+            if out:
+                with open(out, 'w', encoding='utf-8') as f:
+                    f.write(svg)
+                self.helpers.on_log(f"🖼️ MO 能级图已导出: {out}", 'success')
+            else:
+                self._show_text_dialog("MO 能级图 SVG", svg)
+        except Exception as e:
+            self.helpers.on_log(f"❌ 生成 MO 能级图失败: {e}", 'error')
+
+    def show_structure_score_from_menu(self) -> None:
+        """U-16 结构美观度评分：对勾选的结构文件做启发式打分。"""
+        try:
+            import chem.openbabel_utils as obu
+            from utils.structure_score import score_structure
+            sel = self.helpers.get_selected_files()
+            structure = next((p for p in sel
+                              if p.lower().endswith(('.mol', '.sdf', '.xyz', '.pdb', '.cif', '.mol2'))), None)
+            if not structure:
+                self.helpers.on_log("⚠️ 请先勾选一个结构文件", 'warning')
+                return
+            res = obu.calculate_descriptors(structure)
+            if not res.get('success'):
+                self.helpers.on_log(f"⚠️ 无法计算描述符: {res.get('message')}", 'warning')
+                return
+            s = score_structure(res.get('descriptors') or {})
+            text = f"文件: {structure}\n评分: {s['score']}  {s['grade']}\n\n" + \
+                   "\n".join("· " + n for n in s['notes'])
+            self._show_text_dialog("结构美观度评分", text)
+        except Exception as e:
+            self.helpers.on_log(f"❌ 美观度评分失败: {e}", 'error')
+
+    def show_example_library_from_menu(self) -> None:
+        """U-10 示例分子库 + 失败案例教育。"""
+        try:
+            from utils.example_library import get_examples, get_failure_cases
+            lines = ["【示例分子】"]
+            for m in get_examples():
+                lines.append(f"· {m['name']}（{m['english']}） {m['formula']}  "
+                             f"SMILES: {m['smiles']}  [{m['category']}]")
+            lines.append("")
+            lines.append("【常见失败案例】")
+            for c in get_failure_cases():
+                lines.append(f"· {c['title']}：{c['why']}")
+            self._show_text_dialog("示例分子库 & 失败案例", "\n".join(lines))
+        except Exception as e:
+            self.helpers.on_log(f"❌ 打开示例库失败: {e}", 'error')
+
+    def show_wizard_steps_from_menu(self) -> None:
+        """U-07 新手任务向导（6 场景）只读概览。"""
+        try:
+            from utils.wizard_steps import get_scenarios
+            lines = []
+            for s in get_scenarios():
+                lines.append(f"■ {s['title']} — {s['description']}")
+                for i, st in enumerate(s['steps'], 1):
+                    lines.append(f"   {i}. {st['title']}：{st['detail']}")
+                lines.append("")
+            self._show_text_dialog("新手任务向导（6 场景）", "\n".join(lines))
+        except Exception as e:
+            self.helpers.on_log(f"❌ 打开向导失败: {e}", 'error')
+
+    def show_cli_batch_from_menu(self) -> None:
+        """E-08 CLI 无头模式：展示 --batch --fix-all 的有序计划预览。"""
+        try:
+            from utils.cli_batch import parse_args, build_batch_plan, plan_summary
+            opts = parse_args(["--batch", "--fix-all", "--dry-run"])
+            plan = build_batch_plan(opts)
+            self._show_text_dialog("CLI 无头模式计划预览", plan_summary(plan, dry_run=True))
+        except Exception as e:
+            self.helpers.on_log(f"❌ CLI 计划预览失败: {e}", 'error')
+
+    def toggle_ui_mode_from_menu(self) -> None:
+        """U-06 简易/专家模式切换（写入 config.ui_mode，并提示被隐藏的功能）。"""
+        try:
+            from utils.feature_flags import ADVANCED_ONLY
+            cfg = getattr(self, 'config_data', {}) or {}
+            cur = cfg.get('ui_mode', 'simple')
+            new = 'advanced' if cur != 'advanced' else 'simple'
+            cfg['ui_mode'] = new
+            self.config_data = cfg
+            try:
+                from utils.config import save_config
+                save_config(cfg)
+            except Exception:
+                pass
+            if new == 'advanced':
+                msg = "已切换到「专家」模式：全部高级功能可见。"
+            else:
+                hidden = ", ".join(sorted(ADVANCED_ONLY))
+                msg = "已切换到「简易」模式。\n\n以下功能仅在专家模式可用（当前已隐藏）：\n" + hidden
+            self.helpers.on_log(msg, 'info')
+            try:
+                from tkinter import messagebox
+                messagebox.showinfo("模式切换", msg, parent=self)
+            except Exception:
+                pass
+        except Exception as e:
+            self.helpers.on_log(f"❌ 模式切换失败: {e}", 'error')
+
+    def show_tree_overview_from_menu(self) -> None:
+        """E-02 分层目录树概览（只读，用 tree_builder 从扁平列表构建）。"""
+        try:
+            from utils.tree_builder import build_tree, iter_tree, count_nodes
+            files = [f['name'] for f in (getattr(self, 'last_scan_result', []) or [])]
+            tree = build_tree(files)
+            dirs, fs = count_nodes(tree)
+            lines = [f"目录树概览：{dirs} 个目录 / {fs} 个文件"]
+            for path, is_file in iter_tree(tree):
+                lines.append(("📄 " if is_file else "📁 ") + path)
+            self._show_text_dialog("分层目录树概览", "\n".join(lines))
+        except Exception as e:
+            self.helpers.on_log(f"❌ 目录树概览失败: {e}", 'error')
 
     def on_close(self):
         # ———— 关闭拦截：若有任务正在运行，先二次确认，避免杀掉正在写的文件 ————

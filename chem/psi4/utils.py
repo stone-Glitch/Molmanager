@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from utils.logger import default_logger as logger
+from utils.cache import LRUCache
 import chem.openbabel_utils as ob_utils
 
 
@@ -56,10 +57,9 @@ def _write_xyz(n: int, atoms: list[str], coords: list[list[float]]) -> str:
 _LERP_COORDS_CACHE_MAX = 2048
 # 审计 2.1：原实现用 id(R)/id(P)（对象内存地址）做键，对象被回收后地址会被复用，
 # 可能导致「不同分子对」命中「陈旧/错误」的插值结果；且原淘汰为 FIFO、无锁。
-# 改为：① 用坐标内容哈希做键（正确性）；② 用 OrderedDict 实现真正 LRU；③ 加锁线程安全；
-# ④ 命中时返回拷贝，避免调用方篡改污染共享缓存。
-_LERP_COORDS_CACHE: "OrderedDict[bytes, list[list[float]]]" = OrderedDict()
-_LERP_COORDS_CACHE_LOCK = threading.Lock()
+# 改为：① 用坐标内容哈希做键（正确性）；② 统一到 utils.cache.LRUCache（线程安全 LRU）；
+# ③ 命中时返回拷贝，避免调用方篡改污染共享缓存。
+lerp_coords_cache: "LRUCache" = LRUCache(maxsize=_LERP_COORDS_CACHE_MAX)
 
 
 def _coords_signature(coords) -> bytes | None:
@@ -92,22 +92,14 @@ def _lerp_coords(R: list[list[float]], P: list[list[float]], t: float) -> list[l
     except Exception:
         key = None
     if key is not None:
-        with _LERP_COORDS_CACHE_LOCK:
-            if key in _LERP_COORDS_CACHE:
-                _LERP_COORDS_CACHE.move_to_end(key)                # LRU：标记最近使用
-                return [list(c) for c in _LERP_COORDS_CACHE[key]]  # 返回拷贝，防止外部篡改
+        cached = lerp_coords_cache.get(key)
+        if cached is not None:
+            return [list(c) for c in cached]                       # 返回拷贝，防止外部篡改
     result = [[one_minus_t * R[i][0] + t * P[i][0],
                one_minus_t * R[i][1] + t * P[i][1],
                one_minus_t * R[i][2] + t * P[i][2]] for i in range(n)]
     if key is not None:
-        with _LERP_COORDS_CACHE_LOCK:
-            while len(_LERP_COORDS_CACHE) >= _LERP_COORDS_CACHE_MAX:
-                try:
-                    _LERP_COORDS_CACHE.popitem(last=False)          # 淘汰最久未使用
-                except KeyError:
-                    break
-            _LERP_COORDS_CACHE[key] = [list(c) for c in result]
-            _LERP_COORDS_CACHE.move_to_end(key)
+        lerp_coords_cache.put(key, [list(c) for c in result])
     return result
 
 
@@ -266,3 +258,47 @@ def _set_dihedral_and_write(n: int, atoms: list[str], coords: list[list[float]],
                 os.unlink(tmp_in)
             except OSError:
                 pass
+
+
+def _set_dihedral_and_get(n: int, atoms: list[str], coords: list[list[float]],
+                          i: int, j: int, k: int, l: int, angle_deg: float) -> str | None:
+    """
+    P-03 内存版：用 OpenBabel --tor 设置二面角后，直接返回修改后 XYZ 文本（不落盘输出文件）。
+    内部仍用临时文件驱动 obabel（obabel 必须走文件路径），但临时文件会被清理，
+    调用方无需在 frames_dir 下为每个扫描帧保留一份 XYZ。返回 None 表示失败。
+    """
+    tmp_in: str | None = None
+    tmp_out: str | None = None
+    try:
+        import tempfile as _tf
+        with _tf.NamedTemporaryFile("w", suffix=".xyz", delete=False, encoding='utf-8') as f:
+            tmp_in = f.name
+            f.write(_write_xyz(n, atoms, coords))
+        fd, tmp_out = _tf.mkstemp(suffix=".xyz")
+        os.close(fd)
+        exe = ob_utils._resolve_obabel_cli()
+        import subprocess as _sp
+        import sys as _sys
+        if _sys.platform == "win32":
+            si = _sp.STARTUPINFO()
+            si.dwFlags |= _sp.STARTF_USESHOWWINDOW
+            kw = {'startupinfo': si, 'creationflags': _sp.CREATE_NO_WINDOW}
+        else:
+            kw = {}
+        cmd = [exe, tmp_in, "-O", tmp_out,
+               "--tor", f"{i + 1},{j + 1},{k + 1},{l + 1},{angle_deg:.4f}"]
+        r = _sp.run(cmd, capture_output=True, text=True, timeout=120, **kw)
+        if r.returncode != 0 or not os.path.exists(tmp_out) or os.path.getsize(tmp_out) == 0:
+            return None
+        with open(tmp_out, encoding='utf-8') as fh:
+            return fh.read()
+    except Exception as e:
+        logger.debug("内存版设置二面角失败: %s", e)
+        return None
+    finally:
+        for _p in (tmp_in, tmp_out):
+            if _p and os.path.exists(_p):
+                try:
+                    os.unlink(_p)
+                except OSError:
+                    pass

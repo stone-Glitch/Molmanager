@@ -13,57 +13,26 @@ from tkinter import messagebox
 from utils.logger import default_logger as logger
 
 
-# ===== dialogs 级临时目录跟踪 + atexit 兜底清理 =====
-_DIALOG_TEMP_DIRS: list[Path] = []
-_DIALOG_TEMP_DIRS_LOCK = threading.Lock()
+# ===== 统一临时目录跟踪：委托给 utils.path_utils 的全局注册表 + atexit 兜底 =====
+# 保留旧函数名仅为向后兼容；注册/清理统一走 path_utils，
+# 保证全项目临时目录由同一处集中管理（避免多套注册表各自为政）。
+from utils.path_utils import (
+    register_temp_dir as _register_temp_dir,
+    unregister_temp_dir as _unregister_temp_dir,
+    cleanup_all_temp_dirs as _cleanup_all_temp_dirs,
+)
 
 
 def register_dialog_temp_dir(p) -> None:
-    """把临时目录注册到 atexit 兜底。"""
-    if not p:
-        return
-    try:
-        pp = Path(p)
-    except Exception:
-        return
-    with _DIALOG_TEMP_DIRS_LOCK:
-        _DIALOG_TEMP_DIRS.append(pp)
+    _register_temp_dir(p)
 
 
 def unregister_dialog_temp_dir(p) -> None:
-    """手动清理后把注册项移除。"""
-    if not p:
-        return
-    try:
-        pp = Path(p)
-    except Exception:
-        return
-    with _DIALOG_TEMP_DIRS_LOCK:
-        try:
-            _DIALOG_TEMP_DIRS.remove(pp)
-        except ValueError:
-            pass
+    _unregister_temp_dir(p)
 
 
 def force_cleanup_dialog_temp_dirs() -> int:
-    """立即清理所有已注册但还存在的临时目录。"""
-    with _DIALOG_TEMP_DIRS_LOCK:
-        all_dirs = list(_DIALOG_TEMP_DIRS)
-        _DIALOG_TEMP_DIRS.clear()
-    removed = 0
-    for d in all_dirs:
-        try:
-            if d.exists():
-                import shutil as _shu
-                _shu.rmtree(str(d), ignore_errors=True)
-                removed += 1
-        except Exception:
-            pass
-    return removed
-
-
-import atexit
-atexit.register(force_cleanup_dialog_temp_dirs)
+    return _cleanup_all_temp_dirs()
 
 
 # ===== 线程安全的 Text 控件写入 =====

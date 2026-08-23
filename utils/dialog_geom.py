@@ -73,7 +73,18 @@ def make_scrollable_body(dialog, padx: int = 12, pady: int = 12):
     vbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     body = tk.Frame(canvas)
-    canvas.create_window((0, 0), window=body, anchor="nw")
+    _win_id = canvas.create_window((0, 0), window=body, anchor="nw")
+
+    def _on_canvas_configure(event):
+        # 🔴 把 body 宽度钳制到画布宽度：否则 body 按其内容自然宽度展开，
+        # 内容比画布宽时会横向溢出（被窗口边缘裁掉，且无横向滚动条）。
+        try:
+            canvas.itemconfigure(_win_id, width=event.width)
+        except Exception:
+            pass
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    canvas.bind("<Configure>", _on_canvas_configure)
 
     def _on_body_configure(_event=None):
         canvas.configure(scrollregion=canvas.bbox("all"))

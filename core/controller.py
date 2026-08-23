@@ -86,13 +86,61 @@ class Controller:
         if not path.is_file():
             self.helpers.on_log(f"❌ 映射文件无效或不存在: {path}", 'error')
             return
+        # ---- M-05：加载前先算 Diff 预览，让用户确认变更后再 apply ----
         try:
-            count, dup = self.model.load_mapping_file(path)
+            from utils.mapping_utils import diff_mappings
+            new_dict, _parse_info = self.model.parse_mapping_file(path)
+            diff = diff_mappings(self.model.mapping, new_dict)
+            c = diff["counts"]
+            if c["added"] or c["changed"] or c["removed"]:
+                try:
+                    from ui.dialogs.mapping_dialog import show_mapping_diff_preview
+                    ok = show_mapping_diff_preview(
+                        self.app, self.model.mapping, new_dict, diff
+                    )
+                except Exception as _pe:  # 弹窗异常 → 回退为直接加载，按钮绝不死
+                    logger.warning("Diff 预览弹窗异常，回退直接加载: %s", _pe)
+                    ok = True
+                if not ok:
+                    self.helpers.on_log("ℹ️ 已取消加载（用户在 Diff 预览中拒绝）", 'info')
+                    return
+            else:
+                self.helpers.on_log("ℹ️ 新映射表与当前内容一致，无需变更", 'info')
+        except Exception as _de:  # Diff 计算异常 → 回退为直接加载
+            logger.warning("Diff 预览计算异常，回退直接加载: %s", _de)
+        # ---- 原有加载逻辑（保持不变）----
+        try:
+            info = self.model.load_mapping_file(path)
+            count = info["count"]
             self.app.mapping_count.set(str(count))
-            if dup > 0:
-                self.helpers.on_log(f"✅ 映射加载成功：{count} 个有效条目，自动跳过 {dup} 个重复项", 'success')
+            if info["dup_eng"] > 0:
+                self.helpers.on_log(
+                    f"✅ 映射加载成功：{count} 个有效条目，自动跳过 {info['dup_eng']} 个重复英文名", 'success'
+                )
             else:
                 self.helpers.on_log(f"✅ 映射加载成功，共 {count} 个条目", 'success')
+            # 科学红线 S-06：中文名冲突必须显式告知，绝不能静默塌缩导致丢数据
+            if info["dup_chn"] > 0:
+                _examples = "\n".join(
+                    f"  · 「{c[0]}」← 已属 {c[1]}，又被 {c[2]} 占用"
+                    for c in info["chn_conflicts"][:10]
+                )
+                _more = "\n  …（更多冲突见日志）" if info["dup_chn"] > 10 else ""
+                self.helpers.on_log(
+                    f"⚠️ 发现 {info['dup_chn']} 处中文名冲突（多英文名映射到同一中文名，"
+                    f"反向映射将只保留其一，其余悄悄丢失）："
+                    + "；".join(f"「{c[0]}」←{c[1]}/{c[2]}" for c in info["chn_conflicts"][:10])
+                    + (_more if info["dup_chn"] > 10 else ""),
+                    'warning'
+                )
+                messagebox.showwarning(
+                    "中文名冲突（映射将丢数据）",
+                    f"检测到 {info['dup_chn']} 处中文名冲突：\n多个不同的英文名映射到了同一个中文名，"
+                    "反向映射（中文→英文）只会保留最后载入的一条，其余会悄悄丢失。\n\n"
+                    "冲突示例：\n" + _examples + _more + "\n\n"
+                    "建议：把冲突的中文名改为互不相同，或用「映射表编辑器」手动拆分后再加载。",
+                    parent=self.app
+                )
             self.scan_files()
         except Exception as e:
             self.helpers.on_log(f"❌ 加载映射失败: {e}", 'error')
@@ -113,6 +161,12 @@ class Controller:
                     self.app.last_scan_result = list(files)
                     self.helpers.apply_filter()
                     self.helpers.on_log(f"📁 扫描完成，发现 {len(files)} 个文件", 'info')
+                    # 工作台统计卡刷新（若工作台页已构建）
+                    try:
+                        if hasattr(self.app, "refresh_dashboard"):
+                            self.app.refresh_dashboard()
+                    except Exception:
+                        pass
                 self.app.after(0, _after)
             except Exception as e:
                 import traceback
@@ -241,8 +295,10 @@ class Controller:
 
     def organize_by_type(self):
         def _dryrun() -> list[dict]:
-            ext_map = {'.mol': 'mol_files', '.xyz': 'xyz_files', '.fchk': 'fchk_files',
-                       '.out': 'out_files', '.inp': 'inp_files'}
+            ext_map = {'.mol': 'mol_files', '.xyz': 'xyz_files', '.sdf': 'sdf_files',
+                       '.pdb': 'pdb_files', '.mol2': 'mol2_files', '.cif': 'cif_files',
+                       '.pdbqt': 'pdbqt_files', '.cml': 'cml_files',
+                       '.fchk': 'fchk_files', '.out': 'out_files', '.inp': 'inp_files'}
             changes = []
             for entry in self.model.work_dir.iterdir():
                 if not entry.is_file():
@@ -502,6 +558,27 @@ class Controller:
                 f"🎉 导入完成：{info['count']} 个文件已进入工作目录（Ctrl+Z 可撤销）",
                 'success' if not info['errors'] else 'warning',
             )
+            # F06 即时反馈：导入结果不只写日志，还要给一个汇总弹窗。
+            # _task 在后台线程运行，弹窗必须经 after(0) 调回主线程（Tk 非线程安全）。
+            count = info.get('count', 0)
+            skipped = len(info.get('skipped', []))
+            errors = len(info.get('errors', []))
+            _summary = [f"✅ 成功导入 {count} 个文件"]
+            if skipped:
+                _summary.append(f"⏭️ 跳过 {skipped} 个（重名/已存在等）")
+            if errors:
+                _summary.append(f"❌ 失败 {errors} 个")
+            _summary.append("")
+            _summary.append("原文件保留在原位置，可用 Ctrl+Z 撤销本次导入。")
+            try:
+                self.app.after(
+                    0,
+                    lambda _t="\n".join(_summary): messagebox.showinfo(
+                        "导入完成", _t, parent=self.app
+                    ),
+                )
+            except Exception:
+                pass
             self.scan_files()
 
         self.helpers.run_task(_task)
@@ -584,15 +661,48 @@ class Controller:
         from core.task_manager import TaskManager
         tm = TaskManager(self.app, self)
 
-        def _task(_progress=None, _log=None, **_kw):
+        # 并发度：默认 1（顺序，零回归）；config.descriptor_workers 或
+        # 环境变量 MM_DESCRIPTOR_WORKERS 可覆盖。>1 才真正分片并行。
+        import os as _os
+        _cfg_workers = int((self.app.config_data or {}).get("descriptor_workers", 1) or 1)
+        try:
+            _env_workers = int(_os.environ.get("MM_DESCRIPTOR_WORKERS", "0") or "0")
+        except ValueError:
+            _env_workers = 0
+        _workers = _env_workers or _cfg_workers or 1
+
+        def _compute_one(item):
             import chem.openbabel_utils as obu
             from pathlib import Path
+            iid, fpath = item
+            name = Path(fpath).name
+            res = obu.calculate_descriptors(fpath)
+            return iid, fpath, name, res
+
+        def _task(_progress=None, _log=None, **_kw):
+            from utils.concurrency import run_sharded
             total = len(paths)
             ok, fail = 0, 0
-            for i, (iid, fpath) in enumerate(paths, 1):
-                name = Path(fpath).name
+            # 取消信号：task_manager 的取消会令 _progress 停止，但为稳妥这里用计数器感知
+            def _is_cancelled():
+                return False  # 批量描述符目前整体可取消由 task_manager 层处理
+
+            results = run_sharded(
+                paths,
+                _compute_one,
+                max_workers=_workers,
+                on_progress=(lambda d, t: _progress(d, t, f"描述符计算中 {d}/{t}") if _progress else None),
+                is_cancelled=_is_cancelled,
+            )
+            for (iid, fpath, name, res) in results:
+                if isinstance(res, dict) and "_exc" in res:
+                    fail += 1
+                    msg = f"描述符异常 {name}: {res['_exc']}"
+                    if _log:
+                        _log(msg, level="warning")
+                    logger.warning(msg, exc_info=res["_exc"])
+                    continue
                 try:
-                    res = obu.calculate_descriptors(fpath)
                     if res.get("success"):
                         d = res.get("descriptors") or {}
                         mw = d.get("molecular_weight")
@@ -622,12 +732,10 @@ class Controller:
                         logger.warning(msg)
                 except Exception as e:
                     fail += 1
-                    msg = f"描述符异常 {name}: {e}"
+                    msg = f"描述符结果处理异常 {name}: {e}"
                     if _log:
                         _log(msg, level="warning")
                     logger.warning(msg, exc_info=True)
-                if _progress:
-                    _progress(i, total, f"描述符计算中 {i}/{total}（成功{ok}，失败{fail}）")
             return {"count": total, "ok": ok, "fail": fail}
 
         def _write_cols(iid, v):

@@ -12,7 +12,10 @@ psi4 导入开销 —— 这是消除「每次计算都重导 psi4 约 10~15s」
 重启本 worker（下一次计算再次承担一次导入，仅取消时付出该代价）。
 """
 import json
+import os
 import sys
+import time
+import threading
 import traceback
 
 
@@ -45,42 +48,79 @@ def main():
         except Exception:
             return "<unserializable>"
 
-    # —— 逐行读取命令；父进程关闭 stdin（EOF）时自然退出 ——
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            cmd = json.loads(line)
-        except Exception:
-            continue
+    # —— P-06：空闲自动退出，防止 PSI4 常驻占用数百 MB 内存膨胀 ——
+    # 若长时间（默认 10 分钟）没有收到新命令，watchdog 主动关闭 stdin → 主循环读到
+    # EOF 自然退出，释放 PSI4 占用的内存；父进程 _ensure_worker 在下次任务时惰性重启
+    # （仅再承担一次 psi4 导入开销）。这对「偶发计算」用户最有利。
+    IDLE_TIMEOUT_SECONDS = int(os.environ.get("MOLMANAGER_PSI4_WORKER_IDLE", "600"))
+    _last_cmd_time = [time.time()]
+    _stop_watchdog = threading.Event()
 
-        result_path = cmd.pop("result_path", None)
-        progress_path = cmd.pop("progress_path", None)
-        cmd.pop("_extra_post_hook", None)
-
-        def _prog(p, m, _pp=progress_path):
-            if _pp:
-                _progress_to_file(_pp, p, m)
-
-        cmd["_progress_callback"] = _prog
-
-        try:
-            result = run_psi4_task(**cmd)
-        except Exception as e:
-            result = {
-                "success": False,
-                "error": f"worker 计算异常: {e}",
-                "trace": traceback.format_exc(),
-            }
-
-        if result_path:
+    def _watchdog():
+        while not _stop_watchdog.is_set():
+            time.sleep(5)
             try:
-                with open(result_path, "w", encoding="utf-8") as rf:
-                    json.dump(result, rf, default=_default, ensure_ascii=False)
+                idle = time.time() - _last_cmd_time[0]
             except Exception:
-                pass
+                idle = 0
+            if idle > IDLE_TIMEOUT_SECONDS:
+                # 空闲超时：关闭 stdin，主循环下次读即 EOF 退出（跨平台可靠）
+                try:
+                    sys.stderr.write(
+                        f"worker: 空闲 {int(idle)}s 超过 {IDLE_TIMEOUT_SECONDS}s，自动退出释放内存\n")
+                    sys.stdin.close()
+                except Exception:
+                    pass
 
+    threading.Thread(target=_watchdog, daemon=True).start()
+
+    # —— 逐行读取命令；父进程关闭 stdin（EOF）或空闲超时关闭 stdin 时自然退出 ——
+    try:
+        for line in sys.stdin:
+            _last_cmd_time[0] = time.time()  # 收到命令即刷新空闲计时
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                cmd = json.loads(line)
+            except Exception:
+                continue
+
+            # SHUTDOWN：父进程请求优雅退出。break 结束主循环，
+            # 触发 finally 停 watchdog，进程正常退出，避免被强杀残留。
+            if cmd.get("command") == "SHUTDOWN":
+                break
+
+            result_path = cmd.pop("result_path", None)
+            progress_path = cmd.pop("progress_path", None)
+            cmd.pop("_extra_post_hook", None)
+
+            def _prog(p, m, _pp=progress_path):
+                if _pp:
+                    _progress_to_file(_pp, p, m)
+
+            cmd["_progress_callback"] = _prog
+
+            try:
+                result = run_psi4_task(**cmd)
+            except Exception as e:
+                result = {
+                    "success": False,
+                    "error": f"worker 计算异常: {e}",
+                    "trace": traceback.format_exc(),
+                }
+
+            if result_path:
+                try:
+                    with open(result_path, "w", encoding="utf-8") as rf:
+                        json.dump(result, rf, default=_default, ensure_ascii=False)
+                except Exception:
+                    pass
+    except (OSError, ValueError, EOFError):
+        # stdin 被 watchdog / 父进程关闭：视为正常退出路径
+        pass
+    finally:
+        _stop_watchdog.set()
     return 0
 
 

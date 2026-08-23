@@ -24,6 +24,40 @@ from typing import Optional, Union
 PathLike = Union[str, os.PathLike]
 
 
+# ==================== Windows 长路径（>260）扩展长度前缀 ====================
+
+def win_longpath(p: PathLike) -> str:
+    """
+    将 Windows 绝对路径转换为 ``\\\\?\\`` 扩展长度（extended-length）格式，
+    规避 Win32 传统 MAX_PATH=260 字符限制；非 Windows 或相对路径原样返回。
+
+    适用边界（重要）：
+      - 仅用于「最终交给 open()/os 文件操作」的字符串参数。
+      - 不要用于仍需 Path 语义（.relative_to / .parent / 拼接）的中间路径，
+        否则 ``\\\\?\\`` 前缀会让这些操作失效。
+      - ``\\\\?\\`` 只是 Win32 API 前缀，文件系统里的真实路径仍是原样，
+        因此后续用不带前缀的 Path 做 os.replace/mkdir 等不受影响。
+
+    处理要点：
+      - UNC ``\\\\server\\share\\...`` → ``\\\\?\\UNC\\server\\share\\...``
+      - 本地盘符 ``C:\\foo``          → ``\\\\?\\C:\\foo``
+      - 已是 ``\\\\?\\`` 前缀则幂等返回；相对路径 / 非 Windows 原样返回。
+    """
+    if sys.platform != "win32":
+        return os.fspath(p)
+    s = os.fspath(p)
+    if not isinstance(s, str):
+        s = str(s)
+    if not os.path.isabs(s):
+        return s
+    s = s.replace("/", "\\")
+    if s.startswith("\\\\?\\"):
+        return s
+    if s.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + s[2:]
+    return "\\\\?\\" + s
+
+
 # ==================== 目录权限 ====================
 
 def chmod_quiet(p: Path, mode: int) -> None:
@@ -286,6 +320,21 @@ def resolve_secure_output_path(
     norm_abs = os.path.normpath(os.fspath(p))
     base_norm = os.path.normpath(os.fspath(base_real))
     if not allow_outside:
+        # 🔴 显式预检盘符：Windows 上 os.path.commonpath 跨盘符会抛原生英文
+        # ValueError("Paths don't have the same drive")，对用户极不友好且难定位。
+        # 先用 splitdrive 取出盘符（含 UNC 的 \\server\share）比对，不同则给出明确
+        # 中文错误并附两个路径与盘符，让用户/排错者一眼看到根因。
+        d_abs, _ = os.path.splitdrive(norm_abs)
+        d_base, _ = os.path.splitdrive(base_norm)
+        if os.path.normcase(d_abs) != os.path.normcase(d_base):
+            raise ValueError(
+                f"输出路径与允许根目录不在同一盘符：\n"
+                f"  请求路径：{norm_abs!r}（盘符 {d_abs or '(相对)'})\n"
+                f"  允许根：  {base_norm!r}（盘符 {d_base or '(相对)'})\n"
+                f"常见原因：工作目录在 D:/ 盘，但输出路径（或其父目录）被解析到了 C:/ "
+                f"或其它盘符（如路径中含指向其它盘的 symlink/junction，或调用方传了"
+                f"其它盘的 base_dir）。"
+            )
         try:
             # 规范化到真实路径：展开 Windows 8.3 短名（如 LVDOUZ~1 → lvdouzhijia82）、
             # 统一大小写与分隔符，避免同一目录因短名/长名不一致被 commonpath 误判为「越界」。
@@ -555,3 +604,68 @@ def cleanup_stale_tempdirs(max_age_seconds: int = 3 * 24 * 3600) -> int:
     if removed:
         logger.info("清理过期临时目录 %d 个（> %.1f 天）", removed, max_age_seconds / 86400.0)
     return removed
+
+
+# ==================== 统一临时目录管理 ====================
+# 全项目所有「散落各处的 mkdtemp」都应改走这里：创建即注册，由 atexit 统一兜底清理，
+# 防止进程异常退出（崩溃 / 强杀）时残留临时目录。手动清理后调用 unregister_temp_dir
+# 可移除登记（不调用也无害——cleanup_all_temp_dirs 对已不存在的目录自动跳过）。
+import threading as _threading
+import atexit as _atexit
+
+_TEMP_DIRS: list[Path] = []
+_TEMP_DIRS_LOCK = _threading.Lock()
+
+
+def make_temp_dir(prefix: str = "molmanager_") -> str:
+    """创建临时目录并注册到统一清理清单。返回与 ``tempfile.mkdtemp`` 相同的 str 路径。"""
+    p = tempfile.mkdtemp(prefix=prefix)
+    register_temp_dir(p)
+    return p
+
+
+def register_temp_dir(p) -> None:
+    """把临时目录注册到统一清理清单（幂等，重复注册只保留一份）。"""
+    if not p:
+        return
+    try:
+        pp = Path(p)
+    except Exception:
+        return
+    with _TEMP_DIRS_LOCK:
+        if pp not in _TEMP_DIRS:
+            _TEMP_DIRS.append(pp)
+
+
+def unregister_temp_dir(p) -> None:
+    """手动清理后把登记项移除（幂等）。"""
+    if not p:
+        return
+    try:
+        pp = Path(p)
+    except Exception:
+        return
+    with _TEMP_DIRS_LOCK:
+        try:
+            _TEMP_DIRS.remove(pp)
+        except ValueError:
+            pass
+
+
+def cleanup_all_temp_dirs() -> int:
+    """立即清理所有已登记且仍存在的临时目录，返回删除数量。"""
+    with _TEMP_DIRS_LOCK:
+        all_dirs = list(_TEMP_DIRS)
+        _TEMP_DIRS.clear()
+    removed = 0
+    for d in all_dirs:
+        try:
+            if d.exists():
+                shutil.rmtree(str(d), ignore_errors=True)
+                removed += 1
+        except Exception:
+            pass
+    return removed
+
+
+_atexit.register(cleanup_all_temp_dirs)

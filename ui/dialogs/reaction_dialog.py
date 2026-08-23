@@ -448,8 +448,6 @@ def show_reaction_animation_dialog(app, controller):
                  values=["sto-3g", "3-21g", "6-31g", "6-31g*", "6-31g(d)", "6-311g**",
                          "6-311++g(d,p)", "def2-svp", "def2-svpd", "def2-tzvp", "def2-tzvpd",
                          "cc-pvdz", "cc-pvtz", "aug-cc-pvdz", "aug-cc-pvtz"]).pack(side='left', padx=6)
-    qm_d3_var = tk.BooleanVar(value=False)
-    ttk.Checkbutton(rq1, text="D3 色散校正", variable=qm_d3_var).pack(side='left', padx=4)
 
     rq2 = ttk.Frame(qm)
     rq2.pack(fill='x', **pad)
@@ -465,6 +463,9 @@ def show_reaction_animation_dialog(app, controller):
     ttk.Label(rq2, text="   PSI4 内存:", width=11, anchor='w').pack(side='left')
     qm_mem_var = tk.StringVar(value="4 GB")
     ttk.Entry(rq2, textvariable=qm_mem_var, width=8).pack(side='left')
+    # D3 色散校正从 rq1 挪到 rq2：rq1 一行（溶剂+方法+基组+散色）曾横向溢出被裁
+    qm_d3_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(rq2, text="D3 色散校正", variable=qm_d3_var).pack(side='left', padx=8)
 
     rq3 = ttk.Frame(qm)
     rq3.pack(fill='x', **pad)
@@ -485,7 +486,12 @@ def show_reaction_animation_dialog(app, controller):
                    filedialog.askdirectory(parent=dialog, initialdir=str(controller.model.work_dir),
                                            title="选择势能面扫描输出目录")
                    or scan_output_var.get()))).pack(side='left')
-    run_scan_btn = ttk.Button(rq3, text="⚡ 运行 PSI4 线性扫描并自动填 CSV", width=40)
+
+    # 「运行扫描」按钮移到独立行：rq3 一行塞了预设+输出目录+浏览+运行按钮，
+    # 曾横向溢出把右侧按钮裁掉。独立行右对齐，彻底规避。
+    rq4 = ttk.Frame(qm)
+    rq4.pack(fill='x', **pad)
+    run_scan_btn = ttk.Button(rq4, text="⚡ 运行 PSI4 线性扫描并自动填 CSV")
     run_scan_btn.pack(side='right', padx=4)
 
     # 高级参数容器

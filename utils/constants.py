@@ -95,7 +95,16 @@ RUN_PRESETS: dict[str, dict[str, Any]] = {
     },
 }
 
-SUPPORTED_EXTS = {'.mol', '.xyz', '.fchk', '.out', '.inp'}
+# 结构文件格式：分子结构本体，参与「映射匹配 / 重命名规划 / 缺失列表生成」。
+# M-01：从原 .mol/.xyz 两种扩展到 8 种常见结构格式（sdf/pdb/mol2/cif/pdbqt/cml），
+# 让这些格式也能被 MolManager 识别、改名、生成缺失映射。
+STRUCTURE_EXTS = frozenset({
+    '.mol', '.xyz', '.sdf', '.pdb', '.mol2', '.cif', '.pdbqt', '.cml',
+})
+
+# 受支持文件类型 = 结构格式 + 计算结果格式（.out/.fchk/.inp）。
+# 扫描 / 文件列表 / 预览 / 类型整理均以本集合为准。
+SUPPORTED_EXTS = STRUCTURE_EXTS | {'.out', '.fchk', '.inp'}
 COLORS = {
     "info": "black",
     "success": "green",
@@ -116,7 +125,7 @@ __all__ = [
     # 格式/元素常量
     "COMMON_INPUT_FORMATS", "ATOMIC_WEIGHTS",
     # 已有常量
-    "SUPPORTED_EXTS",
+    "STRUCTURE_EXTS", "SUPPORTED_EXTS",
     "PSI4_PRESETS", "PSI4_TASKS", "PSI4_UNSUPPORTED_TASKS",
     "RUN_PRESETS", "COLORS",
 ]

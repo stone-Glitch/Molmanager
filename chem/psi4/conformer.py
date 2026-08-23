@@ -64,6 +64,12 @@ def conformer_search_ensemble(
         "summary_csv": None,
         "ensemble_energy_png": None,
         "output_dir": None,
+        # P-05：构象系综多样性/退化诊断字段（机器可读，供下游 Boltzmann 加权等判断是否可信）
+        "rotor_free": False,
+        "n_conformers_found": 0,
+        "n_conformers_requested": int(n_confs_total),
+        "diversity_min_rmsd": None,
+        "diversity_note": None,
     }
     if not ob_utils.PYBEL_AVAILABLE:
         result["error"] = "需要 pybel/OpenBabel Python 包做构象搜索"
@@ -113,18 +119,9 @@ def conformer_search_ensemble(
                         continue
             except Exception:
                 rotor_bonds = []
-            # 去重改用 3D 构象 RMSD（重原子），而非 SMILES。
-            # 同一分子的不同构象 SMILES 相同 → 用 SMILES 去重会把所有构象合并成 1 个，
-            # 导致多构象搜索失效、后续 NMR/pKa 的 Boltzmann 加权退化为单构象（P-1）。
-            out_mols = []
-            out_obmols = []  # 存坐标副本，用于 RMSD 比较
-            for _ in range(n_confs_total):
-                for b in rotor_bonds:
-                    ang = rng.uniform(0, 360)
-                    try:
-                        b.SetTorsion(ang)
-                    except Exception:
-                        continue
+            if not rotor_bonds:
+                # P-05：分子无旋转键（刚性）。构象空间退化，只生成 1 个（MMFF 优化后的）构象，
+                # 不做无意义的重复采样与优化，也不虚构多样性（避免「假构象」污染下游 Boltzmann 加权）。
                 try:
                     ff = ob_utils.ob.OBForceField.FindForceField("MMFF94") or ob_utils.ob.OBForceField.FindForceField("UFF")
                     if ff and ff.Setup(obmol):
@@ -138,35 +135,82 @@ def conformer_search_ensemble(
                             pass
                 except Exception:
                     pass
-                # 与已有构象做 RMSD 比较（重原子，阈值 0.1 Å），近重复才跳过
-                dup = False
-                for prev in out_obmols:
+                keep = ob_utils.ob.OBMol()
+                keep.Assign(obmol)
+                out_obmols = [keep]
+                pm = ob_utils.ob.OBMol()
+                pm.Assign(obmol)
+                out_mols = [ob_utils.pybel.Molecule(pm)]
+                result["rotor_free"] = True
+                logger.info(
+                    "构象搜索：分子无旋转键（刚性），系综实际仅含 1 个唯一构象，已跳过重复采样。"
+                )
+            else:
+                # 去重改用 3D 构象 RMSD（重原子），而非 SMILES。
+                # 同一分子的不同构象 SMILES 相同 → 用 SMILES 去重会把所有构象合并成 1 个，
+                # 导致多构象搜索失效、后续 NMR/pKa 的 Boltzmann 加权退化为单构象（P-1）。
+                out_mols = []
+                out_obmols = []  # 存坐标副本，用于 RMSD 比较
+                # P-05：旋转键较少（≤3）时，纯随机采样会浪费大量样本在重复组合上。
+                # 对首个旋转键做系统性角度步进（其余保留随机），在 n_confs_total 预算内最大化覆盖。
+                n_r = len(rotor_bonds)
+                systematic = n_r <= 3
+                for idx in range(n_confs_total):
+                    if systematic and n_r >= 1:
+                        ang0 = (360.0 / n_confs_total) * idx
+                        try:
+                            rotor_bonds[0].SetTorsion(ang0)
+                        except Exception:
+                            pass
+                    for b in (rotor_bonds[1:] if systematic else rotor_bonds):
+                        ang = rng.uniform(0, 360)
+                        try:
+                            b.SetTorsion(ang)
+                        except Exception:
+                            continue
                     try:
-                        if obmol.RMSD(prev, True) < 0.1:
-                            dup = True
-                            break
+                        ff = ob_utils.ob.OBForceField.FindForceField("MMFF94") or ob_utils.ob.OBForceField.FindForceField("UFF")
+                        if ff and ff.Setup(obmol):
+                            try:
+                                ff.ConjugateGradients(200, 1.0e-4)
+                            except Exception:
+                                pass
+                            try:
+                                ff.GetCoordinates(obmol)
+                            except Exception:
+                                pass
                     except Exception:
                         pass
-                if not dup:
-                    keep = ob_utils.ob.OBMol()
-                    keep.Assign(obmol)
-                    out_obmols.append(keep)
-                    pm = ob_utils.ob.OBMol()
-                    pm.Assign(obmol)
-                    out_mols.append(ob_utils.pybel.Molecule(pm))
-                if len(out_mols) >= n_confs_total:
-                    break
-            # 审计 1.1（极端场景）：若分子无旋转键（如苯环）或构象空间极小时，
-            # 实际生成的唯一构象数可能远小于请求的 n_confs_total。若静默返回少量构象，
-            # 用户可能误以为有 n_confs_total 个构象参与了后续 Boltzmann 加权（NMR/pKa），
-            # 实际只有少数几个，造成结果代表性偏差。在此显式告警，提醒用户真实构象数。
-            if 0 < len(out_mols) < n_confs_total:
-                logger.warning(
-                    "构象搜索回退分支仅生成 %d 个唯一构象（请求 %d）。若分子无旋转键或构象空间极小，"
-                    "此属正常；但后续 Boltzmann 加权将仅基于这 %d 个构象，请注意结果代表性。",
-                    len(out_mols), n_confs_total, len(out_mols),
-                )
+                    # 与已有构象做 RMSD 比较（重原子，阈值 0.1 Å），近重复才跳过
+                    dup = False
+                    for prev in out_obmols:
+                        try:
+                            if obmol.RMSD(prev, True) < 0.1:
+                                dup = True
+                                break
+                        except Exception:
+                            pass
+                    if not dup:
+                        keep = ob_utils.ob.OBMol()
+                        keep.Assign(obmol)
+                        out_obmols.append(keep)
+                        pm = ob_utils.ob.OBMol()
+                        pm.Assign(obmol)
+                        out_mols.append(ob_utils.pybel.Molecule(pm))
+                    if len(out_mols) >= n_confs_total:
+                        break
+                # 审计 1.1（极端场景）：若分子无旋转键（如苯环）或构象空间极小时，
+                # 实际生成的唯一构象数可能远小于请求的 n_confs_total。若静默返回少量构象，
+                # 用户可能误以为有 n_confs_total 个构象参与了后续 Boltzmann 加权（NMR/pKa），
+                # 实际只有少数几个，造成结果代表性偏差。在此显式告警，提醒用户真实构象数。
+                if 0 < len(out_mols) < n_confs_total:
+                    logger.warning(
+                        "构象搜索回退分支仅生成 %d 个唯一构象（请求 %d）。若分子无旋转键或构象空间极小，"
+                        "此属正常；但后续 Boltzmann 加权将仅基于这 %d 个构象，请注意结果代表性。",
+                        len(out_mols), n_confs_total, len(out_mols),
+                    )
             if out_mols:
+                result["n_conformers_found"] = len(out_mols)
                 conv = ob_utils.ob.OBConversion()
                 conv.SetOutFormat("sdf")
                 with open(confabsdf, "wb") as f:
@@ -214,6 +258,30 @@ def conformer_search_ensemble(
         with_e.append((_energy_of(mol), mol))
     with_e.sort(key=lambda x: x[0])
     top_mols = with_e[:top_n]
+
+    # P-05：多样性诊断（Confab 与回退两条路径共用）。
+    # 真实找到的构象数 + top 系综的最小两两 RMSD —— 直接决定下游 Boltzmann 加权是否可信。
+    result["n_conformers_found"] = len(mols_list)
+    try:
+        obmols = [m[1].OBMol for m in top_mols]
+        min_r: float | None = None
+        for a in range(len(obmols)):
+            for b in range(a + 1, len(obmols)):
+                try:
+                    d = obmols[a].RMSD(obmols[b], True)
+                    if min_r is None or d < min_r:
+                        min_r = d
+                except Exception:
+                    pass
+        result["diversity_min_rmsd"] = min_r
+        if len(top_mols) >= 2 and (min_r is None or min_r < 0.1):
+            note = (f"构象系综多样性极低（最小两两 RMSD "
+                    f"{min_r if min_r is not None else 'n/a'} Å），"
+                    "多数构象近乎重合，下游 Boltzmann 加权实际接近单构象。")
+            result["diversity_note"] = note
+            logger.warning("构象多样性诊断：%s", note)
+    except Exception as _e_div:
+        logger.debug("构象多样性诊断失败: %s", _e_div)
 
     mmff_top = []
     for rank, (e, mol) in enumerate(top_mols, 1):

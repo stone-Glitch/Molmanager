@@ -16,14 +16,13 @@ import csv
 import subprocess
 import tempfile
 import shutil
-import hashlib
 import threading
-from collections import OrderedDict
 import warnings
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Any, Union
 
 from utils.logger import default_logger as logger, performance_timer
+from utils.cache import LRUCache, make_file_cache_key
 from utils.constants import (
     DEFAULT_FORCEFIELD,
     OB_DEFAULT_TIMEOUT_SEC,
@@ -51,13 +50,10 @@ except ImportError:
         PYBEL_AVAILABLE = False
 
 # ======================== 缓存（性能优化 + 线程安全） ========================
-# 用 OrderedDict 实现真正的 LRU：命中时 move_to_end 把条目移到「最近使用」一端，
-# 逐出时 popitem(last=False) 淘汰最久未使用者。
-# 旧实现是普通 dict + next(iter(...))，那是 FIFO——批量扫描时正在反复读取的热点
-# 条目会因为「插入得早」被淘汰，命中率极低，缓存基本失去意义。
+# 原实现为各自手写 OrderedDict + move_to_end + popitem 的重复 LRU；
+# 现统一到 utils.cache.LRUCache（线程安全、容量上限、原子淘汰）。
 _DESC_CACHE_MAX = 128
-_DESC_CACHE: "OrderedDict[tuple[str, int, int, str | None], Dict[str, Any]]" = OrderedDict()
-_DESC_CACHE_LOCK = threading.Lock()
+desc_cache: "LRUCache" = LRUCache(maxsize=_DESC_CACHE_MAX)
 
 #: 仅对不超过该大小的文件做整文件内容哈希，作为缓存键的额外维度（审计 P-2）；
 #: 超过则退回 (mtime, size) 仅键，避免读取巨文件拖累性能（P-3 关注大文件场景）。
@@ -75,8 +71,7 @@ _MOL_READ_CACHE_MAX_BYTES = int(
 #: 单文件含分子数超过此值的（典型为上千分子的巨量 SDF）不进读取缓存，仅跳过缓存、正常返回，
 #: 避免整表 pybel 分子对象撑爆内存（审计 P-3）。
 _MOL_READ_CACHE_MAX_MOLECULES = 200
-_MOL_READ_CACHE: "OrderedDict[tuple[str, int, int, str | None, str], list]" = OrderedDict()
-_MOL_READ_CACHE_LOCK = threading.Lock()
+mol_read_cache: "LRUCache" = LRUCache(maxsize=_MOL_READ_CACHE_MAX)
 
 _OBABEL_CLI_LOCK = threading.Lock()  # 保护 _OBABEL_CLI_EXE 单例初始化
 
@@ -115,52 +110,27 @@ def clear_caches() -> tuple[int, int]:
     """
     公开接口：安全地清空所有 OpenBabel 缓存（描述符 + 分子读取）。
     返回: (evicted_desc_count, evicted_mol_read_count)
-    保证：即使清空过程中抛错，两个字典最终都处于「已清空」的一致状态。
     """
-    d = 0
-    m = 0
-    with _DESC_CACHE_LOCK:
-        d = len(_DESC_CACHE)
-        _DESC_CACHE.clear()
-    with _MOL_READ_CACHE_LOCK:
-        m = len(_MOL_READ_CACHE)
-        _MOL_READ_CACHE.clear()
+    d = desc_cache.clear()
+    m = mol_read_cache.clear()
     return d, m
 
 
 def _cache_key(path_str: str) -> tuple[str, int, int, str | None] | None:
     """返回 (解析后路径, mtime_ns, 大小, 内容哈希或None)。
 
+    统一委托 utils.cache.make_file_cache_key（语义、字段顺序完全一致）。
     内容哈希用于抵御「同尺寸/同 mtime 但内容被原地覆盖」导致的陈旧缓存命中（审计 P-2）；
     仅对小文件计算，大文件（P-3 场景）跳过哈希以保性能。
     """
-    try:
-        st = os.stat(path_str)
-        path_resolved = os.fspath(Path(path_str).resolve())
-        mtime_ns = int(st.st_mtime_ns)
-        size = int(st.st_size)
-        content_hash: str | None = None
-        if 0 <= size <= _CONTENT_HASH_MAX_BYTES:
-            try:
-                h = hashlib.md5()
-                with open(path_str, "rb") as _fh:
-                    for _chunk in iter(lambda: _fh.read(1 << 20), b""):
-                        h.update(_chunk)
-                content_hash = h.hexdigest()
-            except OSError:
-                content_hash = None
-        return (path_resolved, mtime_ns, size, content_hash)
-    except OSError:
-        return None
+    return make_file_cache_key(path_str, max_hash_bytes=_CONTENT_HASH_MAX_BYTES)
 
 
 def cache_stats() -> dict[str, int]:
     """公开接口：返回当前缓存状态（只读，内部加锁，对多线程安全）。"""
-    with _DESC_CACHE_LOCK:
-        dc = len(_DESC_CACHE)
-    with _MOL_READ_CACHE_LOCK:
-        mc = len(_MOL_READ_CACHE)
-    return {"descriptors": dc, "mol_read": mc, "desc_max": _DESC_CACHE_MAX, "mol_read_max": _MOL_READ_CACHE_MAX}
+    ds = desc_cache.stats()
+    ms = mol_read_cache.stats()
+    return {"descriptors": ds["size"], "mol_read": ms["size"], "desc_max": ds["maxsize"], "mol_read_max": ms["maxsize"]}
 
 
 # ======================== 问题三：手动 obabel 路径 ========================
@@ -712,10 +682,9 @@ def _read_molecules(input_path: str, input_ext: str) -> list:
     if cache_full_key is not None and ck[2] > _MOL_READ_CACHE_MAX_BYTES:
         cache_full_key = None
     if cache_full_key is not None:
-        with _MOL_READ_CACHE_LOCK:
-            if cache_full_key in _MOL_READ_CACHE:
-                _MOL_READ_CACHE.move_to_end(cache_full_key)   # LRU：标记为最近使用
-                return list(_MOL_READ_CACHE[cache_full_key])
+        cached = mol_read_cache.get(cache_full_key)
+        if cached is not None:
+            return list(cached)
     if input_ext:
         result = list(pybel.readfile(input_ext, input_path))
     else:
@@ -743,14 +712,7 @@ def _read_molecules(input_path: str, input_ext: str) -> list:
     # 审计 P-3：含分子数过多的文件（典型：上千分子的巨量 SDF）不进缓存，
     # 仅跳过缓存、正常返回解析结果，避免整表 pybel 分子对象撑爆内存。
     if cache_full_key is not None and len(result) <= _MOL_READ_CACHE_MAX_MOLECULES:
-        with _MOL_READ_CACHE_LOCK:
-            while len(_MOL_READ_CACHE) >= _MOL_READ_CACHE_MAX:
-                try:
-                    _MOL_READ_CACHE.popitem(last=False)       # 淘汰最久未使用
-                except KeyError:
-                    break
-            _MOL_READ_CACHE[cache_full_key] = list(result)
-            _MOL_READ_CACHE.move_to_end(cache_full_key)
+        mol_read_cache.put(cache_full_key, list(result))
     return result
 
 def convert_file(input_path: str, output_path: str, output_format: str, base_dir=None) -> Dict[str, Any]:
@@ -951,10 +913,9 @@ def calculate_descriptors(input_path: str) -> Dict[str, Any]:
     """
     ck = _cache_key(input_path)
     if ck is not None:
-        with _DESC_CACHE_LOCK:
-            if ck in _DESC_CACHE:
-                _DESC_CACHE.move_to_end(ck)                   # LRU：标记为最近使用
-                return dict(_DESC_CACHE[ck])
+        cached = desc_cache.get(ck)
+        if cached is not None:
+            return dict(cached)
     descriptors: Dict[str, Any] = {}
     try:
         if PYBEL_AVAILABLE:
@@ -976,6 +937,16 @@ def calculate_descriptors(input_path: str) -> Dict[str, Any]:
                     "rotors": obmol.NumRotors() if hasattr(obmol, "NumRotors") else 0,
                     "rings": obmol.NumSSSR() if hasattr(obmol, "NumSSSR") else 0,
                 }
+                # E-04 化学感知搜索：补充「分子式」与「总原子数」两个常用检索维度。
+                # 纯增量，不影响已有键（重命名占位符仅引用其中的部分键）。
+                try:
+                    descriptors["formula"] = mol.formula
+                except Exception as _fe:
+                    logger.debug("获取分子式失败: %s", _fe)
+                try:
+                    descriptors["num_atoms"] = len(mol.atoms)
+                except Exception as _ae:
+                    logger.debug("获取总原子数失败: %s", _ae)
                 for attr_name, attr_key in (("molwt", "molecular_weight"),
                                             ("logP", "logP"), ("tpsa", "tpsa")):
                     try:
@@ -1009,14 +980,7 @@ def calculate_descriptors(input_path: str) -> Dict[str, Any]:
     except Exception as e:
         result = {"success": False, "message": str(e), "descriptors": {}}
     if ck is not None:
-        with _DESC_CACHE_LOCK:
-            while len(_DESC_CACHE) >= _DESC_CACHE_MAX:
-                try:
-                    _DESC_CACHE.popitem(last=False)           # 淘汰最久未使用
-                except KeyError:
-                    break
-            _DESC_CACHE[ck] = dict(result)
-            _DESC_CACHE.move_to_end(ck)
+        desc_cache.put(ck, dict(result))
     return result
 
 

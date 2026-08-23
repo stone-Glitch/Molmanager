@@ -43,6 +43,8 @@ DARK = {
     "danger":         "#F85149",
     "error":          "#F85149",
     "error_hover":    "#FF7B72",
+    "muted":          "#8B97AC",  # 中性（计算文件/禁用）· 语义令牌
+    "info":           "#58A6FF",  # 信息 · 语义令牌（同 link）
     "btn_text":       "#0F1419",  # 强调色按钮上的深字
     "btn_recommend_bg": "#3FB950",
     "btn_info_bg":    "#2DD4BF",
@@ -78,6 +80,8 @@ LIGHT = {
     "danger":         "#DC2626",
     "error":          "#DC2626",
     "error_hover":    "#EF4444",
+    "muted":          "#64748B",  # 中性（计算文件/禁用）· 语义令牌
+    "info":           "#2563EB",  # 信息 · 语义令牌（同 link）
     "btn_text":       "#FFFFFF",  # 强调色按钮上的白字
     "btn_recommend_bg": "#16A34A",
     "btn_info_bg":    "#0D948B",
@@ -509,7 +513,16 @@ def primary_button(parent, text, command, **kw):
     kw.setdefault("cursor", "hand2")
     kw.setdefault("padx", 14)
     kw.setdefault("pady", 6)
+    # 修复启动崩溃：调用方常传 `tip="..."` 挂 Tooltip，但 tk.Button 不认识 `-tip`
+    # → 从 kw 里 pop 出，按钮建好后用 add_tooltip 挂上。惰性导入防循环。
+    tip_text = kw.pop("tip", None)
     w = tk.Button(parent, text=text, command=command, **kw)
+    if tip_text:
+        try:
+            from ui.ui_builder import add_tooltip
+            add_tooltip(w, tip_text)
+        except Exception:
+            pass
 
     def _r(wd, pal):
         try:
@@ -537,7 +550,15 @@ def secondary_button(parent, text, command, **kw):
     kw.setdefault("cursor", "hand2")
     kw.setdefault("padx", 12)
     kw.setdefault("pady", 6)
+    # 同 primary_button：`tip` 由 add_tooltip 处理，不透传给 tk.Button
+    tip_text = kw.pop("tip", None)
     w = tk.Button(parent, text=text, command=command, **kw)
+    if tip_text:
+        try:
+            from ui.ui_builder import add_tooltip
+            add_tooltip(w, tip_text)
+        except Exception:
+            pass
 
     def _r(wd, pal):
         try:

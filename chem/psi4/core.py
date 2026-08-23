@@ -21,7 +21,8 @@ from typing import Dict, Optional, Callable, Any, List, Tuple
 
 from utils.logger import default_logger as logger, performance_timer
 from utils.constants import PSI4_PRESETS
-from utils.path_utils import secure_output_path, default_base_dir_from_input
+from utils.path_utils import secure_output_path, default_base_dir_from_input, win_longpath
+from utils.cache import LRUCache, make_file_cache_key
 import chem.openbabel_utils as ob_utils
 
 # ---------- NumPy 兼容性补丁 ----------
@@ -174,20 +175,13 @@ def normalize_psi4_memory(value: Any, default: str = _DEFAULT_MEMORY) -> str:
     return f"{num} {unit_norm}"
 
 
-# ---------- 缓存 ----------
-_XYZ_READ_CACHE: dict[tuple[str, int, int], str | None] = {}
+# ---------- 读取缓存（统一到 utils.cache.LRUCache） ----------
+# 原实现为普通 dict + RLock + 手动 FIFO 淘汰；现统一为线程安全 LRU。
+# 键构造委托 make_file_cache_key（含内容哈希，抵御同尺寸/mtime 的就地覆盖陈旧命中）。
 _XYZ_READ_CACHE_MAX = 512
-# 审计 #1 修复：原缓存无锁，多个 PSI4 任务并发调用 read_xyz_content 时
-# 字典读写/淘汰非原子，可能字典损坏或读到半写入值。加 RLock 保护。
-_XYZ_READ_CACHE_LOCK = threading.RLock()
-
-
-def _xyz_cache_key(path_str: str) -> tuple[str, int, int] | None:
-    try:
-        st = os.stat(path_str)
-        return (os.fspath(Path(path_str).resolve()), int(st.st_mtime_ns), int(st.st_size))
-    except OSError:
-        return None
+xyz_read_cache: "LRUCache" = LRUCache(maxsize=_XYZ_READ_CACHE_MAX)
+# 区分「缓存未命中」与「命中但值为 None（解析失败）」的哨兵
+_XYZ_CACHE_MISS = object()
 
 
 # ---------- 环境检测 ----------
@@ -363,17 +357,17 @@ def convert_with_obabel(input_file: str, output_file: str) -> bool:
 
 # ---------- 读取 XYZ ----------
 def read_xyz_content(file_path: str) -> Optional[str]:
-    key = _xyz_cache_key(file_path)
-    # 读路径加锁（仅查缓存，不含文件 IO）
+    key = make_file_cache_key(file_path)
+    # 查缓存（命中即返回；LRUCache 内部加锁，字典读写原子）
     if key is not None:
-        with _XYZ_READ_CACHE_LOCK:
-            if key in _XYZ_READ_CACHE:
-                return _XYZ_READ_CACHE[key]
+        cached = xyz_read_cache.get(key, _XYZ_CACHE_MISS)
+        if cached is not _XYZ_CACHE_MISS:
+            return cached
     encodings = ('utf-8', 'gbk', 'gb2312', 'latin-1')
     content: str | None = None
     for enc in encodings:
         try:
-            with open(file_path, 'r', encoding=enc) as f:
+            with open(win_longpath(file_path), 'r', encoding=enc) as f:
                 content = f.read()
             break
         except UnicodeDecodeError:
@@ -382,7 +376,7 @@ def read_xyz_content(file_path: str) -> Optional[str]:
             break
     if content is None:
         try:
-            with open(file_path, 'rb') as f:
+            with open(win_longpath(file_path), 'rb') as f:
                 raw = f.read()
                 content = raw.decode('utf-8', errors='replace')
         except OSError:
@@ -424,16 +418,9 @@ def read_xyz_content(file_path: str) -> Optional[str]:
                     out_lines = [str(n), "Converted by OpenBabel"]
                     out_lines.extend([f"{a:2s}  {x:12.6f}  {y:12.6f}  {z:12.6f}" for (a, x, y, z) in coord_lines])
                     result = "\n".join(out_lines) + "\n"
-    # 写路径加锁（含 LRU 淘汰），与读路径同一把锁
+    # 写回缓存（含 LRU 淘汰，统一由 LRUCache 内部处理）
     if key is not None:
-        with _XYZ_READ_CACHE_LOCK:
-            if len(_XYZ_READ_CACHE) >= _XYZ_READ_CACHE_MAX:
-                try:
-                    first_key = next(iter(_XYZ_READ_CACHE))
-                    del _XYZ_READ_CACHE[first_key]
-                except StopIteration:
-                    pass
-            _XYZ_READ_CACHE[key] = result
+        xyz_read_cache.put(key, result)
     return result
 
 
@@ -498,13 +485,24 @@ def run_psi4_task(
     charge: int = 0,
     multiplicity: int = 1,
     memory: str = '4 GB',
+    xyz_content: Optional[str] = None,
+    base_name: Optional[str] = None,
     **kwargs
 ) -> Dict:
+    """运行单个 PSI4 任务。
+
+    P-03 增强：当 ``xyz_content`` 提供时，跳过一切基于文件路径的校验
+    （存在性 / 符号链接 / 非 ASCII 临时目录），直接用内存中的 XYZ 文本构建分子，
+    从而让线性扫描等场景免于为每个插值帧落盘临时 XYZ 文件。
+    ``base_name`` 用于输出文件前缀（否则从 input_file 派生）。
+    两者均向后兼容：``xyz_content=None`` 时行为与改造前逐字节一致。
+    """
 
     if not check_psi4_installed_simple():
         return {"success": False, "error": "PSI4 未安装"}
 
-    if not os.path.exists(input_file):
+    # P-03：内存 XYZ 模式——跳过文件存在性检查
+    if xyz_content is None and not os.path.exists(input_file):
         return {"success": False, "error": f"文件不存在: {input_file}"}
 
     progress_callback: Optional[Callable] = kwargs.get('_progress_callback', None)
@@ -578,6 +576,7 @@ def run_psi4_task(
             logger.debug("PSI4 core.clean() 失败: %s", _ce)
 
     try:
+        in_memory = xyz_content is not None
         input_path = Path(input_file)
         has_non_ascii = any(ord(c) > 127 for c in str(input_path.resolve()))
         print(f"路径检测: has_non_ascii = {has_non_ascii}, 路径 = {input_file}")
@@ -615,7 +614,7 @@ def run_psi4_task(
             print(f"ℹ️  使用 PSI4 临时目录：{output_dir}")
             return output_dir
 
-        if has_non_ascii:
+        if (not in_memory) and has_non_ascii:
             _switch_to_temp_dir()
         else:
             if output_dir is None:
@@ -625,45 +624,61 @@ def run_psi4_task(
             except OSError as m_err:
                 raise RuntimeError(f"无法创建 PSI4 输出目录: {output_dir}") from m_err
 
-        report(5, "读取分子结构...")
-        mol = None
-
-        try:
-            real_input_path = Path(input_file).resolve(strict=True)
-        except OSError as exc:
-            return {"success": False, "error": f"分子文件无法解析为真实路径: {exc}"}
-        if not real_input_path.is_file() or real_input_path.is_symlink():
-            return {"success": False,
-                    "error": f"分子文件必须是真实文件（禁止符号链接）: {input_file}"}
-
-        def _load_from_realpath(full_temp_dir: str | None) -> tuple:
-            work = Path(full_temp_dir) if full_temp_dir else real_input_path.parent
-            converted_xyz = os.fspath(work / "molecule.xyz")
-            if full_temp_dir is None and not real_input_path.suffix.lower() == ".xyz":
-                _td.register_extra(converted_xyz)
-            src_is_xyz = real_input_path.suffix.lower() == ".xyz"
-            if src_is_xyz:
-                xyz = read_xyz_content(os.fspath(real_input_path))
-            else:
-                if not convert_with_obabel(os.fspath(real_input_path), converted_xyz):
-                    return None, "OpenBabel 转换失败"
-                xyz = read_xyz_content(converted_xyz)
-            if xyz is None:
-                return None, "无法解析 XYZ"
+        # ---- P-03：内存 XYZ 模式 vs 文件模式 ----
+        if xyz_content is not None:
+            report(5, "读取分子结构(内存)...")
             try:
-                return psi4.geometry(xyz), None
+                mol = psi4.geometry(xyz_content)
             except Exception as load_err:
-                return None, f"PSI4 读取失败: {load_err}"
+                return {"success": False, "error": f"PSI4 读取内存 XYZ 失败: {load_err}"}
+        else:
+            report(5, "读取分子结构...")
+            mol = None
 
-        try:
-            if use_temp:
-                mol, err = _load_from_realpath(temp_dir)
-                if err:
-                    return {"success": False, "error": err}
-            else:
+            try:
+                real_input_path = Path(input_file).resolve(strict=True)
+            except OSError as exc:
+                return {"success": False, "error": f"分子文件无法解析为真实路径: {exc}"}
+            if not real_input_path.is_file() or real_input_path.is_symlink():
+                return {"success": False,
+                        "error": f"分子文件必须是真实文件（禁止符号链接）: {input_file}"}
+
+            def _load_from_realpath(full_temp_dir: str | None) -> tuple:
+                work = Path(full_temp_dir) if full_temp_dir else real_input_path.parent
+                converted_xyz = os.fspath(work / "molecule.xyz")
+                if full_temp_dir is None and not real_input_path.suffix.lower() == ".xyz":
+                    _td.register_extra(converted_xyz)
+                src_is_xyz = real_input_path.suffix.lower() == ".xyz"
+                if src_is_xyz:
+                    xyz = read_xyz_content(os.fspath(real_input_path))
+                else:
+                    if not convert_with_obabel(os.fspath(real_input_path), converted_xyz):
+                        return None, "OpenBabel 转换失败"
+                    xyz = read_xyz_content(converted_xyz)
+                if xyz is None:
+                    return None, "无法解析 XYZ"
                 try:
-                    mol, _load_err = _load_from_realpath(None)
-                    if mol is None:
+                    return psi4.geometry(xyz), None
+                except Exception as load_err:
+                    return None, f"PSI4 读取失败: {load_err}"
+
+            try:
+                if use_temp:
+                    mol, err = _load_from_realpath(temp_dir)
+                    if err:
+                        return {"success": False, "error": err}
+                else:
+                    try:
+                        mol, _load_err = _load_from_realpath(None)
+                        if mol is None:
+                            td = tempfile.mkdtemp(prefix="psi4_temp_")
+                            _td.assign(td)
+                            temp_dir = td
+                            _switch_to_temp_dir()
+                            mol, err = _load_from_realpath(temp_dir)
+                            if err:
+                                return {"success": False, "error": err}
+                    except Exception:
                         td = tempfile.mkdtemp(prefix="psi4_temp_")
                         _td.assign(td)
                         temp_dir = td
@@ -671,15 +686,12 @@ def run_psi4_task(
                         mol, err = _load_from_realpath(temp_dir)
                         if err:
                             return {"success": False, "error": err}
-                except Exception:
-                    td = tempfile.mkdtemp(prefix="psi4_temp_")
-                    _td.assign(td)
-                    temp_dir = td
-                    _switch_to_temp_dir()
-                    mol, err = _load_from_realpath(temp_dir)
-                    if err:
-                        return {"success": False, "error": err}
+            except Exception as e:
+                logger.warning("准备分子失败(加载): %s", e, exc_info=True)
+                return {"success": False, "error": f"准备分子失败: {e}"}
 
+        # ---- 两种模式共用的分子后处理 ----
+        try:
             if mol is None:
                 return {"success": False, "error": "未能构建分子"}
             try:
@@ -714,6 +726,8 @@ def run_psi4_task(
         try:
             if use_temp:
                 base = "molecule"
+            elif base_name:
+                base = sanitize_filename(base_name)
             else:
                 base = sanitize_filename(os.path.splitext(os.path.basename(input_file))[0])
 
@@ -936,6 +950,14 @@ def run_psi4_task(
                 thermo = psi4.core.variable("thermodynamics")
                 if thermo is not None:
                     results["thermo"] = thermo.to_array().tolist()
+                else:
+                    # 科学红线 S-05：频率/热化学未取得热力学量，必须显式标记，
+                    # 绝不能静默成功（用户会以为拿到了自由能，实则只有电子能）。
+                    results.setdefault("thermo_fallback", []).append("thermo")
+                    logger.error(
+                        "热化学：thermo 任务未取得 thermodynamics 量（频率/热化学可能失败），"
+                        "该点自由能不可靠、仅作占位。"
+                    )
                 results["success"] = True
                 wfn = opt_wfn
 
@@ -1386,6 +1408,25 @@ def _kill_worker() -> None:
         pass
 
 
+def _shutdown_worker() -> None:
+    """优雅关闭常驻 worker：写 SHUTDOWN 命令让其自行退出，避免孤儿进程。
+
+    若 worker 已僵死 / stdin 已关闭导致优雅退出失败，则回退到强杀 _kill_worker()。
+    """
+    global _worker_proc
+    proc = _worker_proc
+    if proc is None:
+        return
+    try:
+        if proc.poll() is None and proc.stdin is not None:
+            proc.stdin.write('{"command": "SHUTDOWN"}\n')
+            proc.stdin.flush()
+        proc.wait(timeout=3)
+        _worker_proc = None
+    except Exception:
+        _kill_worker()
+
+
 def _run_psi4_worker(
     input_file, task_type, method, basis, output_dir, preset_name,
     solvent, d3, charge, multiplicity, memory, *,
@@ -1510,5 +1551,5 @@ def run_psi4_task_cancellable(
                 solvent, d3, charge, multiplicity, memory, **kwargs)
 
 
-# 解释器退出时杀掉常驻 worker，避免残留进程
-atexit.register(_kill_worker)
+# 解释器退出时优雅关闭常驻 worker（失败回退强杀），避免残留进程
+atexit.register(_shutdown_worker)

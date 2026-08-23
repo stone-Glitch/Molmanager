@@ -15,6 +15,7 @@ import logging
 from utils.logger import default_logger as logger, performance_timer
 from chem.psi4.utils import _lerp_coords, _parse_xyz, _write_xyz
 import chem.openbabel_utils as ob_utils
+from utils.cache import LRUCache, TimedLRUCache
 
 
 try:
@@ -64,12 +65,15 @@ def _default_base_dir_from_input(
 
 
 
-_FONT_CACHE: dict[int, Any] = {}
+_FONT_CACHE: "LRUCache" = LRUCache(maxsize=32)
+# 区分「缓存未命中」与「命中但字体为 None（PIL 不可用）」的哨兵
+_FONT_MISS = object()
 
 
 def _pick_font_cached(size: int):
-    if size in _FONT_CACHE:
-        return _FONT_CACHE[size]
+    cached = _FONT_CACHE.get(size, _FONT_MISS)
+    if cached is not _FONT_MISS:
+        return cached
     font = None
     if PIL_AVAILABLE:
         for candidate in (
@@ -89,7 +93,7 @@ def _pick_font_cached(size: int):
                 font = ImageFont.load_default()
             except Exception:
                 font = None
-    _FONT_CACHE[size] = font
+    _FONT_CACHE.put(size, font)
     return font
 
 
@@ -905,7 +909,8 @@ def generate_reaction_animation(
         except ValueError as _v:
             result["error"] = f"输出路径非法: {_v}"
             return result
-        frames_root = Path(tempfile.mkdtemp(prefix="reaction_anim_frames_"))
+        from utils.path_utils import make_temp_dir
+        frames_root = Path(make_temp_dir("reaction_anim_frames_"))
         xyz_dir = frames_root / "xyz"
         raw_dir = frames_root / "raw"
         final_dir = frames_root / "final"
@@ -915,7 +920,7 @@ def generate_reaction_animation(
         # 坐标无关，因此各帧 raw 底图往往完全相同。先用「首两帧字节比对」探测：
         # 仅当确认字节一致才启用缓存、跳过后续重复渲染；若描绘实际依赖坐标（字节不同），
         # 则始终逐帧渲染（与优化前行为完全一致，零回归）。
-        _raw_cache: dict = {}
+        _raw_cache: "LRUCache" = LRUCache(maxsize=64)
         _cache_enabled = False
         _probe_bytes = None
 
@@ -931,14 +936,15 @@ def generate_reaction_animation(
             # 审计 P-5：把反应物文本内容的哈希纳入 2D 渲染缓存键，
             # 避免「元素序列相同、尺寸相同但分子不同」的误命中（即便本缓存为函数局部、已探针门控，亦向前兼容）。
             _sig = (tuple(atoms_r), width, height, hashlib.md5(_reactant_text.encode("utf-8")).digest())
-            if _cache_enabled and _sig in _raw_cache:
-                raw_fp.write_bytes(_raw_cache[_sig])
+            _cached_raw = _raw_cache.get(_sig)
+            if _cache_enabled and _cached_raw is not None:
+                raw_fp.write_bytes(_cached_raw)
             else:
                 r = ob_utils.render_png_2d(str(xyz_fp), str(raw_fp), width=width, height=height)
                 if not (r and r.get("success") and raw_fp.exists()):
                     continue
                 _raw_bytes = raw_fp.read_bytes()
-                _raw_cache[_sig] = _raw_bytes
+                _raw_cache.put(_sig, _raw_bytes)
                 if not _cache_enabled:
                     if _probe_bytes is None:
                         _probe_bytes = _raw_bytes

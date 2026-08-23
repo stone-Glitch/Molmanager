@@ -16,7 +16,7 @@ from utils.path_utils import secure_output_path, default_base_dir_from_input
 from .core import (
     run_psi4_task, read_xyz_content, sanitize_filename, normalize_psi4_memory,
 )
-from .utils import _parse_xyz, _write_xyz, _lerp_coords, _set_dihedral_and_write
+from .utils import _parse_xyz, _write_xyz, _lerp_coords, _set_dihedral_and_get
 import chem.openbabel_utils as ob_utils
 
 
@@ -96,15 +96,15 @@ def run_linear_scan(reactant_files, product_files, steps=20, method='b3lyp', bas
         t = 0.0 if steps == 1 else i / (steps - 1)
         X = _lerp_coords(R, P, t)
         xyz_str = _write_xyz(n_r, atoms_r, X)
-        frame_path = frames_dir / f"frame_{i:03d}_t{t:.3f}.xyz"
-        with open(frame_path, 'w', encoding='utf-8') as f:
-            f.write(xyz_str)
         traj.append(xyz_str)
         if _progress_callback:
             _progress_callback((i / steps) * 90, f"扫描帧 {i + 1}/{steps} t={t:.3f}")
         try:
+            # P-03：内存 XYZ 模式，跳过逐帧落盘临时文件
             sub = run_psi4_task(
-                input_file=str(frame_path),
+                input_file=str(frames_dir / f"frame_{i:03d}_t{t:.3f}.xyz"),  # 占位路径（内存模式不使用）
+                xyz_content=xyz_str,
+                base_name=f"frame_{i:03d}_t{t:.3f}",
                 task_type='energy',
                 method=method,
                 basis=basis,
@@ -248,9 +248,9 @@ def run_rigid_scan(input_file, scan_atoms, distance_range, method='b3lyp', basis
     energies: list[float] = []
     rolled_back_count = 0
     for s, ang in enumerate(angles):
-        frame_path = frames_dir / f"frame_{s:03d}_d{ang:.2f}.xyz"
-        ok = _set_dihedral_and_write(n, atoms, coords, i, j, k, l, ang, str(frame_path))
-        if not ok:
+        # P-03：内存 XYZ 模式，OpenBabel 内部临时文件会被清理，不在 frames_dir 落盘
+        xyz_str = _set_dihedral_and_get(n, atoms, coords, i, j, k, l, ang)
+        if not xyz_str:
             result["error"] = f"第 {s} 帧设置二面角失败，请检查原子下标 (i-j-k-l 是否共链)"
             result["angles"] = angles
             result["energies"] = energies
@@ -259,7 +259,9 @@ def run_rigid_scan(input_file, scan_atoms, distance_range, method='b3lyp', basis
             _progress_callback((s / steps) * 90, f"二面角扫描 {s + 1}/{steps} θ={ang:.2f}°")
         try:
             sub = run_psi4_task(
-                input_file=str(frame_path),
+                input_file=str(frames_dir / f"frame_{s:03d}_d{ang:.2f}.xyz"),  # 占位路径（内存模式不使用）
+                xyz_content=xyz_str,
+                base_name=f"frame_{s:03d}_d{ang:.2f}",
                 task_type='energy',
                 method=method,
                 basis=basis,

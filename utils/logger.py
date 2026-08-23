@@ -62,6 +62,10 @@ LOG_FILE = LOG_DIR / "mol_manager.log"
 JSON_LOG_FILE = LOG_DIR / "mol_manager.jsonl"
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# 日志面板保留的最大行数：超过后增量 flush 会裁剪（保留最近 N 行），
+# 重绘（过滤/筛选变化时）也只回放最近 N 行，保证「面板保留条数」语义一致且可调。
+LOG_PANEL_MAX_LINES = 20000
 VERBOSE_FMT = "%(asctime)s | %(levelname)-7s | %(name)-22s | SID=%(session_id)s | %(message)s"
 
 # 自定义 SUCCESS 级别（=25，在 INFO/WARNING 之间）
@@ -380,6 +384,36 @@ class GuiLogHandler(logging.Handler):
             })
         return out
 
+    def count_all(self) -> int:
+        """返回缓冲中的总记录数（不受过滤影响），O(1) 不复制列表。"""
+        with self._lock:
+            return len(self._all_records)
+
+    def iter_records_for_export(self, chunk: int = 1000):
+        """分块产出导出记录（生成器），避免一次性复制全部记录造成内存峰值。
+
+        每次 yield 一个记录列表（dict 结构同 get_records_for_export），
+        供调用方流式写入，缓解大数据量导出时的卡顿。
+        """
+        from datetime import datetime
+        if chunk <= 0:
+            chunk = 1000
+        with self._lock:
+            snapshot = list(self._all_records)
+        for start in range(0, len(snapshot), chunk):
+            batch = []
+            for rec in snapshot[start:start + chunk]:
+                lvl, lvl_name, msg = rec[0], rec[1], rec[2]
+                raw = rec[3] if len(rec) >= 4 else msg
+                batch.append({
+                    "time": datetime.now().strftime(DATE_FORMAT),
+                    "level": lvl_name,
+                    "level_no": lvl,
+                    "message": str(msg).rstrip("\n"),
+                    "raw_message": str(raw).rstrip("\n"),
+                })
+            yield batch
+
     # ---------------- F15：过滤条（级别阈值 + 关键词）----------------
 
     def set_filter(self, level: Optional[str] = None, keyword: Optional[str] = None) -> None:
@@ -507,7 +541,7 @@ class GuiLogHandler(logging.Handler):
             log_text.configure(state="normal")
             log_text.delete("1.0", _TK_END)
             count = 0
-            max_lines = 8000
+            max_lines = LOG_PANEL_MAX_LINES
             total = len(snap)
             start_idx = max(0, total - max_lines)
             for i in range(start_idx, total):
@@ -572,6 +606,13 @@ class GuiLogHandler(logging.Handler):
                 self._queue = buf + self._queue
             return
         log_text = app.log_text
+        # U-03: 用户向上滚动查看历史时暂停自动滚动；回到底部后下一波自动恢复。
+        # 关键：必须在「插入新行之前」采样底部状态，否则插入后视图已不在最底，
+        # 会误判为「用户不在底部」而永远不再自动滚动。
+        try:
+            _was_at_bottom = log_text.yview()[1] >= 0.999
+        except Exception:
+            _was_at_bottom = True
         with self._lock:
             active_snap = dict(self._active)
             f_level, f_keyword = self._filter_level, self._filter_keyword
@@ -597,9 +638,10 @@ class GuiLogHandler(logging.Handler):
                     end = f"{new_end_line}.end"
                     log_text.tag_add(tag, start, end)
             last_line = int(log_text.index("end-1c linestart").split(".")[0])
-            if last_line > 30000:
-                log_text.delete("1.0", f"{last_line - 20000}.0")
-            log_text.see(_TK_END)
+            if last_line > int(LOG_PANEL_MAX_LINES * 1.5):
+                log_text.delete("1.0", f"{last_line - LOG_PANEL_MAX_LINES}.0")
+            if _was_at_bottom:
+                log_text.see(_TK_END)
         except TclError:
             # GUI 已销毁（destroy 期间仍可能触发 flush），widget 不可用时静默丢弃
             pass

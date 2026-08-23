@@ -92,8 +92,7 @@ class AppHelpers:
             if handler is None:
                 messagebox.showinfo("导出日志", "日志系统尚未就绪")
                 return
-            records = handler.get_records_for_export()
-            if not records:
+            if handler.count_all() == 0:
                 messagebox.showinfo("导出日志", "当前还没有任何日志可导出")
                 return
             default_name = f"molmanager_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -106,12 +105,16 @@ class AppHelpers:
                 )
                 if not path:
                     return
+                total = 0
                 with open(path, "w", encoding="utf-8-sig", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow(["时间", "级别", "级别值", "消息"])
-                    for r in records:
-                        writer.writerow([r["time"], r["level"], r["level_no"], r["message"]])
-                messagebox.showinfo("导出成功", f"已导出 {len(records)} 条日志到：\n{path}")
+                    for batch in handler.iter_records_for_export():
+                        for r in batch:
+                            writer.writerow([r["time"], r["level"], r["level_no"], r["message"]])
+                        total += len(batch)
+                        f.flush()
+                messagebox.showinfo("导出成功", f"已导出 {total} 条日志到：\n{path}")
                 logger.success("日志 CSV 已导出 → %s", path)
             else:
                 path = filedialog.asksaveasfilename(
@@ -122,10 +125,14 @@ class AppHelpers:
                 )
                 if not path:
                     return
+                total = 0
                 with open(path, "w", encoding="utf-8") as f:
-                    for r in records:
-                        f.write(f"[{r['time']}] [{r['level']:^7s}] {r['message']}\n")
-                messagebox.showinfo("导出成功", f"已导出 {len(records)} 条日志到：\n{path}")
+                    for batch in handler.iter_records_for_export():
+                        for r in batch:
+                            f.write(f"[{r['time']}] [{r['level']:^7s}] {r['message']}\n")
+                        total += len(batch)
+                        f.flush()
+                messagebox.showinfo("导出成功", f"已导出 {total} 条日志到：\n{path}")
                 logger.success("日志 TXT 已导出 → %s", path)
         except PermissionError:
             messagebox.showerror("导出失败", "文件被占用或没有写入权限，请换个路径再试。")
@@ -305,10 +312,39 @@ class AppHelpers:
         self.app.filter_count_var.set(f"共 {len(entries)} / {total} 个")
         # 复选框状态以文件名为键（跨筛选/重渲染保持），渲染时回显字形
         checked = getattr(self.app, "checked_names", None) or set()
+        # P-04：可见行「已勾选」计数 O(1) 维护（供 _tree_update_check_state 表头半选态使用）
+        self.app._vis_checked = sum(1 for f in entries if f['name'] in checked)
 
         def _vals(f):
             glyph = CHECK_GLYPH["on"] if f['name'] in checked else CHECK_GLYPH["off"]
             return (glyph, f['name'], f['status'], f['eng'], f['chn'])
+
+        # U-05：状态列彩色圆点 Tag。惰性导入 + 幂等 tag_configure；失败则退回无 tag（不崩溃）。
+        # 颜色从主题调色板取（令牌统一），浅/深主题自动跟随，不再硬编码暗色 hex。
+        try:
+            from ui.ui_theme import get_palette
+            _P = get_palette()
+            _tag_hex = {
+                "success": _P.get("success", "#3FB950"),
+                "warning": _P.get("warning", "#D29922"),
+                "error": _P.get("error", "#F85149"),
+                "muted": _P.get("muted", "#8B97AC"),
+                "info": _P.get("info", "#58A6FF"),
+            }
+            for _tk, _tc in _tag_hex.items():
+                tree.tag_configure(f"st_{_tk}", foreground=_tc)
+            _status_tag_ok = True
+        except Exception:
+            _status_tag_ok = False
+
+        def _status_tag(status):
+            if not _status_tag_ok:
+                return ()
+            try:
+                from utils.status_colors import status_color
+                return (f"st_{status_color(status)}",)
+            except Exception:
+                return ()
 
         if not entries:
             return
@@ -317,7 +353,7 @@ class AppHelpers:
         # 条目很少（<= 一批）：直接插入，省掉 after 调度开销
         if len(entries) <= self._RENDER_BATCH_SIZE:
             for f in entries:
-                tree.insert("", tk.END, values=_vals(f))
+                tree.insert("", tk.END, values=_vals(f), tags=_status_tag(f['status']))
             if _refresh:
                 _refresh()
             return
@@ -327,7 +363,7 @@ class AppHelpers:
         def _insert_batch(start_i: int):
             end_i = min(start_i + self._RENDER_BATCH_SIZE, len(entries))
             for idx in range(start_i, end_i):
-                tree.insert("", END, values=_vals(entries[idx]))
+                tree.insert("", END, values=_vals(entries[idx]), tags=_status_tag(entries[idx]['status']))
             if end_i < len(entries):
                 self.app.after_idle(_insert_batch, end_i)
             elif _refresh:
@@ -421,7 +457,7 @@ class AppHelpers:
 
         header = ttk.Label(
             top,
-            text=f"以下 {len(changes)} 项变更将被应用。点击行首的方框可以取消某一项：",
+            text=f"以下 {len(changes)} 项变更将被应用。点击行首方框可取消某一项（取消项会灰显，表示将被跳过）：",
             font=('Microsoft YaHei', 10, 'bold'),
             foreground='#1f6feb',
         )
@@ -454,6 +490,8 @@ class AppHelpers:
             "恢复": "#6f42c1",
         }
         CHECKED, UNCHECKED = "☑", "☐"
+        # U-04：取消（不勾选）的项整行变灰，给出明确「将被跳过」视觉反馈
+        PREVIEW_SKIP_GREY = "#8b949e"
         # iid -> 是否勾选；默认全选
         checked_map: dict[str, bool] = {}
 
@@ -467,6 +505,8 @@ class AppHelpers:
                 CHECKED, i, action, c.get("from", ""), c.get("to", "")
             ), tags=(tag,))
             tree.tag_configure(tag, foreground=action_color.get(action, "black"))
+            # 每项一个独立的灰色 tag（取消时整行变灰，勾选时切回原 action 配色）
+            tree.tag_configure(f"grey_{iid}", foreground=PREVIEW_SKIP_GREY)
             checked_map[iid] = True
 
         count_var = _tk.StringVar()
@@ -483,6 +523,9 @@ class AppHelpers:
         def _set_checked(iid: str, value: bool):
             checked_map[iid] = value
             tree.set(iid, "sel", CHECKED if value else UNCHECKED)
+            # U-04：勾选/取消时在「原 action 配色」与「灰色（将被跳过）」之间切换
+            action = changes[int(iid[1:]) - 1].get("action", "操作")
+            tree.item(iid, tags=(f"act_{action}" if value else f"grey_{iid}"))
 
         def _toggle(iid: str):
             _set_checked(iid, not checked_map.get(iid, True))

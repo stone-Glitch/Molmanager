@@ -159,14 +159,15 @@ def run_nmr_simulation(
                 logger.debug("NMR CPHF 失败: %s", _nmr_err)
                 H_shifts_per_conf.append([])
 
-    # Step 4: 经验退化
+    # Step 4: 科学红线 S-01——绝不生成经验假谱
     if not any(H_shifts_per_conf):
-        _report(75, "CPHF NMR 不可用 → 用经验化学位移库模拟")
-        for t in top:
-            _, syms, _ = _read_xyz_info(t["xyz"])
-            H_atom_count = max(H_atom_count, sum(1 for s in syms if s.upper() == "H"))
-            shifts_exp = [30.0 - float((i % 10)) * 0.05 for i in range(max(1, H_atom_count))]
-            H_shifts_per_conf.append(shifts_exp)
+        result["success"] = False
+        result["error"] = (
+            "¹H NMR 模拟失败：CPHF NMR 不可用或所有构象屏蔽常数计算均失败，"
+            "已拒绝生成经验假谱图（请确认 PSI4 编译含 CPHF 模块，且各构象能量计算成功）。"
+        )
+        logger.error(result["error"])
+        return result
 
     # 同步长度：不同构象的氢数若不一致（如个别构象 NMR 计算部分失败），
     # 仅对共有氢做 Boltzmann 加权，避免用 30.0 占位值污染平均谱（科学 1.2）。

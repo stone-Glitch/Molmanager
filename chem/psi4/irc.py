@@ -52,7 +52,8 @@ def run_irc_task(
         result["error"] = "PSI4 未安装"
         return result
 
-    tmp_dir = tempfile.mkdtemp(prefix="psi4_irc_")
+    from utils.path_utils import make_temp_dir
+    tmp_dir = make_temp_dir("psi4_irc_")
     try:
         if output_prefix is None:
             output_prefix = os.path.join(
@@ -132,6 +133,8 @@ def run_irc_task(
 
                         mol_obj = psi4.geometry("\n".join(lines_geom) + "\nunits angstrom\nno_reorient\nno_com\n")
 
+                        real_fwd = 0
+                        real_bwd = 0
                         direction_eff = (direction or "both").lower()
                         for d in (["forward", "backward"] if direction_eff == "both" else [direction_eff]):
                             try:
@@ -142,13 +145,9 @@ def run_irc_task(
                                 )
                                 if wfn_irc is not None:
                                     wfn_final = wfn_irc
-                                try:
-                                    m_end = wfn_irc.molecule()
-                                    xyz_str = m_end.save_string_xyz()
-                                except Exception:
-                                    xyz_str = None
 
-                                # 从 log 解析轨迹
+                                # 从 log 解析真实 IRC 轨迹帧（wfn 末端几何只作诊断，
+                                # 不计入"真实轨迹帧"，避免把单点当成轨迹）。
                                 frames_each = []
                                 log_path = None
                                 try:
@@ -160,39 +159,37 @@ def run_irc_task(
                                     pass
                                 if log_path and os.path.exists(log_path):
                                     try:
-                                        frames_each = _parse_irc_trajectory_from_log(log_path)
+                                        frames_each = _parse_irc_trajectory_from_log(log_path) or []
                                     except Exception:
                                         frames_each = []
-                                if not frames_each and xyz_str:
-                                    frames_each = [xyz_str]
-
                                 if d == "forward":
+                                    real_fwd = len(frames_each)
                                     result["forward_xyz_frames"] = frames_each
                                 else:
+                                    real_bwd = len(frames_each)
                                     result["backward_xyz_frames"] = frames_each
                             except Exception as e_irc:
                                 logger.warning("IRC %s 失败：%s", d, e_irc)
-                                if geom_txt:
-                                    if d == "forward":
-                                        result["forward_xyz_frames"].append(geom_txt)
-                                    else:
-                                        result["backward_xyz_frames"].append(geom_txt)
                 except Exception as e_irc2:
                     logger.warning("IRC driver 无法调用：%s", e_irc2)
         except Exception as e_irc_all:
             logger.warning("IRC 总流程异常：%s", e_irc_all)
 
-        # Step 3：组合 trajectory
-        def _add_mid_if_empty(fwd, bwd):
-            ts_xyz = r_freq.get("optimized_xyz") or read_xyz_content(ts_file)
-            if not fwd and ts_xyz:
-                fwd.append(ts_xyz)
-            if not bwd and ts_xyz:
-                bwd.append(ts_xyz)
+        # Step 3：组合 trajectory（科学红线 S-03——0 帧必须显式报错，绝不伪造轨迹）
+        if real_fwd == 0 and real_bwd == 0:
+            result["success"] = False
+            result["error"] = (
+                "未解析到 IRC 轨迹（0 帧）。请确认输入为真实过渡态"
+                "（freq 应恰有一个虚频，且 PSI4 编译含 IRC driver）。"
+            )
+            logger.error(result["error"])
+            return result
 
-        _add_mid_if_empty(result["forward_xyz_frames"], result["backward_xyz_frames"])
-
-        combined = list(reversed(result["backward_xyz_frames"])) + result["forward_xyz_frames"]
+        ts_xyz = r_freq.get("optimized_xyz") or read_xyz_content(ts_file)
+        combined = list(reversed(result["backward_xyz_frames"]))
+        if ts_xyz:
+            combined.append(ts_xyz)  # 缝处补入 TS 几何，便于成图连续性
+        combined += result["forward_xyz_frames"]
         if combined:
             traj = output_prefix + "_trajectory.xyz"
             os.makedirs(os.path.dirname(os.path.abspath(traj)) or ".", exist_ok=True)

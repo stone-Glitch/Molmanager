@@ -17,6 +17,39 @@ from .base import _append_text, _clear_text, show_friendly_error
 from utils.dialog_geom import fit_dialog_geometry
 
 
+def _request_cancel(app):
+    """U-02：请求取消正在运行的 PSI4 任务（协作式，下次进度上报时安全中止）。"""
+    try:
+        app.task_manager.request_cancel()
+    except Exception:
+        pass
+
+
+def _safe_close(dialog):
+    """U-02：安全的关闭逻辑。任务进行中不立即销毁窗口（避免回调写已销毁控件报错），
+    而是请求取消并标记「结束后自动关闭」，由 _on_done 负责真正销毁。"""
+    st = getattr(dialog, "_psi4_state", None)
+    if st and st.get("running"):
+        try:
+            dialog._app.task_manager.request_cancel()
+        except Exception:
+            pass
+        try:
+            st["close_after"] = True
+        except Exception:
+            pass
+        try:
+            _append_text(dialog._app, dialog._result_text,
+                         "\n⏹ 已请求取消，任务结束后自动关闭窗口…\n", "warn")
+        except Exception:
+            pass
+        return
+    try:
+        dialog.destroy()
+    except Exception:
+        pass
+
+
 def show_psi4_dialog(app, controller):
     selected = app.helpers.get_selected_filenames()
     if not selected and app.fix_mode_var.get() != "scan":
@@ -211,18 +244,34 @@ def show_psi4_dialog(app, controller):
 
     # 结果显示
     result_text = scrolledtext.ScrolledText(dialog, height=8, wrap=tk.WORD, font=('Consolas', 9))
+    # 科学红线 S-04 / S-05：用红色醒目标签标注溶剂回退 / 热校正失败，绝不静默。
+    result_text.tag_configure("warn", foreground="#ff5c5c", font=('Consolas', 9, 'bold'))
     result_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(pady=10)
-    ttk.Button(btn_frame, text="▶ 开始计算", command=lambda: _run_psi4_batch(
+    start_btn = ttk.Button(btn_frame, text="▶ 开始计算", command=lambda: _run_psi4_batch(
         app, controller, selected, task_var, method_var, basis_var, charge_var, mult_var,
         solvent_var, d3_var, out_dir_var, preset_var, runlevel_var, result_text, dialog,
         scan_frame, scan_mode_var, reactant_listbox, product_listbox,
         interp_steps_var, scan_atoms_var, scan_start_var, scan_end_var,
         memory_var, ff_hint_label
-    )).pack(side=tk.LEFT, padx=10)
-    ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.LEFT, padx=10)
+    ))
+    start_btn.pack(side=tk.LEFT, padx=10)
+    # U-02：对话框内「取消计算」按钮——任务进行中可协作式取消（不再只能靠主窗口按钮）
+    cancel_run_btn = ttk.Button(
+        btn_frame, text="⏹ 取消计算", state="disabled",
+        command=lambda: _request_cancel(app))
+    cancel_run_btn.pack(side=tk.LEFT, padx=10)
+    # U-02：关闭逻辑安全化——任务进行中先请求取消并等结束后自动关闭，避免销毁控件导致回调报错
+    close_btn = ttk.Button(btn_frame, text="关闭", command=lambda: _safe_close(dialog))
+    close_btn.pack(side=tk.LEFT, padx=10)
+    # 供 _run_psi4_batch 跨函数访问的运行状态与控件引用
+    dialog._app = app
+    dialog._start_btn = start_btn
+    dialog._cancel_run_btn = cancel_run_btn
+    dialog._result_text = result_text
+    dialog._psi4_state = {"running": False, "close_after": False}
 
     # 根据任务类型显示扫描参数
     def on_task_var_changed(*_args, **_kwargs):
@@ -316,6 +365,41 @@ def _run_psi4_batch(app, controller, files, task_var, method_var, basis_var, cha
                     scan_end_var, memory_var, ff_hint_label):
     from chem.psi4_compute import run_psi4_task, run_linear_scan, run_rigid_scan
 
+    # U-02：运行状态管理。开始运行时锁定「开始」按钮、启用「取消计算」；
+    # 任务结束（含取消）后复位；若用户在运行中点了「关闭」则自动关闭窗口。
+    def _begin_run():
+        try:
+            dialog._psi4_state["running"] = True
+        except Exception:
+            pass
+        try:
+            dialog._start_btn.configure(state="disabled")
+        except Exception:
+            pass
+        try:
+            dialog._cancel_run_btn.configure(state="normal")
+        except Exception:
+            pass
+
+    def _on_done():
+        try:
+            dialog._psi4_state["running"] = False
+        except Exception:
+            pass
+        try:
+            dialog._start_btn.configure(state="normal")
+        except Exception:
+            pass
+        try:
+            dialog._cancel_run_btn.configure(state="disabled")
+        except Exception:
+            pass
+        try:
+            if dialog._psi4_state.get("close_after"):
+                dialog.destroy()
+        except Exception:
+            pass
+
     task = task_var.get()
     method = method_var.get().strip()
     basis = basis_var.get().strip()
@@ -379,9 +463,10 @@ def _run_psi4_batch(app, controller, files, task_var, method_var, basis_var, cha
                 )
                 _display_scan_result(app, res, result_text)
                 controller.scan_files()
+                app.after(0, _on_done)
 
+            _begin_run()
             app.helpers.run_task(task_process)
-            dialog.destroy()
             return
 
         else:  # 刚性扫描
@@ -420,9 +505,10 @@ def _run_psi4_batch(app, controller, files, task_var, method_var, basis_var, cha
                 )
                 _display_scan_result(app, res, result_text)
                 controller.scan_files()
+                app.after(0, _on_done)
 
+            _begin_run()
             app.helpers.run_task(task_process)
-            dialog.destroy()
             return
 
     # 非扫描任务：批量计算
@@ -457,12 +543,30 @@ def _run_psi4_batch(app, controller, files, task_var, method_var, basis_var, cha
                 def update_result(r=res, fname=fname):
                     if r["success"]:
                         _append_text(app, result_text, "✅ 成功!\n")
+                        _append_plain_conclusion(app, result_text, r)
                         if r.get("energy") is not None:
                             _append_text(app, result_text, f"   能量: {r['energy']:.6f} Hartree\n")
                         if r.get("optimized_xyz"):
                             _append_text(app, result_text, "   优化结构已保存\n")
                         if r.get("fchk_file"):
                             _append_text(app, result_text, f"   .fchk: {os.path.basename(r['fchk_file'])}\n")
+                        # 科学红线 S-04：PCM 溶剂不可用已静默回退为气相 → 必须醒目告知
+                        if r.get("pcm_rolled_back"):
+                            _append_text(
+                                app, result_text,
+                                "   ⚠️ 溶剂模型不可用，已自动回退为气相计算（PCM 未生效）！\n"
+                                f"      原因：{r.get('solvent_rollback_reason', '未知')}\n"
+                                "      请检查溶剂名拼写 / PSI4 编译是否含 PCM，否则溶剂效应被完全忽略。\n",
+                                "warn"
+                            )
+                        # 科学红线 S-05：热化学校正失败，仅电子能（无热校正）→ 必须醒目告知
+                        if r.get("thermo_fallback"):
+                            _append_text(
+                                app, result_text,
+                                f"   ⚠️ 热化学校正失败，该点仅电子能（无热校正），自由能不可靠："
+                                f"{', '.join(r['thermo_fallback'])}\n",
+                                "warn"
+                            )
                         app.helpers.on_log(f"✅ PSI4 计算完成: {fname}", 'success')
                     else:
                         _append_text(app, result_text, f"❌ 失败: {r.get('error', '未知错误')}\n")
@@ -480,18 +584,39 @@ def _run_psi4_batch(app, controller, files, task_var, method_var, basis_var, cha
         else:
             _append_text(app, result_text, "\n🎉 所有任务处理完成！\n")
         controller.scan_files()
+        app.after(0, _on_done)
 
+    _begin_run()
     app.helpers.run_task(task_process)
+
+
+def _append_plain_conclusion(app, result_text, res):
+    """U-09：把结果 dict 翻译成通俗结论，置顶显示（失败静默，不影响结果展示）。"""
+    try:
+        from utils.plain_conclusion import conclusion_for
+        _append_text(app, result_text, f"💬 通俗结论：{conclusion_for(res)}\n")
+    except Exception:
+        pass
 
 
 def _display_scan_result(app, res, result_text):
     if res["success"]:
         _append_text(app, result_text, "✅ 扫描完成!\n")
+        _append_plain_conclusion(app, result_text, res)
         _append_text(app, result_text, f"   XYZ动画: {os.path.basename(res.get('xyz_file', ''))}\n")
         if res.get('plot_file'):
             _append_text(app, result_text, f"   能量曲线: {os.path.basename(res['plot_file'])}\n")
         if res.get('ts_file'):
             _append_text(app, result_text, f"   TS初猜: {os.path.basename(res['ts_file'])}\n")
+        # 科学红线 S-04：扫描中 PCM 溶剂回退（scans.py 已写入 res["warning"]）必须显式告知
+        if res.get("warning"):
+            _append_text(app, result_text, f"   ⚠️ {res['warning']}\n", "warn")
+        if res.get("pcm_rolled_back"):
+            _append_text(
+                app, result_text,
+                "   ⚠️ 扫描中部分帧 PCM 溶剂不可用，已回退为气相（溶剂效应缺失）！\n",
+                "warn"
+            )
         app.helpers.on_log("✅ 扫描完成", 'success')
     else:
         _append_text(app, result_text, f"❌ 扫描失败: {res.get('error', '未知错误')}\n")
