@@ -10,7 +10,7 @@ E-07 多计算程序日志解析（Gaussian / ORCA / CP2K）· 纯逻辑层
 可在沙箱用合成日志单测。
 """
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 # ---------- 引擎识别 ----------
@@ -64,8 +64,8 @@ def _gaussian_method_basis(text: str):
     return None
 
 
-def parse_gaussian(text: str) -> Dict[str, Any]:
-    res: Dict[str, Any] = {"engine": "gaussian", "energy": None,
+def parse_gaussian(text: str) -> dict[str, Any]:
+    res: dict[str, Any] = {"engine": "gaussian", "energy": None,
                            "converged": None, "method": "unknown", "basis": "unknown"}
     m = _GAUSS_ENERGY.search(text)
     if m:
@@ -77,8 +77,8 @@ def parse_gaussian(text: str) -> Dict[str, Any]:
     return res
 
 
-def parse_orca(text: str) -> Dict[str, Any]:
-    res: Dict[str, Any] = {"engine": "orca", "energy": None,
+def parse_orca(text: str) -> dict[str, Any]:
+    res: dict[str, Any] = {"engine": "orca", "energy": None,
                            "converged": None, "method": "unknown", "basis": "unknown"}
     m = _ORCA_ENERGY.search(text)
     if m:
@@ -98,8 +98,8 @@ def parse_orca(text: str) -> Dict[str, Any]:
     return res
 
 
-def parse_cp2k(text: str) -> Dict[str, Any]:
-    res: Dict[str, Any] = {"engine": "cp2k", "energy": None,
+def parse_cp2k(text: str) -> dict[str, Any]:
+    res: dict[str, Any] = {"engine": "cp2k", "energy": None,
                            "converged": None, "method": "unknown", "basis": "unknown"}
     m = _CP2K_ENERGY.search(text)
     if m:
@@ -108,7 +108,7 @@ def parse_cp2k(text: str) -> Dict[str, Any]:
     return res
 
 
-def parse_calc_log(text: str) -> Dict[str, Any]:
+def parse_calc_log(text: str) -> dict[str, Any]:
     """自动识别引擎并解析，返回统一字段 dict。"""
     engine = detect_engine(text)
     if engine == "gaussian":

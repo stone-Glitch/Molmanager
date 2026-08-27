@@ -1,5 +1,6 @@
 """scan 子系统 mixin（由原 core/model.py 拆分而来）。"""
 from ._common import *  # noqa: F401,F403
+from typing import List, Tuple
 
 
 class ScanMixin:
@@ -35,7 +36,7 @@ class ScanMixin:
         红线：描述符缺失/解析失败的条目，其 mw/formula 等字段不会被伪造，
         针对这些字段的条件会安全判定为 False（被排除），绝不产生假阳性命中。
         """
-        from utils.chem_query import parse_chem_query, match_entry, matches_free_text
+        from utils.chem_query import match_entry, matches_free_text, parse_chem_query
 
         conditions, free_terms = parse_chem_query(keyword)
         desc_cache: dict = {}
@@ -89,7 +90,18 @@ class ScanMixin:
         且足以覆盖变更检测。
         """
         h = hashlib.md5()
-        stack = [os.fspath(wd)]
+        wd_s = os.fspath(wd)
+        # 🔴 修复缓存正确性 bug：原实现只哈希「子目录」mtime，漏掉工作根目录自身的
+        # mtime。后果：直接在根目录增删文件不会改变签名 → 缓存返回陈旧文件列表
+        # （验证脚本 4b 即在根目录新增强发现象）。这里把根目录自身 mtime 纳入键。
+        try:
+            root_mtime = os.stat(wd_s, follow_symlinks=False).st_mtime_ns
+        except OSError:
+            root_mtime = 0
+        h.update(b"ROOT")
+        h.update(str(root_mtime).encode("ascii"))
+        h.update(b"\x00")
+        stack = [wd_s]
         while stack:
             d = stack.pop()
             try:
@@ -131,6 +143,10 @@ class ScanMixin:
         with self._lock:
             mapping_snapshot = dict(self.mapping)
             reverse_snapshot = dict(self._reverse_mapping)
+        # 🔴 修复映射匹配大小写敏感：文件名 `benzene（苯）` vs 映射键 `Benzene`
+        # 原 `eng in mapping_snapshot` 区分大小写 → 误判「❌ 无映射」。
+        # 建立一份小写键索引，仅用于查找，不影响内存中的原始映射（反向映射同理）。
+        mapping_lower = {str(k).lower(): v for k, v in mapping_snapshot.items()}
 
         result: list[dict] = []
         # 🔴 T08：排除名单从单一 ".trash_backup" 扩为 PROTECTED_DIR_NAMES，
@@ -175,14 +191,15 @@ class ScanMixin:
                             eng, chn = base, ''
 
                         if ext in STRUCTURE_EXTS:
-                            if eng in mapping_snapshot:
-                                mapped_chn = mapping_snapshot[eng]
+                            eng_key = str(eng).lower()
+                            if eng_key in mapping_lower:
+                                mapped_chn = mapping_lower[eng_key]
                                 status = "✅ 已正确命名" if (has_chinese and chn == mapped_chn) else "⏳ 待重命名"
                             elif base in reverse_snapshot:
                                 status = "⏳ 纯中文，待修复"
                             else:
                                 status = "❌ 无映射"
-                            mapped_chn_out = mapping_snapshot.get(eng, '')
+                            mapped_chn_out = mapping_lower.get(eng_key, '')
                         else:
                             status = "📄 计算文件"
                             mapped_chn_out = ''
@@ -294,7 +311,7 @@ class ScanMixin:
         chn_conflicts = []   # 科学红线 S-06：中文名冲突（同一中文名被多个英文名共用 → 反向映射塌缩）
         # 本次导入批次内已见过的中文名 → 英文名，用于检测「文件内部」的中文名冲突
         batch_chn_seen = {}
-        with open(win_longpath(safe_path), 'r', encoding='utf-8-sig', newline='') as f:
+        with open(win_longpath(safe_path), encoding='utf-8-sig', newline='') as f:
             # 🔴 D-03 修复：自动检测分隔符（TSV 制表符 / CSV 逗号）。
             # 旧实现硬编码 csv.DictReader 默认逗号，用户用「导入」选了 TSV 时，
             # 整行被当成单列 → english/chinese 取不到 → 全部 skipped → 静默导入 0 条（丢数据）。

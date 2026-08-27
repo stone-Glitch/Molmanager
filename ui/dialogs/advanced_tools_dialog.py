@@ -6,19 +6,14 @@
 波函数性质(HOMO/LUMO/偶极)、构象搜索、二面角扫描、批量属性、
 IRC、反应能垒图、Eyring计算、pKa预测、NMR模拟
 """
+import csv
 import os
 import sys
-import csv
-import json
 import threading
-import weakref
 import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog, messagebox, simpledialog
-from pathlib import Path
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
+import weakref
 
-from utils.logger import default_logger as logger
-from core.task_manager import TaskManager
-from .base import _append_text, _clear_text
 import chem.openbabel_utils as ob_utils
 
 
@@ -584,18 +579,16 @@ def show_advanced_tools_dialog(app, controller):
 """
 分子分析对话框 - 分子式/元素分析、几何参数导出
 """
-import os
 import csv
+import os
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
 
-from utils.logger import default_logger as logger
-from core.task_manager import TaskManager
-from .base import show_friendly_error
-from .common import _safe_open_file
 import chem.openbabel_utils as ob_utils
 from utils.dialog_geom import fit_dialog_geometry
+
+from .base import show_friendly_error
+from .common import _safe_open_file
 
 
 def show_formula_dialog(app, controller):
@@ -605,8 +598,9 @@ def show_formula_dialog(app, controller):
         return
 
     def _run(**_kw):
-        import chem.openbabel_utils as obu
         from pathlib import Path
+
+        import chem.openbabel_utils as obu
         work = app.work_dir_var.get().strip()
         fp = str(Path(work) / sel[0]) if work and not os.path.isabs(sel[0]) else sel[0]
         return obu.analyze_formula(fp), os.path.basename(fp)
@@ -632,13 +626,13 @@ def show_formula_dialog(app, controller):
         mw = res.get("molecular_weight") or 0.0
         exact = res.get("exact_mass") or 0.0
         n_at = res.get("atoms_count") or 0
-        ttk.Label(pad, text=f"分子式 (Hill 系统)：", font=('Microsoft YaHei', 10, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(pad, text="分子式 (Hill 系统)：", font=('Microsoft YaHei', 10, "bold")).grid(row=0, column=0, sticky="w")
         ttk.Label(pad, text=f, font=('Microsoft YaHei', 14, "bold"), foreground="#1976d2").grid(row=0, column=1, sticky="w", padx=(6, 0))
-        ttk.Label(pad, text=f"平均分子量：").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(pad, text="平均分子量：").grid(row=1, column=0, sticky="w", pady=(6, 0))
         ttk.Label(pad, text=f"{mw:.4f}  g/mol").grid(row=1, column=1, sticky="w", padx=(6, 0), pady=(6, 0))
-        ttk.Label(pad, text=f"精确分子量：").grid(row=2, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(pad, text="精确分子量：").grid(row=2, column=0, sticky="w", pady=(4, 0))
         ttk.Label(pad, text=f"{exact:.6f}  g/mol").grid(row=2, column=1, sticky="w", padx=(6, 0), pady=(4, 0))
-        ttk.Label(pad, text=f"原子总数：").grid(row=3, column=0, sticky="w", pady=(4, 0))
+        ttk.Label(pad, text="原子总数：").grid(row=3, column=0, sticky="w", pady=(4, 0))
         ttk.Label(pad, text=f"{n_at}  个").grid(row=3, column=1, sticky="w", padx=(6, 0), pady=(4, 0))
 
         ttk.Separator(pad, orient=tk.HORIZONTAL).grid(row=4, column=0, columnspan=2, sticky="ew", pady=10)

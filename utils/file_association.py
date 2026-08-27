@@ -9,7 +9,7 @@ E-06 反向追溯（纯逻辑层）
 
 纯字符串处理，零文件系统依赖，可在沙箱单测。
 """
-from typing import Dict, List, NamedTuple, Optional
+from typing import NamedTuple
 
 
 # 视为「结构本体」的扩展名（追溯的锚点）
@@ -20,9 +20,9 @@ RESULT_EXTS = (".log", ".out", ".fchk", ".inp", ".gjf", ".com", ".json")
 
 class FileLink(NamedTuple):
     stem: str
-    structure: Optional[str]          # 结构文件全名（若有）
-    results: List[str]                # 计算结果文件全名列表
-    extras: List[str]                 # 同词干但不属于上述两类的文件
+    structure: str | None          # 结构文件全名（若有）
+    results: list[str]                # 计算结果文件全名列表
+    extras: list[str]                 # 同词干但不属于上述两类的文件
 
 
 def _stem_of(name: str) -> str:
@@ -38,10 +38,10 @@ def _ext_of(name: str) -> str:
 
 
 def associate_by_stem(
-    filenames: List[str],
+    filenames: list[str],
     structure_exts: tuple = STRUCTURE_EXTS,
     result_exts: tuple = RESULT_EXTS,
-) -> List[FileLink]:
+) -> list[FileLink]:
     """
     按词干聚合同目录文件名，产出追溯链列表。
 
@@ -52,7 +52,7 @@ def associate_by_stem(
       纯 extras 的同名词干不单独成链（避免噪声）。
     - 返回按 stem 排序，结果稳定可重放。
     """
-    groups: Dict[str, Dict[str, List[str]]] = {}
+    groups: dict[str, dict[str, list[str]]] = {}
     for fn in filenames:
         ext = _ext_of(fn)
         if ext not in structure_exts and ext not in result_exts:
@@ -68,7 +68,7 @@ def associate_by_stem(
         else:
             buckets["r"].append(fn)
 
-    links: List[FileLink] = []
+    links: list[FileLink] = []
     for stem in sorted(groups.keys()):
         b = groups[stem]
         if not b["s"] and not b["r"]:
@@ -80,9 +80,9 @@ def associate_by_stem(
     return links
 
 
-def unlinked_results(links: List[FileLink]) -> List[str]:
+def unlinked_results(links: list[FileLink]) -> list[str]:
     """返回所有「没有对应结构文件」的孤立结果文件（无法追溯来源）。"""
-    out: List[str] = []
+    out: list[str] = []
     for lk in links:
         if lk.structure is None:
             out.extend(lk.results)

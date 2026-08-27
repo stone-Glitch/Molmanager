@@ -4,17 +4,19 @@
 PSI4 计算设置对话框
 """
 import os
-import csv
+from pathlib import Path
 import threading
 import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog, messagebox
-from pathlib import Path
+from tkinter import filedialog, scrolledtext, ttk
 
-from utils.logger import default_logger as logger
+from chem.psi4_compute import (
+    check_psi4_installed,
+    run_psi4_task_cancellable,
+)
 from utils.constants import PSI4_PRESETS, PSI4_TASKS, RUN_PRESETS
-from chem.psi4_compute import check_psi4_installed, run_psi4_task, run_psi4_task_cancellable, run_linear_scan, run_rigid_scan
-from .base import _append_text, _clear_text, show_friendly_error
 from utils.dialog_geom import fit_dialog_geometry
+
+from .base import _append_text
 
 
 def _request_cancel(app):
@@ -363,7 +365,7 @@ def _run_psi4_batch(app, controller, files, task_var, method_var, basis_var, cha
                     result_text, dialog, scan_frame, scan_mode_var, reactant_listbox,
                     product_listbox, interp_steps_var, scan_atoms_var, scan_start_var,
                     scan_end_var, memory_var, ff_hint_label):
-    from chem.psi4_compute import run_psi4_task, run_linear_scan, run_rigid_scan
+    from chem.psi4_compute import run_rigid_scan
 
     # U-02：运行状态管理。开始运行时锁定「开始」按钮、启用「取消计算」；
     # 任务结束（含取消）后复位；若用户在运行中点了「关闭」则自动关闭窗口。
@@ -518,7 +520,7 @@ def _run_psi4_batch(app, controller, files, task_var, method_var, basis_var, cha
     if solvent:
         result_text.insert(tk.END, f"   溶剂: {solvent}\n")
     if d3:
-        result_text.insert(tk.END, f"   DFT-D3 已启用\n")
+        result_text.insert(tk.END, "   DFT-D3 已启用\n")
     result_text.see(tk.END)
 
     def task_process(**kwargs):

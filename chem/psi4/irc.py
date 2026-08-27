@@ -3,16 +3,16 @@
 """
 IRC 模块 - 过渡态 IRC 轨迹生成
 """
+import logging
 import os
 import re
 import shutil
-import tempfile
-import logging
-from pathlib import Path
 from typing import Any
 
-from utils.logger import default_logger as logger, performance_timer
-from .core import check_psi4_installed_simple, run_psi4_task, read_xyz_content
+from utils.logger import default_logger as logger
+from utils.logger import performance_timer
+
+from .core import check_psi4_installed_simple, read_xyz_content, run_psi4_task
 
 
 @performance_timer(name="psi4.run_irc_task", level=logging.DEBUG, min_ms=100.0)
@@ -222,7 +222,7 @@ def _parse_irc_trajectory_from_log(log_path: str) -> list[str]:
     """尝试从 PSI4 输出 log 中截取多个 XYZ 块"""
     frames = []
     try:
-        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(log_path, encoding="utf-8", errors="replace") as f:
             txt = f.read()
     except Exception:
         return []

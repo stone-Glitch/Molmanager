@@ -3,20 +3,18 @@
 """
 通用对话框 - 文件类型选择、字体大小、环境诊断、OB路径设置、最近目录
 """
-import csv
 import os
+from pathlib import Path
 import subprocess
 import sys
 import threading
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, simpledialog, scrolledtext
-from pathlib import Path
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
-from utils.logger import default_logger as logger
-from utils.constants import SUPPORTED_EXTS
-from .base import _append_text, _clear_text, show_friendly_error, friendly_error
 import chem.openbabel_utils as ob_utils
+from utils.constants import SUPPORTED_EXTS
 from utils.dialog_geom import fit_dialog_geometry
+from utils.logger import default_logger as logger
 
 
 # ===== 安全的外部工具路径解析 =====
@@ -504,7 +502,6 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
 
         def _do():
             import time as _time
-            import tempfile as _tf
             try:
                 import chem.psi4_compute as _pc
             except Exception as _imp_err:
@@ -575,7 +572,7 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
     def _fill_ob():
         try:
             ob_ok, ob_msg, det = ob_utils.check_openbabel()
-            ob_status_var.set(("✅ 可用" if ob_ok else "❌ 不可用"))
+            ob_status_var.set("✅ 可用" if ob_ok else "❌ 不可用")
             try:
                 try:
                     from ui.ui_theme import COLORS

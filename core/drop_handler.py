@@ -24,15 +24,17 @@
 """
 from __future__ import annotations
 
-import os
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any
+
 
 # ---------------------------------------------------------------- 常量
 
 #: 默认扩展名白名单（与 utils/config.DEFAULT_CONFIG["dnd"]["extensions"] 保持一致）。
-DEFAULT_EXTENSIONS: Tuple[str, ...] = (
+DEFAULT_EXTENSIONS: tuple[str, ...] = (
     ".xyz", ".mol", ".sdf", ".pdb", ".cif", ".log", ".out",
 )
 
@@ -84,8 +86,8 @@ class RejectedItem:
 class DropResult:
     """一次拖放/导入的结构化结果。"""
 
-    accepted: List[Path] = field(default_factory=list)
-    rejected: List[RejectedItem] = field(default_factory=list)
+    accepted: list[Path] = field(default_factory=list)
+    rejected: list[RejectedItem] = field(default_factory=list)
     scanned_dirs: int = 0
     truncated: bool = False   # 是否因为触达 max_files 上限而截断
 
@@ -100,12 +102,12 @@ class DropResult:
     def has_accepted(self) -> bool:
         return bool(self.accepted)
 
-    def accepted_names(self) -> List[str]:
+    def accepted_names(self) -> list[str]:
         return [p.name for p in self.accepted]
 
-    def rejected_by_reason(self) -> Dict[str, List[RejectedItem]]:
+    def rejected_by_reason(self) -> dict[str, list[RejectedItem]]:
         """按原因分组，便于日志里"同类合并"输出，而不是刷 200 行。"""
-        grouped: Dict[str, List[RejectedItem]] = {}
+        grouped: dict[str, list[RejectedItem]] = {}
         for item in self.rejected:
             grouped.setdefault(item.reason, []).append(item)
         return grouped
@@ -119,14 +121,14 @@ class DropResult:
             parts.append("（已达数量上限，列表被截断）")
         return "，".join(parts)
 
-    def rejection_lines(self, limit: int = 6) -> List[str]:
+    def rejection_lines(self, limit: int = 6) -> list[str]:
         """
         生成"原因 → 数量 + 示例"的紧凑说明行，最多 `limit` 行。
 
         用于日志与确认框：一次拖 500 个不合规文件时，用户需要的是
         "480 个扩展名不在白名单内（如 a.txt、b.docx…）"，而不是 480 行刷屏。
         """
-        lines: List[str] = []
+        lines: list[str] = []
         for reason, items in self.rejected_by_reason().items():
             samples = [os.path.basename(i.path.rstrip("\\/")) or i.path for i in items[:3]]
             sample_text = "、".join(s for s in samples if s)
@@ -141,7 +143,7 @@ class DropResult:
 
 # ---------------------------------------------------------------- 工具函数
 
-def normalize_extensions(extensions: Any) -> Tuple[str, ...]:
+def normalize_extensions(extensions: Any) -> tuple[str, ...]:
     """
     规范化扩展名白名单：统一小写、统一补前导点、去空去重。
 
@@ -160,7 +162,7 @@ def normalize_extensions(extensions: Any) -> Tuple[str, ...]:
         items = list(extensions)
     except TypeError:
         return DEFAULT_EXTENSIONS
-    out: List[str] = []
+    out: list[str] = []
     seen: set = set()
     for raw in items:
         if raw is None:
@@ -180,7 +182,7 @@ def normalize_extensions(extensions: Any) -> Tuple[str, ...]:
     return tuple(out)
 
 
-def parse_drop_data(data: Any) -> List[str]:
+def parse_drop_data(data: Any) -> list[str]:
     """
     解析 tkdnd 的 `<<Drop>>` 事件数据串。
 
@@ -199,7 +201,7 @@ def parse_drop_data(data: Any) -> List[str]:
     if data is None:
         return []
     if isinstance(data, (list, tuple, set)):
-        out: List[str] = []
+        out: list[str] = []
         for item in data:
             try:
                 text = os.fspath(item) if hasattr(item, "__fspath__") else str(item)
@@ -241,7 +243,7 @@ def parse_drop_data(data: Any) -> List[str]:
             pass
         return [seg for seg in text.split() if seg]
 
-    tokens: List[str] = []
+    tokens: list[str] = []
     i = 0
     length = len(text)
     while i < length:
@@ -345,7 +347,7 @@ class DropHandler:
             recursive:       是否递归展开目录；False 时只取目录第一层。
             follow_symlinks: 是否跟随符号链接。**默认 False**，与项目既有安全策略一致。
         """
-        self.extensions: Tuple[str, ...] = normalize_extensions(extensions)
+        self.extensions: tuple[str, ...] = normalize_extensions(extensions)
         try:
             self.max_files: int = max(1, int(max_files))
         except (TypeError, ValueError):
@@ -357,7 +359,7 @@ class DropHandler:
         self.recursive: bool = bool(recursive)
         self.follow_symlinks: bool = bool(follow_symlinks)
 
-        self.work_dir: Optional[Path] = None
+        self.work_dir: Path | None = None
         self._work_dir_key: str = ""
         if work_dir is not None:
             try:
@@ -370,21 +372,21 @@ class DropHandler:
     # ------------------------------------------------------------ 构造
 
     @classmethod
-    def from_config(cls, config: Any, *, work_dir: Any = None, **overrides: Any) -> "DropHandler":
+    def from_config(cls, config: Any, *, work_dir: Any = None, **overrides: Any) -> DropHandler:
         """
         从整份 config（或直接是 `config["dnd"]`）构造。
 
         读不到配置时静默回落到默认值 —— 拖放是易用性功能，不能因为配置
         缺一个键就罢工。
         """
-        node: Dict[str, Any] = {}
+        node: dict[str, Any] = {}
         if isinstance(config, dict):
             candidate = config.get("dnd")
             if isinstance(candidate, dict):
                 node = candidate
             elif "extensions" in config or "enabled" in config:
                 node = config
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "extensions": node.get("extensions", None),
             "work_dir": work_dir,
         }
@@ -508,7 +510,7 @@ class DropHandler:
         else:
             self._accept_file(path, result, seen)
 
-    def _coerce_path(self, raw: Any) -> Optional[Path]:
+    def _coerce_path(self, raw: Any) -> Path | None:
         """把任意输入转成 Path（去掉引号 / 花括号 / file:// 前缀），失败返回 None。"""
         if raw is None:
             return None
@@ -601,7 +603,7 @@ class DropHandler:
         - 目录里一个合规文件都没有时，给出 `REASON_EMPTY_DIR` 让用户知道为什么没反应。
         """
         before = result.accepted_count
-        stack: List[Tuple[str, int]] = [(os.fspath(root), 0)]
+        stack: list[tuple[str, int]] = [(os.fspath(root), 0)]
         result.scanned_dirs += 1
         while stack:
             current, depth = stack.pop()

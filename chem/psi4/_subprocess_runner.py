@@ -12,7 +12,6 @@ progress 文件，计算结束后把结果 JSON 写入 result 文件。这样主
 实现「取消 / 超时终止」的硬地基。
 """
 import json
-import os
 import sys
 import traceback
 
@@ -33,7 +32,7 @@ def main():
     cmd_path, result_path, progress_path = sys.argv[1], sys.argv[2], sys.argv[3]
 
     try:
-        with open(cmd_path, "r", encoding="utf-8") as f:
+        with open(cmd_path, encoding="utf-8") as f:
             cmd = json.load(f)
     except Exception as e:
         _write_error(result_path, f"无法读取命令文件: {e}")

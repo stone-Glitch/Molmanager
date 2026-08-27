@@ -4,24 +4,20 @@
 反应动画对话框 - 多反应物/多产物动画生成
 """
 import os
-import sys
-import tempfile
-import subprocess
-import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog, messagebox, simpledialog
 from pathlib import Path
+import subprocess
+import sys
+import tkinter as tk
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
-from utils.logger import default_logger as logger
+from utils.dialog_geom import fit_dialog_geometry, make_scrollable_body
 from utils.preset_manager import get_preset_manager
+
 from .base import register_dialog_temp_dir, unregister_dialog_temp_dir
 from .common import _resolve_iqmol_exe, _safe_open_file
-from utils.dialog_geom import fit_dialog_geometry, make_scrollable_body
 
 
 def show_reaction_animation_dialog(app, controller):
-    import chem.reaction_animation as ra
-    import shutil as _shutil
-    import tempfile
 
     dialog = tk.Toplevel(app)
     dialog.title("🎬 制作反应动画（含 IQmol 可播放轨迹 · 支持多反应物+多产物）")
@@ -320,8 +316,8 @@ def show_reaction_animation_dialog(app, controller):
         r_list.delete(0, tk.END)
         p_list.delete(0, tk.END)
 
-        import tempfile
         import shutil as _shu
+        import tempfile
 
         tpl_dirs = getattr(dialog, "_ra_tpl_dirs", None)
         if tpl_dirs is None:
@@ -642,26 +638,16 @@ def show_reaction_animation_dialog(app, controller):
     ttk.Button(btn_row, text="🎬 开始生成动画 / 轨迹", command=_start).pack(side='right', padx=4)
     ttk.Button(btn_row, text="关闭", command=dialog.destroy).pack(side='right', padx=4)
 
-    # 辅助函数：切换模式
+    # 辅助函数：仅控制本对话框内的高级参数区显隐。
+    # ui_mode 由「设置 / 工具」菜单栏统一控制（toggle_ui_mode_from_menu），
+    # 此处只读取初始值（mode_var 在顶部从 config.ui_mode 初始化）并控制本地显隐，不写回配置。
     def _toggle_mode(mode):
         if mode == "simple":
             advanced_container.pack_forget()
             mode_tip.config(text="💡 简单模式：只显示核心参数，高级选项已隐藏")
-            try:
-                app.config_data["ui_mode"] = "simple"
-                from utils.config import save_config
-                save_config(app.config_data)
-            except Exception:
-                pass
         else:
             advanced_container.pack(fill=tk.X, padx=12, pady=4, before=preview_btn)
             mode_tip.config(text="🔧 高级模式：全部参数可调")
-            try:
-                app.config_data["ui_mode"] = "advanced"
-                from utils.config import save_config
-                save_config(app.config_data)
-            except Exception:
-                pass
 
     # 初始显示
     _toggle_mode(mode_var.get())
@@ -681,7 +667,6 @@ def show_reaction_animation_dialog(app, controller):
 
 
 def _preview_frame(dialog, r_list, p_list, spacing_var, app):
-    import chem.reaction_animation as ra
     import tempfile
 
     if not dialog or not dialog.winfo_exists():
@@ -696,8 +681,9 @@ def _preview_frame(dialog, r_list, p_list, spacing_var, app):
     preview_path = Path(tempfile.gettempdir()) / "preview_frame.png"
 
     def _task(**kwargs):
-        import chem.reaction_animation as ra
         import tempfile
+
+        import chem.reaction_animation as ra
         if len(reactants) == 1 and len(products) == 1:
             r = ra.preview_first_frame(reactants[0], products[0], preview_path,
                                        width=800, height=600)
@@ -737,9 +723,9 @@ def _start_animation(app, dialog, r_list, p_list, steps_var, mode_var, fps_var,
                      qm_basis_var, qm_d3_var, qm_charge_var, qm_mult_var,
                      qm_mem_var, scan_steps_var, scan_output_var,
                      preset_psi4_var, solvent_cb_var_to_key_map, result_text, controller):
-    import chem.reaction_animation as ra
     import subprocess as _sp
-    import shutil as _shu
+
+    import chem.reaction_animation as ra
 
     reactants = [r_list.get(i) for i in range(r_list.size())]
     products = [p_list.get(i) for i in range(p_list.size())]
@@ -789,6 +775,7 @@ def _start_animation(app, dialog, r_list, p_list, steps_var, mode_var, fps_var,
                 )
             else:
                 import tempfile as _tf
+
                 from chem.psi4.utils import _write_xyz
                 with _tf.TemporaryDirectory(prefix="ms_viz_") as _td:
                     _tdp = Path(_td)

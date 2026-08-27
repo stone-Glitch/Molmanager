@@ -1,5 +1,6 @@
 """fileops 子系统 mixin（由原 core/model.py 拆分而来）。"""
 from ._common import *  # noqa: F401,F403
+from typing import List, Tuple
 
 
 class FileOpsMixin:
@@ -121,11 +122,7 @@ class FileOpsMixin:
             mapping_snap = dict(self.mapping)
         for f in self.scan_files(ext_filter=list(STRUCTURE_EXTS)):
             correct_name = None
-            if f['has_chinese']:
-                eng = f['eng']
-                if eng in mapping_snap:
-                    correct_name = f"{eng}（{mapping_snap[eng]}）"
-            elif f['status'] == "⏳ 待重命名":
+            if f['has_chinese'] or f['status'] == "⏳ 待重命名":
                 eng = f['eng']
                 if eng in mapping_snap:
                     correct_name = f"{eng}（{mapping_snap[eng]}）"

@@ -10,12 +10,13 @@
 from __future__ import annotations
 
 import os
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
 from utils.dialog_geom import fit_dialog_geometry
+
 
 if TYPE_CHECKING:
     from core.view import MainView
@@ -68,7 +69,7 @@ class FirstRunWizard:
         w.show()                  # 非阻塞
     """
 
-    def __init__(self, app: "MainView"):
+    def __init__(self, app: MainView):
         self.app = app
         self.config_data: dict = dict(app.config_data)
         self.top: tk.Toplevel | None = None
@@ -444,7 +445,7 @@ def _safe_call(fn):
 
 
 # ---------------- 便捷入口：MainView 只需要调用这一个函数 ----------------
-def maybe_show_first_run_wizard(app: "MainView") -> None:
+def maybe_show_first_run_wizard(app: MainView) -> None:
     """
     当 config_data.get("first_run") != False 时，300ms 后弹出向导。
     （给主窗口留够先绘制的时间，避免 splash 刚关就被另一个模态抢焦点）

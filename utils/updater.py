@@ -27,13 +27,14 @@
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any
 
 from utils import net
 from utils import version as ver
 from utils.logger import default_logger as logger
+
 
 # ---------------------------------------------------------------- 常量
 
@@ -69,7 +70,7 @@ class UpdateInfo:
     published_at: str = ""            # 发布时间（原样字符串）
     prerelease: bool = False          # 是否预发布版本
     source_url: str = ""              # 本次请求的 API 地址（排查问题用）
-    assets: List[Dict[str, str]] = field(default_factory=list)  # 可选的资产列表
+    assets: list[dict[str, str]] = field(default_factory=list)  # 可选的资产列表
 
     def summary_line(self) -> str:
         """一行摘要，供日志 / 状态栏使用。"""
@@ -78,7 +79,7 @@ class UpdateInfo:
     def has_changelog(self) -> bool:
         return bool(self.changelog.strip())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "version": self.version,
             "current_version": self.current_version,
@@ -94,13 +95,13 @@ class UpdateInfo:
 
 # ---------------------------------------------------------------- 配置读写
 
-def get_update_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def get_update_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     从整份 config 中取出 "update" 子字典（永远返回 dict，绝不返回 None）。
 
     传 None 时会自行 `load_config()`；缺键时回落到 DEFAULT_CONFIG 的默认值。
     """
-    cfg: Dict[str, Any]
+    cfg: dict[str, Any]
     if isinstance(config, dict):
         cfg = config
     else:
@@ -124,7 +125,7 @@ def get_update_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
     }
 
 
-def _persist(config: Optional[Dict[str, Any]], key: str, value: Any) -> bool:
+def _persist(config: dict[str, Any] | None, key: str, value: Any) -> bool:
     """
     把 update.<key> 写回 config 并落盘。返回是否成功。
 
@@ -146,7 +147,7 @@ def _persist(config: Optional[Dict[str, Any]], key: str, value: Any) -> bool:
         return False
 
 
-def mark_version_skipped(config: Optional[Dict[str, Any]], version: Any) -> bool:
+def mark_version_skipped(config: dict[str, Any] | None, version: Any) -> bool:
     """记录「跳过此版本」。之后的**静默检查**不再提示该版本（手动检查仍会提示）。"""
     normalized = ver.normalize_version(version)
     if not normalized:
@@ -154,17 +155,17 @@ def mark_version_skipped(config: Optional[Dict[str, Any]], version: Any) -> bool
     return _persist(config, "skipped_version", normalized)
 
 
-def clear_skipped_version(config: Optional[Dict[str, Any]] = None) -> bool:
+def clear_skipped_version(config: dict[str, Any] | None = None) -> bool:
     """清除跳过标记（用户想重新收到该版本提示时使用）。"""
     return _persist(config, "skipped_version", "")
 
 
-def set_auto_check(config: Optional[Dict[str, Any]], enabled: bool) -> bool:
+def set_auto_check(config: dict[str, Any] | None, enabled: bool) -> bool:
     """开 / 关启动时的静默更新检查。"""
     return _persist(config, "auto_check", bool(enabled))
 
 
-def is_version_skipped(config: Optional[Dict[str, Any]], version: Any) -> bool:
+def is_version_skipped(config: dict[str, Any] | None, version: Any) -> bool:
     """给定版本是否已被用户跳过。"""
     upd = get_update_config(config)
     skipped = ver.normalize_version(upd.get("skipped_version", ""))
@@ -247,7 +248,7 @@ def build_release_url(repo: Any) -> str:
 
 # ---------------------------------------------------------------- 响应解析
 
-def _first_str(data: Dict[str, Any], *keys: str) -> str:
+def _first_str(data: dict[str, Any], *keys: str) -> str:
     """按顺序取第一个非空字符串字段，全空则返回 ""。"""
     for key in keys:
         try:
@@ -263,9 +264,9 @@ def _first_str(data: Dict[str, Any], *keys: str) -> str:
     return ""
 
 
-def _extract_assets(data: Dict[str, Any]) -> List[Dict[str, str]]:
+def _extract_assets(data: dict[str, Any]) -> list[dict[str, str]]:
     """提取 release 的下载资产列表（GitHub 结构）；异常一律返回空列表。"""
-    out: List[Dict[str, str]] = []
+    out: list[dict[str, str]] = []
     try:
         raw_assets = data.get("assets")
         if not isinstance(raw_assets, list):
@@ -282,7 +283,7 @@ def _extract_assets(data: Dict[str, Any]) -> List[Dict[str, str]]:
     return out
 
 
-def parse_release_payload(data: Any, *, source_url: str = "") -> Optional[UpdateInfo]:
+def parse_release_payload(data: Any, *, source_url: str = "") -> UpdateInfo | None:
     """
     把 release JSON 解析成 `UpdateInfo`。
 
@@ -338,12 +339,12 @@ def parse_release_payload(data: Any, *, source_url: str = "") -> Optional[Update
 # ---------------------------------------------------------------- 主入口
 
 def check_update(
-    config: Optional[Dict[str, Any]] = None,
+    config: dict[str, Any] | None = None,
     *,
     force: bool = False,
-    respect_skip: Optional[bool] = None,
+    respect_skip: bool | None = None,
     timeout: Any = None,
-) -> Optional[UpdateInfo]:
+) -> UpdateInfo | None:
     """
     检查是否有新版本。**契约：永不抛异常，失败一律返回 None。**
 
@@ -411,7 +412,7 @@ def check_update(
         return None
 
 
-def describe_unavailable_reason(config: Optional[Dict[str, Any]] = None) -> str:
+def describe_unavailable_reason(config: dict[str, Any] | None = None) -> str:
     """
     给「手动检查更新」用的诊断说明：解释这次为什么没能真正联网检查。
 

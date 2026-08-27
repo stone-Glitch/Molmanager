@@ -24,15 +24,16 @@ F17 备份管理对话框（T11 / Phase 1）
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-from typing import Any, List, Optional
+from tkinter import filedialog, messagebox, ttk
+from typing import Any
 
+from utils import backup_manager as bm
 from utils.dialog_geom import fit_dialog_geometry
 from utils.logger import default_logger as logger
-from utils import backup_manager as bm
+
 
 #: 类型过滤下拉：显示名 → trigger 值（None 表示不过滤）
-_TRIGGER_FILTER_ITEMS: List[tuple] = [
+_TRIGGER_FILTER_ITEMS: list[tuple] = [
     ("全部", None),
     (bm.trigger_label(bm.TRIGGER_MAPPING), bm.TRIGGER_MAPPING),
     (bm.trigger_label(bm.TRIGGER_EXPORT), bm.TRIGGER_EXPORT),
@@ -97,7 +98,7 @@ def _build_dialog(app: Any, controller: Any) -> None:
     root_var = tk.StringVar(value="备份目录：-")
 
     # 当前列表里的快照（索引与 Treeview iid 对应）
-    snapshots: List[Any] = []
+    snapshots: list[Any] = []
 
     # ---------------------------------------------------------- 顶部：设置行
     setting_row = ttk.LabelFrame(dialog, text="⚙️ 备份设置", padding=8)
@@ -208,7 +209,7 @@ def _build_dialog(app: Any, controller: Any) -> None:
             )
         return mgr
 
-    def _current_trigger() -> Optional[str]:
+    def _current_trigger() -> str | None:
         label = filter_var.get()
         for name, value in _TRIGGER_FILTER_ITEMS:
             if name == label:

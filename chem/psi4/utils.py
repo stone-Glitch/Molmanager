@@ -3,20 +3,14 @@
 """
 PSI4 工具函数 - XYZ 解析、坐标插值、IR 绘图、二面角设置等
 """
-import csv
 import hashlib
-import math
 import os
 import struct
 import tempfile
-import threading
-from collections import OrderedDict
-from pathlib import Path
-from typing import Any
 
-from utils.logger import default_logger as logger
-from utils.cache import LRUCache
 import chem.openbabel_utils as ob_utils
+from utils.cache import LRUCache
+from utils.logger import default_logger as logger
 
 
 def _parse_xyz(text: str) -> tuple[int, list[str], list[list[float]]]:
@@ -136,7 +130,6 @@ def _plot_ir(freqs_cm: list[float], intensities: list[float], out_png: str,
         import matplotlib.pyplot as plt
         try:
             if os.name == "nt":
-                from matplotlib import font_manager as _fm
                 for _cand in ("Microsoft YaHei", "SimHei", "SimSun", "Arial Unicode MS"):
                     try:
                         plt.rcParams["font.sans-serif"] = [_cand] + list(
@@ -169,7 +162,8 @@ def _plot_ir(freqs_cm: list[float], intensities: list[float], out_png: str,
 
     # B. Pillow
     try:
-        from PIL import Image as _PIL_Image, ImageDraw as _ImageDraw
+        from PIL import Image as _PIL_Image
+        from PIL import ImageDraw as _ImageDraw
         W, H = 1200, 600
         img = _PIL_Image.new("RGB", (W, H), "white")
         draw = _ImageDraw.Draw(img)

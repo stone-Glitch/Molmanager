@@ -16,15 +16,17 @@
 """
 from __future__ import annotations
 
-import threading
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Optional, Sequence
+import threading
+from typing import Any
+
 
 # 单函数最长运行时间无统一上限；这里仅约束线程池生命周期
 _DEFAULT_MAX_WORKERS = 1
 
 
-def _resolve_workers(requested: Optional[int]) -> int:
+def _resolve_workers(requested: int | None) -> int:
     """把用户请求并发度收敛到合法范围 [1, 32]。"""
     if requested is None:
         return _DEFAULT_MAX_WORKERS
@@ -42,9 +44,9 @@ def _resolve_workers(requested: Optional[int]) -> int:
 def run_sharded(
     items: Sequence[Any],
     worker_fn: Callable[[Any], Any],
-    max_workers: Optional[int] = None,
-    on_progress: Optional[Callable[[int, int], None]] = None,
-    is_cancelled: Optional[Callable[[], bool]] = None,
+    max_workers: int | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> list:
     """对 ``items`` 中的每个元素调用 ``worker_fn(item)``，返回与 ``items`` 等长的
     结果列表（保持原始顺序）。

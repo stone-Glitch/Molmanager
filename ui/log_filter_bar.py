@@ -24,11 +24,12 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
-from typing import Any, Optional
+from typing import Any
 
 from utils import log_filter
 from utils.logger import default_logger as logger
 from utils.logger import get_gui_handler
+
 
 #: 关键词输入防抖窗口（毫秒）。架构 §3.1 实测 5 万条全量重绘 <120ms，250ms 足够。
 DEBOUNCE_MS: int = 250
@@ -40,14 +41,14 @@ COUNT_REFRESH_MS: int = 1000
 class LogFilterBar(tk.Frame):
     """日志过滤条。父容器应为日志面板的 ``log_frame``。"""
 
-    def __init__(self, master: Any, app: Any, colors: Optional[dict] = None) -> None:
+    def __init__(self, master: Any, app: Any, colors: dict | None = None) -> None:
         self.app = app
         self._colors = colors or {}
         bg = self._color("card_bg", "#161B22")
         super().__init__(master, bg=bg)
 
-        self._debounce_job: Optional[str] = None
-        self._count_job: Optional[str] = None
+        self._debounce_job: str | None = None
+        self._count_job: str | None = None
         self._destroyed = False
         # 最近一次已持久化的取值，用于避免重复写配置
         self._persisted: tuple[str, str] = ("", "")
@@ -279,7 +280,7 @@ class LogFilterBar(tk.Frame):
             logger.debug("聚焦日志过滤框失败: %s", exc)
 
 
-def build_log_filter_bar(app: Any, parent: Any, colors: Optional[dict] = None) -> Optional[LogFilterBar]:
+def build_log_filter_bar(app: Any, parent: Any, colors: dict | None = None) -> LogFilterBar | None:
     """
     工厂函数：创建过滤条并挂到 ``app.log_filter_bar``。
 

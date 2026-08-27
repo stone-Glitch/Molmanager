@@ -12,23 +12,27 @@
 """
 
 import csv
+from datetime import datetime
 import logging
 import os
+from pathlib import Path
+import threading
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from datetime import datetime
-from pathlib import Path
-import threading
 
+from ui.ui_theme import CHECK_GLYPH
+from utils.dialog_geom import fit_dialog_geometry
+from utils.logger import (
+    LEVEL_SUCCESS,
+    get_gui_handler,
+)
 from utils.logger import (
     default_logger as logger,
-    get_gui_handler,
-    get_context as get_log_context,
-    LEVEL_SUCCESS,
 )
-from utils.dialog_geom import fit_dialog_geometry
-from ui.ui_theme import CHECK_GLYPH
+from utils.logger import (
+    get_context as get_log_context,
+)
 
 
 _LOG_BATCH_WINDOW_MS = 20
@@ -440,7 +444,8 @@ class AppHelpers:
             on_confirm()
             return
         try:
-            from tkinter import ttk, messagebox as mb
+            from tkinter import messagebox as mb
+            from tkinter import ttk
         except Exception:
             mb = None
             ttk = None
@@ -567,7 +572,17 @@ class AppHelpers:
         ttk.Label(tool_row, textvariable=count_var,
                   font=('Microsoft YaHei', 10, 'bold'), foreground='#1f6feb').pack(side='right')
 
-        always_var = _tk.BooleanVar(value=False)
+        # —— 与「设置 → 文件整理前先预览」菜单开关双向同步 ——
+        # 复用同一 BooleanVar：对话框勾选状态与菜单开关实时一致，杜绝重复/不一致。
+        prev_var = getattr(self.app, "preview_before_operation_var", None)
+        if prev_var is None or not isinstance(prev_var, _tk.BooleanVar):
+            prev_var = _tk.BooleanVar(
+                value=bool(self.app.config_data.get("preview_before_operation", True)))
+            self.app.preview_before_operation_var = prev_var
+        # 对话框复选框语义为「以后直接执行，不再询问」= 预览关闭，与开关相反
+        always_var = _tk.BooleanVar(value=not prev_var.get())
+        _prev_trace = prev_var.trace_add(
+            "write", lambda *_a: always_var.set(not prev_var.get()))
         chk = ttk.Checkbutton(
             top, text="✅ 以后所有操作都直接执行，不再询问（可在顶部设置菜单改回）",
             variable=always_var,
@@ -575,13 +590,21 @@ class AppHelpers:
         chk.pack(padx=12, pady=(6, 4), anchor='w')
 
         def on_close(result: bool):
-            if always_var.get():
-                try:
-                    self.app.config_data["preview_before_operation"] = False
-                    from utils.config import save_config as _save
-                    _save(self.app.config_data)
-                except Exception:
-                    pass
+            # 写回共享开关变量（菜单与对话框同步），并持久化到配置
+            try:
+                prev_var.set(not always_var.get())
+            except Exception:
+                pass
+            try:
+                self.app.config_data["preview_before_operation"] = prev_var.get()
+                from utils.config import save_config as _save
+                _save(self.app.config_data)
+            except Exception:
+                pass
+            try:
+                prev_var.trace_remove("write", _prev_trace)
+            except Exception:
+                pass
             if not result:
                 top.destroy()
                 return
@@ -795,7 +818,7 @@ class AppHelpers:
                     pass
             if status_text is not None:
                 try:
-                    status_text.set(("OB 就绪" if ob_ok else "OB 未就绪"))
+                    status_text.set("OB 就绪" if ob_ok else "OB 未就绪")
                 except Exception:
                     pass
             if lab is not None:

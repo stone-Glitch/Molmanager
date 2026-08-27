@@ -25,10 +25,11 @@
 from __future__ import annotations
 
 import json as _json
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from utils.logger import default_logger as logger
 from utils.version import get_user_agent
+
 
 # ---------------------------------------------------------------- 常量
 
@@ -127,14 +128,14 @@ def reset_probe_cache() -> None:
 
 # ---------------------------------------------------------------- 请求头
 
-def build_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+def build_headers(extra: dict[str, str] | None = None) -> dict[str, str]:
     """
     构造统一请求头：UA + Accept + 不缓存。
 
     `extra` 中的同名键会覆盖默认值（例如 GitHub 需要
     `Accept: application/vnd.github+json`）。
     """
-    headers: Dict[str, str] = {
+    headers: dict[str, str] = {
         "User-Agent": get_user_agent(),
         "Accept": "application/json, text/plain, */*",
         "Accept-Encoding": "gzip, deflate",
@@ -151,7 +152,7 @@ def build_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     return headers
 
 
-def _normalize_timeout(timeout: Any) -> Tuple[float, float]:
+def _normalize_timeout(timeout: Any) -> tuple[float, float]:
     """把各种形态的 timeout 归一成 `(连接超时, 读取超时)` 元组。"""
     if timeout is None:
         return (CONNECT_TIMEOUT, READ_TIMEOUT)
@@ -174,12 +175,12 @@ def _normalize_timeout(timeout: Any) -> Tuple[float, float]:
 def get_text(
     url: str,
     *,
-    headers: Optional[Dict[str, str]] = None,
-    params: Optional[Dict[str, Any]] = None,
+    headers: dict[str, str] | None = None,
+    params: dict[str, Any] | None = None,
     timeout: Any = None,
     retries: int = DEFAULT_RETRIES,
     max_bytes: int = MAX_RESPONSE_BYTES,
-) -> Optional[str]:
+) -> str | None:
     """
     发起 GET 请求并返回响应正文（str）。
 
@@ -212,12 +213,12 @@ def get_text(
 def get_json(
     url: str,
     *,
-    headers: Optional[Dict[str, str]] = None,
-    params: Optional[Dict[str, Any]] = None,
+    headers: dict[str, str] | None = None,
+    params: dict[str, Any] | None = None,
     timeout: Any = None,
     retries: int = DEFAULT_RETRIES,
     max_bytes: int = MAX_RESPONSE_BYTES,
-) -> Optional[Any]:
+) -> Any | None:
     """
     发起 GET 请求并把响应正文解析为 JSON。
 
@@ -243,12 +244,12 @@ def get_json(
 def _get_raw_text(
     url: str,
     *,
-    headers: Optional[Dict[str, str]],
-    params: Optional[Dict[str, Any]],
+    headers: dict[str, str] | None,
+    params: dict[str, Any] | None,
     timeout: Any,
     retries: int,
     max_bytes: int,
-) -> Optional[str]:
+) -> str | None:
     """`get_text` / `get_json` 的公共实现。任何异常都在此吞掉。"""
     if not isinstance(url, str) or not url.strip():
         logger.debug("网络请求被跳过：URL 为空")

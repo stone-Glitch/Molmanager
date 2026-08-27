@@ -3,15 +3,16 @@
 """
 常量定义 - 集中管理硬编码字符串和数值，避免散落在各模块中
 """
-from typing import Any, Dict, List, Tuple
+from typing import Any
+
 
 # ============================================================
 # 默认力场与溶剂（供 OpenBabel / PSI4 通用）
 # ============================================================
 DEFAULT_FORCEFIELD: str = "mmff94"
-SUPPORTED_FORCEFIELDS: Tuple[str, ...] = ("mmff94", "uff")
+SUPPORTED_FORCEFIELDS: tuple[str, ...] = ("mmff94", "uff")
 DEFAULT_SOLVENT: str = "water"
-COMMON_SOLVENTS: Tuple[str, ...] = (
+COMMON_SOLVENTS: tuple[str, ...] = (
     "water", "methanol", "ethanol", "acetone", "thf",
     "acetonitrile", "dichloromethane", "toluene", "dimethyl sulfoxide",
 )
@@ -34,14 +35,14 @@ PSI4_DEFAULT_PROCESS_TIMEOUT: float = 300.0  # 通用子进程 5 分钟
 # ============================================================
 # OpenBabel 常用输入格式（用于未知扩展名时的 fallback 探测）
 # ============================================================
-COMMON_INPUT_FORMATS: Tuple[str, ...] = (
+COMMON_INPUT_FORMATS: tuple[str, ...] = (
     "xyz", "mol", "mol2", "smi", "sdf", "cml", "pdb", "inchi", "cif",
 )
 
 # ============================================================
 # 常用原子量（元素→平均原子量），纯 Python 元素分析兜底用
 # ============================================================
-ATOMIC_WEIGHTS: Dict[str, float] = {
+ATOMIC_WEIGHTS: dict[str, float] = {
     "H": 1.00794, "He": 4.002602, "Li": 6.941, "Be": 9.012182, "B": 10.811,
     "C": 12.0107, "N": 14.0067, "O": 15.9994, "F": 18.9984032, "Ne": 20.1797,
     "Na": 22.989770, "Mg": 24.3050, "Al": 26.981538, "Si": 28.0855, "P": 30.973762,

@@ -15,13 +15,15 @@
         tm.run_async(func, on_done=cb, on_error=cb, progress_callback=cb2)
         # 使用共享的 ThreadPoolExecutor，避免无限开线程；on_done/on_error 自动 after(0) 回主线程
 """
-import threading
-import queue
-import os
-import time
 import atexit
-from concurrent.futures import ThreadPoolExecutor, Future
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+import os
+import queue
+import threading
+import time
+from typing import Any
+
 from utils.logger import default_logger as logger
 
 
@@ -93,8 +95,8 @@ class TaskManager:
         # 模式1：常驻 worker 池（调用 start/stop 才会用到）
         # 并发度来自 config.queue_concurrency，真正并行执行 submit 队列里的任务。
         self._running = False
-        self._task_queue: "queue.Queue[tuple]" = queue.Queue()
-        self._result_queue: "queue.Queue[tuple]" = queue.Queue()
+        self._task_queue: queue.Queue[tuple] = queue.Queue()
+        self._result_queue: queue.Queue[tuple] = queue.Queue()
         self._stop_event = threading.Event()
         # 协作式取消：worker 运行任务期间置位；进度回调检测到后即中止任务
         self._cancel_ev = threading.Event()
@@ -104,14 +106,14 @@ class TaskManager:
         # —— 并发 worker 池 ——
         self._concurrency = max(1, int((getattr(app, "config_data", {}) or {}).get("queue_concurrency", 2) or 2))
         self._desired_workers = self._concurrency
-        self._worker_threads: "list[threading.Thread]" = []
+        self._worker_threads: list[threading.Thread] = []
         self._workers_alive = 0
         self._workers_lock = threading.Lock()
         self._worker_seq = 0
         self._scale_down_pending = 0
         # 任务 id -> job 映射（让结果回传时精准标记对应 job，支持并发）
         self._task_seq = 0
-        self._pending_jobs: "dict[int, dict]" = {}
+        self._pending_jobs: dict[int, dict] = {}
         self._pending_jobs_lock = threading.Lock()
         # 模式2：run_async（使用全局线程池，这里仅记录 futures 方便 stop 时取消）
         self._one_shot_futures: list[Future] = []
@@ -121,7 +123,7 @@ class TaskManager:
         # 设计落地 Phase 5：统一任务队列记录（供「任务队列」页渲染）。
         # 仅新增属性，不改动既有 submit/run_async 的逻辑与调用方。
         self.jobs: list[dict] = []
-        self._active_job: "dict | None" = None
+        self._active_job: dict | None = None
         self._jobs_lock = threading.Lock()
 
     # ================================================================
@@ -404,10 +406,10 @@ class TaskManager:
         self,
         func: Callable[..., Any],
         *,
-        on_done: Optional[Callable[[Any], None]] = None,
-        on_error: Optional[Callable[[str], None]] = None,
-        on_progress: Optional[Callable[[float, str], None]] = None,
-        on_cancelled: Optional[Callable[[], None]] = None,
+        on_done: Callable[[Any], None] | None = None,
+        on_error: Callable[[str], None] | None = None,
+        on_progress: Callable[[float, str], None] | None = None,
+        on_cancelled: Callable[[], None] | None = None,
     ) -> None:
         """
         把 func 提交到共享 ThreadPoolExecutor 中执行；完成后自动 after(0) 回主线程调 on_done/on_error。

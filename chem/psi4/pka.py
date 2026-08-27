@@ -3,14 +3,14 @@
 """
 pKa 预测模块 - SMD 热力学循环
 """
-import os
-import tempfile
 import logging
+import os
 from typing import Any
 
-from utils.logger import default_logger as logger, performance_timer
+from utils.logger import default_logger as logger
+from utils.logger import performance_timer
+
 from .core import run_psi4_task
-import chem.openbabel_utils as ob_utils
 
 
 @performance_timer(name="psi4.run_pka_prediction", level=logging.DEBUG, min_ms=100.0)

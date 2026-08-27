@@ -7,18 +7,12 @@
   - 移除内部重复的 _is_windows_junction，改用 path_utils.is_windows_junction
   - 保持所有外部接口不变
 """
-import os
-import sys
-import time
 import math
 import random
-import shutil
-import tempfile
+import sys
 import tkinter as tk
-from pathlib import Path
 
 from utils.logger import default_logger as logger
-from utils.path_utils import is_windows_junction
 from utils.path_utils import cleanup_stale_tempdirs
 
 
@@ -433,6 +427,39 @@ def main():
             except Exception:
                 pass
 
+    def _handle_tk_callback_exception(exc_type, exc_value, exc_tb):
+        """Tk 事件回调里抛出的未捕获异常兜底。
+
+        默认 Tk 会把这类异常直接吞掉（只打印到 stderr），导致界面悄悄崩掉、用户无感知。
+        这里记录完整堆栈并通过 _show_fatal_error 弹窗，保证运行时异常不丢、不静默。
+
+        安装方式：``app.report_callback_exception = staticmethod(_handle_tk_callback_exception)``
+        （Tk 会以 (exc_type, exc_value, exc_tb) 调用，staticmethod 自动吃掉 self）。
+        用模块级 flag 防止 _show_fatal_error 自身再抛异常时无限递归。
+        """
+        if getattr(_handle_tk_callback_exception, "_busy", False):
+            return
+        _handle_tk_callback_exception._busy = True
+        try:
+            import traceback as _tb
+            tb_text = "".join(_tb.format_exception(exc_type, exc_value, exc_tb))
+            logger.error("Tk 回调未捕获异常:\n%s", tb_text)
+            try:
+                _show_fatal_error(
+                    "运行时错误",
+                    [
+                        f"界面操作过程中出现异常：{exc_value}",
+                        "",
+                        "---- 技术堆栈（复制给开发者）----",
+                        tb_text,
+                    ],
+                    fallback_tb=tb_text,
+                )
+            except Exception:
+                pass
+        finally:
+            _handle_tk_callback_exception._busy = False
+
     def load_main():
         import traceback as _tb
         captured_tb: str = ""
@@ -453,6 +480,12 @@ def main():
                 except Exception:
                     pass
                 raise
+            # 🔴 运行时全局异常兜底：安装 report_callback_exception，
+            # Tk 事件回调里未捕获的异常不再被静默吞掉（原 main.py 仅有启动阶段兜底）。
+            try:
+                app.report_callback_exception = staticmethod(_handle_tk_callback_exception)
+            except Exception:
+                pass
             # mainloop 内部抛异常（例如 Tcl 错误）也走同一错误通道
             try:
                 app.mainloop()

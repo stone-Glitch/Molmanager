@@ -4,11 +4,8 @@
 目录同步对话框 - 两工作目录差异比较 + 一键同步
 """
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-from datetime import datetime
-from pathlib import Path
+from tkinter import messagebox, ttk
 
-from utils.logger import default_logger as logger
 from utils.dialog_geom import fit_dialog_geometry
 
 

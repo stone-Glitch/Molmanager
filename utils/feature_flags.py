@@ -9,7 +9,7 @@ MolManager 已在 config 中提供 ``ui_mode``（"simple" / "advanced"）。
 
 纯逻辑、无 tkinter 依赖，可在沙箱单测。
 """
-from typing import Dict, Iterable, List
+from collections.abc import Iterable
 
 
 # 仅专家(advanced)模式可见的功能；simple 模式默认隐藏。
@@ -40,12 +40,12 @@ def feature_visible(ui_mode: str, feature: str) -> bool:
     return True
 
 
-def resolve_features(ui_mode: str, features: Iterable[str]) -> Dict[str, bool]:
+def resolve_features(ui_mode: str, features: Iterable[str]) -> dict[str, bool]:
     """批量裁决一组功能的可见性，返回 {feature: bool}。"""
     return {f: feature_visible(ui_mode, f) for f in features}
 
 
-def visible_features(ui_mode: str, features: Iterable[str]) -> List[str]:
+def visible_features(ui_mode: str, features: Iterable[str]) -> list[str]:
     """返回在给定模式下可见的功能名列表（稳定顺序）。"""
     return [f for f in features if feature_visible(ui_mode, f)]
 

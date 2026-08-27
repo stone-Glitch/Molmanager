@@ -3,21 +3,23 @@
 """
 PSI4 扫描模块 - 线性插值扫描和刚性二面角扫描
 """
-import os
 import csv
-import shutil
-import tempfile
 import logging  # ← 添加这一行！
 from pathlib import Path
 from typing import Any
 
-from utils.logger import default_logger as logger, performance_timer
-from utils.path_utils import secure_output_path, default_base_dir_from_input
-from .core import (
-    run_psi4_task, read_xyz_content, sanitize_filename, normalize_psi4_memory,
-)
-from .utils import _parse_xyz, _write_xyz, _lerp_coords, _set_dihedral_and_get
 import chem.openbabel_utils as ob_utils
+from utils.logger import default_logger as logger
+from utils.logger import performance_timer
+from utils.path_utils import default_base_dir_from_input, secure_output_path
+
+from .core import (
+    normalize_psi4_memory,
+    read_xyz_content,
+    run_psi4_task,
+    sanitize_filename,
+)
+from .utils import _lerp_coords, _parse_xyz, _set_dihedral_and_get, _write_xyz
 
 
 @performance_timer(name="psi4.run_linear_scan", level=logging.DEBUG, min_ms=200.0)

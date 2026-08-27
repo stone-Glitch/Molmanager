@@ -9,10 +9,10 @@ error/muted/info），UI 据此把原来的 emoji 文本渲染成彩色圆点 Ta
 只做「状态 → 色名/色值」的纯映射，不碰 tkinter；色值随 IDE 主题
 由 UI 侧最终套用（这里给暗色友好默认值）。
 """
-from typing import Dict, Optional
+
 
 # 语义色名 → 默认 hex（暗色主题友好；UI 可按主题覆盖）
-COLOR_HEX: Dict[str, str] = {
+COLOR_HEX: dict[str, str] = {
     "success": "#3fb950",   # 绿
     "warning": "#d29922",   # 橙
     "error": "#f85149",     # 红
@@ -21,7 +21,7 @@ COLOR_HEX: Dict[str, str] = {
 }
 
 # 精确状态 → 色名（对齐 core/model.py scan_files 产出的状态字符串）
-STATUS_COLORS: Dict[str, str] = {
+STATUS_COLORS: dict[str, str] = {
     "✅ 已正确命名": "success",
     "⏳ 待重命名": "warning",
     "⏳ 纯中文，待修复": "error",
@@ -51,7 +51,7 @@ def status_color(status: str) -> str:
     return "info"
 
 
-def status_hex(status: str, palette: Optional[Dict[str, str]] = None) -> str:
+def status_hex(status: str, palette: dict[str, str] | None = None) -> str:
     """返回状态对应的 hex 色值；palette 可传主题覆盖表。"""
     p = palette or COLOR_HEX
     return p.get(status_color(status), p.get("info", "#4c9aff"))

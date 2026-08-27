@@ -11,7 +11,7 @@ E-08 CLI 无头模式（--batch --fix-all）· 纯逻辑规划层
     python -m utils.cli_batch --batch --work-dir output --fix-all --dry-run
 """
 import argparse
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 # 操作定义：按「安全顺序」排列（扫描→整理→重命名→修中文→生成缺失→导出）
@@ -29,7 +29,7 @@ OPERATION_LABELS = {
 }
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="molmanager", description="MolManager 无头批处理")
     p.add_argument("--batch", action="store_true", help="无头模式")
     p.add_argument("--work-dir", default=None, help="工作目录")
@@ -43,9 +43,9 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def _pick(opts: argparse.Namespace) -> Dict[str, Dict[str, Any]]:
+def _pick(opts: argparse.Namespace) -> dict[str, dict[str, Any]]:
     """根据参数挑选要执行的操作，返回 {name: op_spec}。"""
-    plan: Dict[str, Dict[str, Any]] = {}
+    plan: dict[str, dict[str, Any]] = {}
 
     if getattr(opts, "fix_all", False):
         for name in OPERATION_ORDER:
@@ -68,7 +68,7 @@ def _pick(opts: argparse.Namespace) -> Dict[str, Dict[str, Any]]:
     return plan
 
 
-def build_batch_plan(opts: argparse.Namespace) -> List[Dict[str, Any]]:
+def build_batch_plan(opts: argparse.Namespace) -> list[dict[str, Any]]:
     """把参数归一成有序操作列表（按 OPERATION_ORDER 排序，去重）。"""
     picked = _pick(opts)
     ordered = []
@@ -78,7 +78,7 @@ def build_batch_plan(opts: argparse.Namespace) -> List[Dict[str, Any]]:
     return ordered
 
 
-def plan_summary(plan: List[Dict[str, Any]], dry_run: bool = False) -> str:
+def plan_summary(plan: list[dict[str, Any]], dry_run: bool = False) -> str:
     """把计划渲染成可打印摘要。"""
     if not plan:
         return "无操作（未指定任何 --fix-all/--rename/... 参数）。"

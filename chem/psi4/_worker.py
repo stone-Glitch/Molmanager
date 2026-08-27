@@ -14,8 +14,8 @@ psi4 导入开销 —— 这是消除「每次计算都重导 psi4 约 10~15s」
 import json
 import os
 import sys
-import time
 import threading
+import time
 import traceback
 
 

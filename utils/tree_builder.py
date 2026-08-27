@@ -11,10 +11,10 @@ E-02 分层目录树构造器（纯逻辑层）
   - 纯函数：相同输入永远得到相同结构（确定性、可重放）。
   - 不触碰任何文件系统；入参只接受字符串路径。
 """
-from typing import Dict, Iterable, List, Tuple
+from collections.abc import Iterable
 
 
-def _split(path: str, sep: str | None = None) -> List[str]:
+def _split(path: str, sep: str | None = None) -> list[str]:
     """按分隔符切分路径，去掉空段（兼容 'a//b' 与首尾 '/'）。"""
     if sep is None:
         # 自动识别：优先用系统分隔符，其次 '/'
@@ -23,7 +23,7 @@ def _split(path: str, sep: str | None = None) -> List[str]:
     return [p for p in raw if p not in ("", ".", "..")]
 
 
-def build_tree(paths: Iterable[str], sep: str | None = None) -> Dict:
+def build_tree(paths: Iterable[str], sep: str | None = None) -> dict:
     """
     从扁平路径列表构建嵌套树。
 
@@ -44,7 +44,7 @@ def build_tree(paths: Iterable[str], sep: str | None = None) -> Dict:
     - 同一名字既作为目录又作为文件出现时（如 'a' 与 'a/b'），
       `_is_file` 取并集（标记为该节点既可是文件也可是目录容器）。
     """
-    root: Dict = {}
+    root: dict = {}
     for p in paths:
         parts = _split(p, sep)
         if not parts:
@@ -64,7 +64,7 @@ def build_tree(paths: Iterable[str], sep: str | None = None) -> Dict:
     return root
 
 
-def iter_tree(tree: Dict, parent: str = "", sep: str = "/") -> List[Tuple[str, bool]]:
+def iter_tree(tree: dict, parent: str = "", sep: str = "/") -> list[tuple[str, bool]]:
     """
     深度优先遍历树，按目录在前、文件在后的稳定顺序产出
     (完整相对路径, 是否为文件) 列表，供 ttk.Treeview 插入。
@@ -72,7 +72,7 @@ def iter_tree(tree: Dict, parent: str = "", sep: str = "/") -> List[Tuple[str, b
     顺序规则：子节点按名字排序；每个名字下先递归其目录子树，
     再（若该节点自身是文件）产出文件项——即「目录优先展示、文件随后」。
     """
-    out: List[Tuple[str, bool]] = []
+    out: list[tuple[str, bool]] = []
     # 目录子节点先处理（递归），文件节点后产出
     names = sorted(tree.keys())
     for name in names:
@@ -86,7 +86,7 @@ def iter_tree(tree: Dict, parent: str = "", sep: str = "/") -> List[Tuple[str, b
     return out
 
 
-def count_nodes(tree: Dict) -> Tuple[int, int]:
+def count_nodes(tree: dict) -> tuple[int, int]:
     """返回 (目录节点数, 文件节点数)。"""
     dirs = 0
     files = 0

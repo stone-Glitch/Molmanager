@@ -10,16 +10,16 @@ E-13 MO 能级图 / 能量趋势图（.fchk 轨道能级 → SVG）· 纯逻辑�
 绝不画一张「看起来正常但其实没数据」的假图。
 """
 import re
-from typing import Dict, List, Optional, Tuple
+
 
 _FLOAT = re.compile(r"[-+]?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?")
 
 
-def _parse_floats(s: str) -> List[float]:
+def _parse_floats(s: str) -> list[float]:
     return [float(m) for m in _FLOAT.findall(s)]
 
 
-def parse_fchk_orbitals(text: str, key: str = "Alpha Orbital Energies") -> List[float]:
+def parse_fchk_orbitals(text: str, key: str = "Alpha Orbital Energies") -> list[float]:
     """
     从 .fchk 文本解析某个轨道能级块，返回有序的浮点列表。
 
@@ -27,9 +27,9 @@ def parse_fchk_orbitals(text: str, key: str = "Alpha Orbital Energies") -> List[
     每行多个空格分隔的浮点值。本函数按 N 收集恰好 N 个值。
     """
     lines = (text or "").splitlines()
-    n: Optional[int] = None
+    n: int | None = None
     collecting = False
-    vals: List[float] = []
+    vals: list[float] = []
     for line in lines:
         s = line.strip()
         if not s:
@@ -49,7 +49,7 @@ def parse_fchk_orbitals(text: str, key: str = "Alpha Orbital Energies") -> List[
     return vals
 
 
-def parse_fchk_int(text: str, key: str) -> Optional[int]:
+def parse_fchk_int(text: str, key: str) -> int | None:
     """抽取 .fchk 里单行整型字段（如 Number of electrons）。"""
     for line in (text or "").splitlines():
         s = line.strip()
@@ -60,7 +60,7 @@ def parse_fchk_int(text: str, key: str) -> Optional[int]:
     return None
 
 
-def homo_lumo(energies: List[float], n_electrons: int) -> Dict:
+def homo_lumo(energies: list[float], n_electrons: int) -> dict:
     """
     按闭壳近似（每个轨道占 2 电子）计算 HOMO/LUMO/带隙。
 
@@ -83,7 +83,7 @@ def homo_lumo(energies: List[float], n_electrons: int) -> Dict:
             "homo_idx": homo_idx, "lumo_idx": lumo_idx, "n_occ": n_occ, "ok": True}
 
 
-def build_levels(energies: List[float], n_electrons: int, window: int = 4) -> Tuple[List[Dict], Dict]:
+def build_levels(energies: list[float], n_electrons: int, window: int = 4) -> tuple[list[dict], dict]:
     """取 frontier 附近 ``window`` 个占据 + ``window`` 个空轨道，返回 (levels, frontier)。"""
     frontier = homo_lumo(energies, n_electrons)
     e = sorted(energies)
@@ -108,7 +108,7 @@ def build_levels(energies: List[float], n_electrons: int, window: int = 4) -> Tu
 
 
 def render_mo_svg(
-    energies: List[float],
+    energies: list[float],
     n_electrons: int,
     title: str = "MO 能级图",
     width: int = 420,
@@ -134,7 +134,7 @@ def render_mo_svg(
     def y_for(energy: float) -> float:
         return margin_t + (emax - energy) / span * plot_h
 
-    parts: List[str] = []
+    parts: list[str] = []
     parts.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'viewBox="0 0 {width} {height}">'

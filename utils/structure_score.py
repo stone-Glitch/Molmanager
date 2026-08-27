@@ -14,10 +14,10 @@ U-16 结构美观度评分 + 课本对照 · 纯逻辑层
 molecular_weight / logP / tpsa / heavy_atoms / bonds / hbd / hba /
 rotors / rings / formula / num_atoms）。
 """
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def _num(d: Dict[str, Any], key: str) -> Optional[float]:
+def _num(d: dict[str, Any], key: str) -> float | None:
     v = d.get(key)
     if v is None:
         return None
@@ -27,13 +27,13 @@ def _num(d: Dict[str, Any], key: str) -> Optional[float]:
         return None
 
 
-def score_structure(descriptors: Dict[str, Any]) -> Dict[str, Any]:
+def score_structure(descriptors: dict[str, Any]) -> dict[str, Any]:
     """
     返回 {score, grade, notes}。任何描述符缺失都只影响相关项、不影响整体，
     缺失字段在 notes 里如实标注「未提供」，绝不编造数值。
     """
     score = 50.0  # 中性基线
-    notes: List[str] = []
+    notes: list[str] = []
 
     rings = _num(descriptors, "rings")
     rotors = _num(descriptors, "rotors")

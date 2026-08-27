@@ -28,13 +28,14 @@
 """
 from __future__ import annotations
 
+from collections import OrderedDict
+from collections.abc import Callable
 import hashlib
 import os
+from pathlib import Path
 import threading
 import time
-from collections import OrderedDict
-from pathlib import Path
-from typing import Any, Callable, Optional, Tuple
+from typing import Any
 
 
 class LRUCache:
@@ -55,19 +56,19 @@ class LRUCache:
 
     def __init__(
         self,
-        maxsize: Optional[int] = 128,
-        on_evict: Optional[Callable[[Any, Any], None]] = None,
-        lock: Optional[threading.RLock] = None,
+        maxsize: int | None = 128,
+        on_evict: Callable[[Any, Any], None] | None = None,
+        lock: threading.RLock | None = None,
     ) -> None:
         if maxsize is not None and maxsize <= 0:
             raise ValueError("maxsize 必须为正整或 None")
         self._maxsize = maxsize
         self._on_evict = on_evict
-        self._data: "OrderedDict[Any, Any]" = OrderedDict()
+        self._data: OrderedDict[Any, Any] = OrderedDict()
         self._lock = lock or threading.RLock()
 
     @property
-    def maxsize(self) -> Optional[int]:
+    def maxsize(self) -> int | None:
         return self._maxsize
 
     def get(self, key: Any, default: Any = None) -> Any:
@@ -156,10 +157,10 @@ class TimedLRUCache:
 
     def __init__(
         self,
-        maxsize: Optional[int] = 256,
+        maxsize: int | None = 256,
         ttl: float = 300.0,
-        on_evict: Optional[Callable[[Any, Any], None]] = None,
-        lock: Optional[threading.RLock] = None,
+        on_evict: Callable[[Any, Any], None] | None = None,
+        lock: threading.RLock | None = None,
     ) -> None:
         if maxsize is not None and maxsize <= 0:
             raise ValueError("maxsize 必须为正整或 None")
@@ -168,11 +169,11 @@ class TimedLRUCache:
         self._maxsize = maxsize
         self._ttl = float(ttl)
         self._on_evict = on_evict
-        self._data: "OrderedDict[Any, Tuple[float, Any]]" = OrderedDict()
+        self._data: OrderedDict[Any, tuple[float, Any]] = OrderedDict()
         self._lock = lock or threading.RLock()
 
     @property
-    def maxsize(self) -> Optional[int]:
+    def maxsize(self) -> int | None:
         return self._maxsize
 
     @property
@@ -194,7 +195,7 @@ class TimedLRUCache:
                 return value
             return default
 
-    def put(self, key: Any, value: Any, ttl: Optional[float] = None) -> None:
+    def put(self, key: Any, value: Any, ttl: float | None = None) -> None:
         ttl = self._ttl if ttl is None else float(ttl)
         expire_at = time.monotonic() + ttl
         with self._lock:
@@ -263,7 +264,7 @@ class TimedLRUCache:
 def make_file_cache_key(
     path_str: str,
     max_hash_bytes: int = 2 * 1024 * 1024,
-) -> Optional[Tuple[str, int, int, Optional[str]]]:
+) -> tuple[str, int, int, str | None] | None:
     """为「按文件内容缓存」构造统一的缓存键。
 
     返回 ``(解析后绝对路径, mtime_ns, 文件大小, 内容哈希或 None)``。
@@ -280,7 +281,7 @@ def make_file_cache_key(
         path_resolved = os.fspath(Path(path_str).resolve())
         mtime_ns = int(st.st_mtime_ns)
         size = int(st.st_size)
-        content_hash: Optional[str] = None
+        content_hash: str | None = None
         if 0 <= size <= max_hash_bytes:
             try:
                 h = hashlib.md5()

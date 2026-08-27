@@ -22,7 +22,6 @@ from __future__ import annotations
 import tkinter as tk
 
 import ui.ui_theme as ui_theme
-from ui.ui_theme import COLORS, get_current_theme
 
 
 def _safe(app, name):

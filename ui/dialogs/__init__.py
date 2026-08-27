@@ -4,28 +4,36 @@
 对话框模块 - 路由
 保持原 Dialogs 类接口不变，实际实现拆分到各子模块。
 """
+from .advanced_tools_dialog import show_advanced_tools_dialog
+from .analytics_dialog import export_geometry_csv, show_formula_dialog
+from .backup_dialog import show_backup_manager_dialog
 from .base import (
-    friendly_error, _append_text, _clear_text,
-    register_dialog_temp_dir, unregister_dialog_temp_dir,
-    force_cleanup_dialog_temp_dirs
+    _append_text,
+    _clear_text,
+    force_cleanup_dialog_temp_dirs,
+    friendly_error,
+    register_dialog_temp_dir,
+    unregister_dialog_temp_dir,
 )
 from .common import (
-    show_ext_filter_dialog, show_font_size_dialog, show_environment_dialog,
-    show_obabel_path_dialog, show_recent_dirs_dialog
+    show_environment_dialog,
+    show_ext_filter_dialog,
+    show_font_size_dialog,
+    show_obabel_path_dialog,
+    show_recent_dirs_dialog,
 )
-from .psi4_dialog import show_psi4_dialog
-from .openbabel_dialog import show_openbabel_dialog
-from .mapping_dialog import show_mapping_manager_dialog, show_mapping_editor_dialog
-from .reaction_dialog import show_reaction_animation_dialog
 from .history_dialog import show_history_dialog
+from .mapping_dialog import show_mapping_editor_dialog, show_mapping_manager_dialog
+from .openbabel_dialog import show_openbabel_dialog
+from .psi4_dialog import show_psi4_dialog
+from .reaction_dialog import show_reaction_animation_dialog
 from .results_dialog import show_results_browser_dialog
 from .sync_dialog import show_diff_sync_dialog
-from .advanced_tools_dialog import show_advanced_tools_dialog
-from .analytics_dialog import show_formula_dialog, export_geometry_csv
-from .backup_dialog import show_backup_manager_dialog
 from .update_dialog import (
-    show_update_dialog, show_no_update_dialog,
-    show_check_failed_dialog, notify_update_result,
+    notify_update_result,
+    show_check_failed_dialog,
+    show_no_update_dialog,
+    show_update_dialog,
 )
 
 

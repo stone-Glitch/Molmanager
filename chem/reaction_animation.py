@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import csv
 import hashlib
+import logging
 import math
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
-from typing import Any, Callable
-from utils.path_utils import secure_output_path, default_base_dir_from_input, resolve_secure_input_file
+from typing import Any
 
-import logging
-from utils.logger import default_logger as logger, performance_timer
-from chem.psi4.utils import _lerp_coords, _parse_xyz, _write_xyz
 import chem.openbabel_utils as ob_utils
-from utils.cache import LRUCache, TimedLRUCache
+from chem.psi4.utils import _lerp_coords, _parse_xyz, _write_xyz
+from utils.cache import LRUCache
+from utils.logger import default_logger as logger
+from utils.logger import performance_timer
+from utils.path_utils import default_base_dir_from_input, resolve_secure_input_file, secure_output_path
 
 
 try:
@@ -65,7 +67,7 @@ def _default_base_dir_from_input(
 
 
 
-_FONT_CACHE: "LRUCache" = LRUCache(maxsize=32)
+_FONT_CACHE: LRUCache = LRUCache(maxsize=32)
 # 区分「缓存未命中」与「命中但字体为 None（PIL 不可用）」的哨兵
 _FONT_MISS = object()
 
@@ -115,7 +117,7 @@ def _expand_timeline(steps: int, mode: str, smooth: bool) -> list[float]:
 
 def _read_energy_csv(path: str | os.PathLike[str]) -> list[float] | None:
     try:
-        with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        with open(path, encoding="utf-8-sig", newline="") as f:
             reader = csv.DictReader(f)
             if not reader.fieldnames:
                 return None
@@ -596,24 +598,60 @@ def _concat_xyz_files(paths: list[str | os.PathLike[str]],
     return len(all_atoms), all_atoms, all_coords
 
 
+def _kabsch_rotation(source: np.ndarray, target: np.ndarray):
+    """Kabsch 算法（给定对应关系）：求刚体旋转 R，使 ``source`` 对齐 ``target``。
+
+    返回 ``(R, target_centroid)``；把 ``(src - src.mean) @ R.T + target_centroid``
+    即可把整个 ``source`` 点云旋到 ``target`` 坐标系。
+
+    注意：Kabsch 按**相同下标**配对 ``source[i]`` 与 ``target[i]``，因此调用方必须先
+    有正确对应关系（这里由匈牙利迭代给出），不能拿乱序分子直接喂入。
+    """
+    import numpy as np
+    src = np.asarray(source, dtype=float)
+    tgt = np.asarray(target, dtype=float)
+    src_c = src - src.mean(axis=0)
+    tgt_c = tgt - tgt.mean(axis=0)
+    H = src_c.T @ tgt_c
+    U, _S, Vt = np.linalg.svd(H)
+    d = float(np.sign(np.linalg.det(Vt.T @ U.T)))
+    D = np.diag([1.0, 1.0, d])
+    R = Vt.T @ D @ U.T
+    return R, tgt.mean(axis=0)
+
+
 def _auto_reorder_atoms(atoms_R: list[str], coords_R: list[list[float]],
                         atoms_P: list[str], coords_P: list[list[float]]
                         ) -> tuple[list[str], list[list[float]]]:
-    """
-    问题8（算法注释）：产物原子顺序自动对齐。
-    算法：同元素「最近邻贪心」匹配：
-      1. 按元素分组，只在同种元素内做匹配（保证化学式守恒后排序也守恒）。
-      2. 生成 O(N²) 对 (R_i, P_j) 两两距离平方并升序排序。
-      3. 从小到大贪心选择：若 R_i、P_j 都未被占用，则 perm[R_i] = P_j。
-      4. 把 P 按 perm 重新排列返回，使 R/P 每帧之间对应原子编号一致，
-         方便生成插值动画（否则两个分子对应原子会错位飞散）。
-    复杂度：O(N² log N)，对小分子（N < 200）完全够用。
+    """产物原子顺序自动对齐（修复版，问题8 科学硬伤）。
+
+    算法（ICP 迭代，朝向无关）：
+      1. 只在同种元素内做匹配（保证原子守恒后排序也守恒）。
+      2. 用 **匈牙利算法** (``scipy.optimize.linear_sum_assignment``) 在同元素内求
+         *最小总距离平方* 的最优一一对应，替代原「最近邻贪心」——
+         贪心对苯环 / 甲基等对称等效原子会随机匹配，导致动画里原子飞越/瞬移。
+      3. 反应物 / 产物可能由用户分别绘制、朝向不同，需先刚体对齐再匹配。
+         但 Kabsch 需要已知对应关系，故用 **ICP** 迭代：
+         用当前对应关系做 Kabsch 对齐 -> 重新匈牙利匹配 -> 直到对应关系收敛。
+         对齐只用于求映射；最终返回**原始产物坐标**按映射重排，不改坐标帧。
+    复杂度：每轮 对齐 O(N) + 匹配 O(ΣK³)，迭代 ≤20（通常 1-3 轮收敛）。
     """
     from collections import Counter, defaultdict
     if len(atoms_R) != len(atoms_P) or Counter(atoms_R) != Counter(atoms_P):
         raise ValueError(
             f"反应物和产物原子组成不一致（原子守恒失败）：R Counter={Counter(atoms_R)} P Counter={Counter(atoms_P)}"
         )
+
+    # numpy / scipy 可用性（环境应已具备；不可用时退化为贪心，保证功能不崩）
+    try:
+        import numpy as np
+        from scipy.optimize import linear_sum_assignment
+        _have_opt = True
+    except Exception:
+        np = None
+        linear_sum_assignment = None
+        _have_opt = False
+
     n = len(atoms_R)
     idxs_by_elem_R: dict[str, list[int]] = defaultdict(list)
     idxs_by_elem_P: dict[str, list[int]] = defaultdict(list)
@@ -622,24 +660,61 @@ def _auto_reorder_atoms(atoms_R: list[str], coords_R: list[list[float]],
     for i, a in enumerate(atoms_P):
         idxs_by_elem_P[a].append(i)
 
-    perm: list[int] = [-1] * n
-    for elem, r_ids in idxs_by_elem_R.items():
-        p_ids = list(idxs_by_elem_P[elem])
-        dists: list[tuple[float, int, int]] = []
-        for ri in r_ids:
-            rxyz = coords_R[ri]
-            for pj in p_ids:
-                pxyz = coords_P[pj]
-                d = sum((rxyz[k] - pxyz[k]) ** 2 for k in range(3))
-                dists.append((d, ri, pj))
-        dists.sort()
-        used_r: set[int] = set()
-        used_p: set[int] = set()
-        for _d, ri, pj in dists:
-            if ri in used_r or pj in used_p:
-                continue
-            perm[ri] = pj
-            used_r.add(ri); used_p.add(pj)
+    if not _have_opt:
+        # 退化路径（无 numpy/scipy）：最近邻贪心
+        perm: list[int] = [-1] * n
+        for elem, r_ids in idxs_by_elem_R.items():
+            p_ids = list(idxs_by_elem_P[elem])
+            dists: list[tuple[float, int, int]] = []
+            for ri in r_ids:
+                rxyz = coords_R[ri]
+                for pj in p_ids:
+                    pxyz = coords_P[pj]
+                    d = sum((rxyz[k] - pxyz[k]) ** 2 for k in range(3))
+                    dists.append((d, ri, pj))
+            dists.sort()
+            used_r: set[int] = set()
+            used_p: set[int] = set()
+            for _d, ri, pj in dists:
+                if ri in used_r or pj in used_p:
+                    continue
+                perm[ri] = pj
+                used_r.add(ri); used_p.add(pj)
+        if -1 in perm or len(set(perm)) != n:
+            raise RuntimeError("产物原子顺序重排失败")
+        return [atoms_P[perm[i]] for i in range(n)], [list(coords_P[perm[i]]) for i in range(n)]
+
+    arr_R = np.asarray(coords_R, dtype=float)
+    arr_P = np.asarray(coords_P, dtype=float)
+
+    def _hungarian_perm(aligned_P: np.ndarray) -> list[int]:
+        """基于已对齐的产物坐标，在同元素内求匈牙利最小总距离匹配。"""
+        perm: list[int] = [-1] * n
+        for elem, r_ids in idxs_by_elem_R.items():
+            p_ids = list(idxs_by_elem_P[elem])
+            R_block = arr_R[r_ids]              # (k, 3)
+            P_block = aligned_P[p_ids]          # (k, 3)
+            # 成本矩阵：每对 (ri, pj) 距离平方
+            cost = np.sum((R_block[:, None, :] - P_block[None, :, :]) ** 2, axis=2)
+            row_ind, col_ind = linear_sum_assignment(cost)
+            for r_pos, p_pos in zip(row_ind, col_ind):
+                perm[r_ids[r_pos]] = p_ids[p_pos]
+        return perm
+
+    # 初始猜测：仅质心对齐（无旋转）下的匈牙利匹配，保证拿到完整对应关系
+    aligned = arr_P - arr_P.mean(axis=0) + arr_R.mean(axis=0)
+    perm = _hungarian_perm(aligned)
+    # ICP 迭代：Kabsch 用当前对应对齐 -> 重新匈牙利匹配 -> 直到收敛
+    for _ in range(20):
+        P_ordered = arr_P[perm]                  # 当前对应下的产物点（与 arr_R 同序）
+        R_mat, tgt_c = _kabsch_rotation(P_ordered, arr_R)
+        src_c = arr_P - arr_P.mean(axis=0)
+        aligned = src_c @ R_mat.T + tgt_c        # 把整个产物点云旋到反应物坐标系
+        new_perm = _hungarian_perm(aligned)
+        if new_perm == perm:
+            break
+        perm = new_perm
+
     if -1 in perm or len(set(perm)) != n:
         raise RuntimeError("产物原子顺序重排失败")
     new_atoms = [atoms_P[perm[i]] for i in range(n)]
@@ -672,7 +747,7 @@ def generate_reaction_multispecies(
             progress_callback(8, "拼接产物分子...")
         _, atoms_P, coords_P = _concat_xyz_files(product_files, translate_spacing=translate_spacing)
         if progress_callback:
-            progress_callback(14, "自动对齐产物原子顺序（同元素最近邻贪心）...")
+            progress_callback(14, "自动对齐产物原子顺序（Kabsch 预对齐 + 匈牙利最小总距离匹配）...")
         atoms_P_sorted, coords_P_sorted = _auto_reorder_atoms(atoms_R, coords_R, atoms_P, coords_P)
         # 用用户原始输入目录作为输出 base_dir（而非内部合并临时目录），
         # 避免输出路径相对临时目录被安全校验误判为「越界」。
@@ -920,7 +995,7 @@ def generate_reaction_animation(
         # 坐标无关，因此各帧 raw 底图往往完全相同。先用「首两帧字节比对」探测：
         # 仅当确认字节一致才启用缓存、跳过后续重复渲染；若描绘实际依赖坐标（字节不同），
         # 则始终逐帧渲染（与优化前行为完全一致，零回归）。
-        _raw_cache: "LRUCache" = LRUCache(maxsize=64)
+        _raw_cache: LRUCache = LRUCache(maxsize=64)
         _cache_enabled = False
         _probe_bytes = None
 

@@ -5,6 +5,7 @@
 """
 import tkinter as tk
 from tkinter import ttk
+
 from utils.dialog_geom import fit_dialog_geometry
 
 

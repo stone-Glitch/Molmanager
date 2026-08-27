@@ -4,31 +4,32 @@
 PSI4 计算模块 - 路由
 保持原 psi4_compute 所有函数接口不变。
 """
+from .conformer import conformer_search_ensemble
 from .core import (
+    _run_process_with_timeout,
     check_psi4_installed,
     check_psi4_installed_simple,
-    get_preset_info,
-    sanitize_filename,
     convert_with_obabel,
+    get_preset_info,
+    parse_psi4_output,
     read_xyz_content,
     run_psi4_task,
     run_psi4_task_cancellable,
-    parse_psi4_output,
-    _run_process_with_timeout,
+    sanitize_filename,
 )
-from .scans import run_linear_scan, run_rigid_scan
-from .conformer import conformer_search_ensemble
-from .irc import run_irc_task, _parse_irc_trajectory_from_log
-from .thermo import run_reaction_energy_profile, eyring_kinetics
-from .pka import run_pka_prediction
+from .irc import _parse_irc_trajectory_from_log, run_irc_task
 from .nmr import run_nmr_simulation
+from .pka import run_pka_prediction
+from .scans import run_linear_scan, run_rigid_scan
+from .thermo import eyring_kinetics, run_reaction_energy_profile
 from .utils import (
-    _parse_xyz,
-    _write_xyz,
     _lerp_coords,
+    _parse_xyz,
     _plot_ir,
     _set_dihedral_and_write,
+    _write_xyz,
 )
+
 
 __all__ = [
     # 核心

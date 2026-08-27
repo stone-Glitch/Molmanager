@@ -14,17 +14,17 @@ M-07 映射变更细粒度历史（逐条撤销）· 纯逻辑核心
   - 所有方法幂等且不会抛异常（边界条件返回 None/空）。
 """
 import copy
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 
 class UndoStack:
-    def __init__(self, maxlen: Optional[int] = 200):
-        self._undo: List[Tuple[Any, Optional[str]]] = []
-        self._redo: List[Tuple[Any, Optional[str]]] = []
+    def __init__(self, maxlen: int | None = 200):
+        self._undo: list[tuple[Any, str | None]] = []
+        self._redo: list[tuple[Any, str | None]] = []
         self._maxlen = maxlen if (maxlen is None or maxlen > 0) else 1
 
     # ---- 写入 ----
-    def push(self, state: Any, label: Optional[str] = None) -> None:
+    def push(self, state: Any, label: str | None = None) -> None:
         """压入一个新状态快照（应已深拷贝）。会清空重做栈。"""
         snap = copy.deepcopy(state)
         if self._maxlen is not None and len(self._undo) >= self._maxlen:
@@ -32,7 +32,7 @@ class UndoStack:
         self._undo.append((snap, label))
         self._redo.clear()
 
-    def reset(self, state: Any, label: Optional[str] = None) -> None:
+    def reset(self, state: Any, label: str | None = None) -> None:
         """清空历史并以 state 作为基线（不计入可撤销步骤）。"""
         self._undo.clear()
         self._redo.clear()
@@ -45,7 +45,7 @@ class UndoStack:
     def can_redo(self) -> bool:
         return len(self._redo) > 0
 
-    def undo(self) -> Optional[Any]:
+    def undo(self) -> Any | None:
         """
         撤销一步：弹出当前栈顶，把「上一个状态」放回栈顶并返回它；
         被弹出的状态压入重做栈。无可撤销时返回 None。
@@ -56,7 +56,7 @@ class UndoStack:
         self._redo.append(current)
         return copy.deepcopy(self._undo[-1][0])
 
-    def redo(self) -> Optional[Any]:
+    def redo(self) -> Any | None:
         """重做一步：从重做栈弹出一个状态压回撤销栈并返回。无则 None。"""
         if not self.can_redo():
             return None
@@ -64,21 +64,21 @@ class UndoStack:
         self._undo.append(state)
         return copy.deepcopy(state[0])
 
-    def current(self) -> Optional[Any]:
+    def current(self) -> Any | None:
         if not self._undo:
             return None
         return copy.deepcopy(self._undo[-1][0])
 
-    def current_label(self) -> Optional[str]:
+    def current_label(self) -> str | None:
         if not self._undo:
             return None
         return self._undo[-1][1]
 
-    def undo_labels(self) -> List[Optional[str]]:
+    def undo_labels(self) -> list[str | None]:
         """从旧到新列出撤销栈所有标签（含基线），供 UI 构建历史菜单。"""
         return [lbl for _, lbl in self._undo]
 
-    def redo_labels(self) -> List[Optional[str]]:
+    def redo_labels(self) -> list[str | None]:
         return [lbl for _, lbl in self._redo]
 
     def __len__(self) -> int:

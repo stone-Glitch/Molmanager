@@ -7,11 +7,11 @@
 UI 中剥离到这里，UI 层只负责调用；这样无需 GUI 即可在 managed python 下验证正确性
 （遵循本项目「验证 > 承诺」：先确认逻辑再接线）。
 """
+from collections.abc import Iterable
 import csv
 import os
-import re
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+import re
 
 
 def levenshtein(a: str, b: str) -> int:
@@ -36,8 +36,8 @@ def levenshtein(a: str, b: str) -> int:
     return prev[lb]
 
 
-def _dedupe(names: Iterable[str]) -> List[str]:
-    out: List[str] = []
+def _dedupe(names: Iterable[str]) -> list[str]:
+    out: list[str] = []
     seen: set = set()
     for n in names:
         n = (n or "").strip()
@@ -48,7 +48,7 @@ def _dedupe(names: Iterable[str]) -> List[str]:
 
 
 def fuzzy_suggestions(name: str, candidates: Iterable[str],
-                      max_dist: int = 2, limit: int = 8) -> List[str]:
+                      max_dist: int = 2, limit: int = 8) -> list[str]:
     """
     返回与 name 编辑距离 ≤ max_dist 的候选（去重、按距离升序、截断到 limit）。
     用于编辑中文名时主动「建议」已有近似写法，避免拼写重复（如 乙醇/乙醚）。
@@ -61,7 +61,7 @@ def fuzzy_suggestions(name: str, candidates: Iterable[str],
     name = (name or "").strip()
     if not name or len(name) < 2:
         return []
-    scored: List[Tuple[int, str]] = []
+    scored: list[tuple[int, str]] = []
     seen: set = set()
     for c in candidates:
         c = (c or "").strip()
@@ -77,7 +77,7 @@ def fuzzy_suggestions(name: str, candidates: Iterable[str],
     return [c for _, c in scored[:limit]]
 
 
-def find_fuzzy_pairs(names: Iterable[str], max_dist: int = 2) -> List[Tuple[str, str, int]]:
+def find_fuzzy_pairs(names: Iterable[str], max_dist: int = 2) -> list[tuple[str, str, int]]:
     """
     在去重后的名称集合中，找出所有「编辑距离 ≤ max_dist 且非完全相同」的配对。
     用于保存映射表时扫描中文名（或英文名）的近似重复，给出警示。
@@ -86,7 +86,7 @@ def find_fuzzy_pairs(names: Iterable[str], max_dist: int = 2) -> List[Tuple[str,
     ⚠️ 长度守卫：任一名长度 < 2 的配对直接跳过（见 fuzzy_suggestions 说明）。
     """
     uniq = _dedupe(names)
-    pairs: List[Tuple[str, str, int]] = []
+    pairs: list[tuple[str, str, int]] = []
     n = len(uniq)
     for i in range(n):
         if len(uniq[i]) < 2:
@@ -100,7 +100,7 @@ def find_fuzzy_pairs(names: Iterable[str], max_dist: int = 2) -> List[Tuple[str,
     return pairs
 
 
-def filter_mapping_rows(rows: List[Tuple[str, str]], keyword: str) -> List[Tuple[str, str]]:
+def filter_mapping_rows(rows: list[tuple[str, str]], keyword: str) -> list[tuple[str, str]]:
     """
     M-04 底层谓词：按 keyword（不区分大小写，匹配英文名或中文名）过滤 (eng, chn) 行。
     UI 层拿到结果后决定 detach/reattach 哪些 treeview 项。
@@ -127,7 +127,7 @@ def generate_blank_template(path: str,
     """
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    rows: List[Tuple[str, str]] = []
+    rows: list[tuple[str, str]] = []
     if existing_english:
         for eng in existing_english:
             eng = (eng or "").strip()
@@ -196,10 +196,10 @@ def clean_filename_stem(stem: str) -> str:
 
 
 def suggest_mapping_from_dir(dir_path: str | os.PathLike,
-                             existing_english: Optional[Iterable[str]] = None,
-                             extensions: Optional[Iterable[str]] = None,
+                             existing_english: Iterable[str] | None = None,
+                             extensions: Iterable[str] | None = None,
                              recursive: bool = False,
-                             max_items: int = 500) -> List[Tuple[str, str]]:
+                             max_items: int = 500) -> list[tuple[str, str]]:
     """
     M-02：扫描目录，返回「尚未映射」的候选 (english, "") 列表，供用户在编辑器中批量建议。
 
@@ -217,7 +217,7 @@ def suggest_mapping_from_dir(dir_path: str | os.PathLike,
     if not d.is_dir():
         return []
 
-    exts: Optional[set] = None
+    exts: set | None = None
     if extensions:
         exts = {str(e).lower().lstrip(".") for e in extensions if e}
 
@@ -229,7 +229,7 @@ def suggest_mapping_from_dir(dir_path: str | os.PathLike,
                 have.add(e.lower())
 
     seen: set = set()
-    results: List[Tuple[str, str]] = []
+    results: list[tuple[str, str]] = []
 
     def _walk(directory: Path):
         try:
@@ -266,7 +266,7 @@ def suggest_mapping_from_dir(dir_path: str | os.PathLike,
     return results
 
 
-def diff_mappings(old: Dict[str, str], new: Dict[str, str]) -> Dict[str, "object"]:
+def diff_mappings(old: dict[str, str], new: dict[str, str]) -> dict[str, "object"]:
     """
     M-05：对比「当前内存映射」与「待载入映射」，分类为三类变更。
 

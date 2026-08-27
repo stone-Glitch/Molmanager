@@ -3,23 +3,23 @@
 """
 对话框基础工具 - 线程安全文本操作、友好错误翻译、临时目录管理
 """
-import os
-import sys
 import threading
 import tkinter as tk
-from pathlib import Path
 from tkinter import messagebox
 
 from utils.logger import default_logger as logger
-
+from utils.path_utils import (
+    cleanup_all_temp_dirs as _cleanup_all_temp_dirs,
+)
 
 # ===== 统一临时目录跟踪：委托给 utils.path_utils 的全局注册表 + atexit 兜底 =====
 # 保留旧函数名仅为向后兼容；注册/清理统一走 path_utils，
 # 保证全项目临时目录由同一处集中管理（避免多套注册表各自为政）。
 from utils.path_utils import (
     register_temp_dir as _register_temp_dir,
+)
+from utils.path_utils import (
     unregister_temp_dir as _unregister_temp_dir,
-    cleanup_all_temp_dirs as _cleanup_all_temp_dirs,
 )
 
 

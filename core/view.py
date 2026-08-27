@@ -8,14 +8,16 @@ import sys
 import tkinter as tk
 from tkinter import ttk
 
-from utils.logger import default_logger as logger
-from utils.config import load_config, save_config, CONFIG_FILE
-from core.task_manager import TaskManager
 from core.controller import Controller
-from ui.dialogs import Dialogs
+from core.task_manager import TaskManager
 from ui.app_helpers import AppHelpers
-from ui.ui_builder import build_ui, apply_aurora_theme as _apply_aurora_theme  # noqa: F401
+from ui.dialogs import Dialogs
+from ui.ui_builder import build_ui  # noqa: F401
 from ui.wizard import maybe_show_first_run_wizard  # 首次使用向导
+from utils.config import CONFIG_FILE, load_config, save_config
+from utils.logger import default_logger as logger
+
+
 # _apply_aurora_theme 不再调用（新版清爽扁平 UI 统一用 LabelFrame + ttk 原生样式，
 # 不再依赖 Aurora Frost 的 Canvas / 粒子装饰），但保留导入避免旧插件/脚本误用。
 # 如需启用旧版主题，可在 build_ui() 之前手工调用 _apply_aurora_theme(self)。
@@ -34,7 +36,8 @@ from ui.wizard import maybe_show_first_run_wizard  # 首次使用向导
 #      所以这里只做 import 探测，真正加载在 MainView._init_dnd_runtime()。
 # ============================================================================
 try:
-    from tkinterdnd2 import TkinterDnD as _TkinterDnD, DND_FILES as _DND_FILES
+    from tkinterdnd2 import DND_FILES as _DND_FILES
+    from tkinterdnd2 import TkinterDnD as _TkinterDnD
     _DND_BASES: tuple = (_TkinterDnD.DnDWrapper, tk.Tk)
     DND_IMPORT_OK: bool = True
     _DND_IMPORT_ERROR: str = ""
@@ -540,8 +543,8 @@ class MainView(*_DND_BASES):
         或 ERROR 级日志；只有真检测到新版本才会走到 `notify_update_result`。
         """
         try:
-            from utils import updater
             from ui.dialogs.update_dialog import notify_update_result
+            from utils import updater
         except Exception as exc:  # noqa: BLE001
             logger.debug("更新模块不可用，跳过启动检查: %s", exc)
             return
@@ -575,8 +578,8 @@ class MainView(*_DND_BASES):
         没配更新源 / 缺 requests / 网络不可达 → 弹说明为什么没查成。
         """
         try:
-            from utils import updater
             from ui.dialogs.update_dialog import notify_update_result, show_check_failed_dialog
+            from utils import updater
         except Exception as exc:  # noqa: BLE001
             try:
                 from tkinter import messagebox
@@ -867,7 +870,7 @@ F1              显示此帮助
     # 任何失败只写日志/弹提示，绝不把主窗口打崩。行为需在裸金属 GUI 实测。
     def _show_text_dialog(self, title: str, text: str) -> None:
         """只读多行文本查看对话框（供各纯逻辑模块展示结果）。"""
-        from tkinter import Toplevel, Text, Scrollbar, BOTH, END, Y, RIGHT, LEFT, WORD
+        from tkinter import BOTH, END, LEFT, RIGHT, WORD, Scrollbar, Text, Toplevel, Y
         top = Toplevel(self)
         top.title(title)
         top.transient(self)
@@ -907,7 +910,7 @@ F1              显示此帮助
     def show_rule_engine_from_menu(self) -> None:
         """E-03 规则引擎：用声明式规则匹配当前文件，展示命中结果。"""
         try:
-            from utils.rule_engine import evaluate_rules, render_actions, load_rules
+            from utils.rule_engine import evaluate_rules, load_rules, render_actions
             cfg = getattr(self, 'config_data', {}) or {}
             rules_text = cfg.get('rules_json', '')
             if rules_text:
@@ -944,6 +947,7 @@ F1              显示此帮助
         """E-09 HPC 作业脚本生成（SLURM 示例），保存为 .sh 或弹窗预览。"""
         try:
             from tkinter import filedialog
+
             from utils.hpc_script import generate_script
             job = {"name": "molmanager_job", "nodes": 1, "ntasks": 4,
                    "cpus_per_task": 4, "walltime": "12:00:00", "memory_gb": 8,
@@ -965,6 +969,7 @@ F1              显示此帮助
         """E-05 项目打包：导出 / 导入 .molproj（ZIP+清单）。"""
         try:
             from tkinter import filedialog, messagebox
+
             from utils.project_pack import pack_project, unpack_project
             choice = messagebox.askyesnocancel(
                 "项目打包 .molproj", "是 = 导出工作目录为 .molproj\n否 = 从 .molproj 导入\n取消 = 返回",
@@ -994,14 +999,14 @@ F1              显示此帮助
     def show_log_parse_from_menu(self) -> None:
         """E-07/E-01 日志解析 + 动态元数据：解析勾选的 .log/.out/.fchk。"""
         try:
-            from utils.metadata_index import extract_metadata, collect_columns
+            from utils.metadata_index import collect_columns, extract_metadata
             sel = self.helpers.get_selected_files()
             lines = []
             for p in sel:
                 if not p.lower().endswith(('.log', '.out', '.fchk')):
                     continue
                 try:
-                    with open(p, 'r', encoding='utf-8', errors='replace') as f:
+                    with open(p, encoding='utf-8', errors='replace') as f:
                         content = f.read()
                 except OSError as oe:
                     lines.append(f"■ {p}\n   （读取失败: {oe}）")
@@ -1021,14 +1026,15 @@ F1              显示此帮助
         """E-13 MO 能级图：解析勾选的 .fchk 轨道能级，导出 SVG。"""
         try:
             from tkinter import filedialog
-            from utils.mo_diagram import parse_fchk_orbitals, parse_fchk_int, render_mo_svg
+
+            from utils.mo_diagram import parse_fchk_int, parse_fchk_orbitals, render_mo_svg
             sel = self.helpers.get_selected_files()
             fchk = next((p for p in sel if p.lower().endswith('.fchk')), None)
             if not fchk:
                 fchk = filedialog.askopenfilename(filetypes=[("Gaussian fchk", "*.fchk")])
             if not fchk:
                 return
-            with open(fchk, 'r', encoding='utf-8', errors='replace') as f:
+            with open(fchk, encoding='utf-8', errors='replace') as f:
                 content = f.read()
             energies = parse_fchk_orbitals(content)
             n_el = parse_fchk_int(content, "Number of electrons") or 0
@@ -1099,7 +1105,7 @@ F1              显示此帮助
     def show_cli_batch_from_menu(self) -> None:
         """E-08 CLI 无头模式：展示 --batch --fix-all 的有序计划预览。"""
         try:
-            from utils.cli_batch import parse_args, build_batch_plan, plan_summary
+            from utils.cli_batch import build_batch_plan, parse_args, plan_summary
             opts = parse_args(["--batch", "--fix-all", "--dry-run"])
             plan = build_batch_plan(opts)
             self._show_text_dialog("CLI 无头模式计划预览", plan_summary(plan, dry_run=True))
@@ -1137,7 +1143,7 @@ F1              显示此帮助
     def show_tree_overview_from_menu(self) -> None:
         """E-02 分层目录树概览（只读，用 tree_builder 从扁平列表构建）。"""
         try:
-            from utils.tree_builder import build_tree, iter_tree, count_nodes
+            from utils.tree_builder import build_tree, count_nodes, iter_tree
             files = [f['name'] for f in (getattr(self, 'last_scan_result', []) or [])]
             tree = build_tree(files)
             dirs, fs = count_nodes(tree)

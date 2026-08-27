@@ -13,11 +13,10 @@
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
 
 # 术语 → 释义。cat: 分类（便于以后做分组/过滤）。
 # 这份词典刻意保持「小而准」，覆盖 MolManager 用户最高频的困惑点；后续可继续扩充。
-_GLOSSARY: Dict[str, Dict[str, str]] = {
+_GLOSSARY: dict[str, dict[str, str]] = {
     "benzene": {"zh": "苯", "en": "benzene", "cat": "常见分子", "desc": "最简芳香烃，C6H6，平面六元环，π 电子离域。"},
     "ethanol": {"zh": "乙醇", "en": "ethanol", "cat": "常见分子", "desc": "酒精，C2H6O，常用溶剂与反应底物。"},
     "water": {"zh": "水", "en": "water", "cat": "常见分子", "desc": "H2O，最常见溶剂，显隐性取决于模型。"},
@@ -71,7 +70,7 @@ def _levenshtein(a: str, b: str) -> int:
 
 
 def lookup_term(term: str, max_dist: int = 1,
-                _glossary: Optional[Dict[str, Dict[str, str]]] = None) -> Optional[Dict[str, str]]:
+                _glossary: dict[str, dict[str, str]] | None = None) -> dict[str, str] | None:
     """
     查词：先精确（英文术语 / 中文名，大小写不敏感），再按 max_dist 模糊（拼写纠错）。
     返回释义 dict 或 None。单字中文名距离恒为 1 —— 与 mapping_utils 一致，仅当 len>=2 才模糊，
@@ -107,7 +106,7 @@ def lookup_term(term: str, max_dist: int = 1,
 
 
 def glossary_search(keyword: str,
-                    _glossary: Optional[Dict[str, Dict[str, str]]] = None) -> List[Dict[str, str]]:
+                    _glossary: dict[str, dict[str, str]] | None = None) -> list[dict[str, str]]:
     """按关键词子串检索：匹配英文术语 / 中文名 / 释义（大小写不敏感）。返回命中的释义列表。"""
     g = _glossary if _glossary is not None else _GLOSSARY
     kw = (keyword or "").strip().lower()
@@ -125,14 +124,14 @@ def glossary_search(keyword: str,
     return out
 
 
-def all_terms(_glossary: Optional[Dict[str, Dict[str, str]]] = None) -> List[str]:
+def all_terms(_glossary: dict[str, dict[str, str]] | None = None) -> list[str]:
     """返回全部英文术语键（供 UI 自动补全 / 调试）。"""
     g = _glossary if _glossary is not None else _GLOSSARY
     return sorted(g.keys())
 
 
 # ---------- 可选：tkinter Tooltip 薄封装 ----------
-def make_glossary_tooltip(widget, term: Optional[str] = None,
+def make_glossary_tooltip(widget, term: str | None = None,
                           resolve_term=None) -> None:
     """
     把悬停 Tooltip 绑到 widget：鼠标进入显示术语释义，离开隐藏。
@@ -143,7 +142,7 @@ def make_glossary_tooltip(widget, term: Optional[str] = None,
     """
     import tkinter as tk
 
-    tip: Optional["tk.Toplevel"] = None
+    tip: tk.Toplevel | None = None
 
     def _show(event=None):
         nonlocal tip

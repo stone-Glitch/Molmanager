@@ -5,13 +5,12 @@
 用于反应动画、PSI4计算等模块的参数模板管理
 """
 
+from datetime import datetime
 import json
 import os
-import shutil
-import sys
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+import sys
+from typing import Any
 
 from utils.logger import default_logger as logger
 
@@ -23,7 +22,7 @@ class PresetManager:
         self.app_name = app_name
         self.preset_dir = self._get_preset_dir()
         self.preset_dir.mkdir(parents=True, exist_ok=True)
-        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._cache: dict[str, dict[str, Any]] = {}
         self._load_all()
 
     def _get_preset_dir(self) -> Path:
@@ -39,21 +38,21 @@ class PresetManager:
         self._cache.clear()
         for f in self.preset_dir.glob("*.json"):
             try:
-                with open(f, 'r', encoding='utf-8') as fp:
+                with open(f, encoding='utf-8') as fp:
                     data = json.load(fp)
                     self._cache[f.stem] = data
             except Exception as e:
                 logger.debug("加载预设 %s 失败: %s", f.name, e)
 
-    def list_presets(self) -> List[str]:
+    def list_presets(self) -> list[str]:
         """返回所有预设名称列表"""
         return sorted(self._cache.keys())
 
-    def get_preset(self, name: str) -> Dict[str, Any]:
+    def get_preset(self, name: str) -> dict[str, Any]:
         """获取指定预设的数据（只读）"""
         return self._cache.get(name, {}).copy()
 
-    def save_preset(self, name: str, data: Dict[str, Any], overwrite: bool = True) -> bool:
+    def save_preset(self, name: str, data: dict[str, Any], overwrite: bool = True) -> bool:
         """
         保存预设。若已存在且 overwrite=False 则返回 False。
         自动添加时间戳和版本信息。
@@ -104,14 +103,14 @@ class PresetManager:
             logger.error("导出预设 '%s' 失败: %s", name, e)
             return False
 
-    def import_preset(self, import_path: str, new_name: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+    def import_preset(self, import_path: str, new_name: str | None = None) -> tuple[str, dict[str, Any]]:
         """
         从 JSON 文件导入预设。
         若 new_name 未指定，则使用文件名（不含扩展名）作为预设名。
         返回 (预设名, 数据字典)，失败抛出 ValueError。
         """
         try:
-            with open(import_path, 'r', encoding='utf-8') as f:
+            with open(import_path, encoding='utf-8') as f:
                 data = json.load(f)
         except Exception as e:
             raise ValueError(f"读取文件失败: {e}")
@@ -133,7 +132,7 @@ class PresetManager:
         self.save_preset(name, data, overwrite=False)
         return name, data
 
-    def get_preset_meta(self, name: str) -> Dict[str, Any]:
+    def get_preset_meta(self, name: str) -> dict[str, Any]:
         """获取预设的元数据（保存时间等）"""
         data = self.get_preset(name)
         return data.get('_meta', {})
@@ -147,7 +146,7 @@ class PresetManager:
 
 
 # 全局单例（延迟初始化）
-_preset_manager: Optional[PresetManager] = None
+_preset_manager: PresetManager | None = None
 
 def get_preset_manager() -> PresetManager:
     global _preset_manager

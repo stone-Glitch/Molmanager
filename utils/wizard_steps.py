@@ -10,10 +10,9 @@ U-07 新手任务向导（6 个高频场景）· 纯数据/逻辑层
 ⚠️ 场景与步骤是「默认模板」，UI 可增删改；本层只提供稳定的读取接口，
 不绑定任何具体控件。
 """
-from typing import Dict, List, Optional
 
 
-WIZARD_SCENARIOS: List[Dict] = [
+WIZARD_SCENARIOS: list[dict] = [
     {
         "id": "import",
         "title": "导入分子文件",
@@ -93,11 +92,11 @@ WIZARD_SCENARIOS: List[Dict] = [
 ]
 
 
-def get_scenarios() -> List[Dict]:
+def get_scenarios() -> list[dict]:
     return list(WIZARD_SCENARIOS)
 
 
-def get_scenario(scenario_id: str) -> Optional[Dict]:
+def get_scenario(scenario_id: str) -> dict | None:
     key = (scenario_id or "").strip().lower()
     for s in WIZARD_SCENARIOS:
         if s["id"].lower() == key:
@@ -109,7 +108,7 @@ def total_steps() -> int:
     return sum(len(s.get("steps", [])) for s in WIZARD_SCENARIOS)
 
 
-def scenario_ids() -> List[str]:
+def scenario_ids() -> list[str]:
     return [s["id"] for s in WIZARD_SCENARIOS]
 
 

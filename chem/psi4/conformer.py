@@ -3,18 +3,18 @@
 """
 构象搜索模块 - OB Confab + MMFF94 预优化 + 可选 PSI4 高精度精修
 """
-import os
 import csv
-import random
-import tempfile
 import logging
+import os
 from pathlib import Path
+import random
 from typing import Any
 
-from utils.logger import default_logger as logger, performance_timer
 import chem.openbabel_utils as ob_utils
+from utils.logger import default_logger as logger
+from utils.logger import performance_timer
+
 from .core import read_xyz_content, run_psi4_task
-from .utils import _parse_xyz, _write_xyz
 
 
 @performance_timer(name="psi4.conformer_search_ensemble", level=logging.DEBUG, min_ms=100.0)
@@ -42,7 +42,6 @@ def conformer_search_ensemble(
       2. 依次跑 PSI4 optimize（可选）
          → 输出每个构象的最终能量（Hartree）、排序、CSV、PNG 能量棒图
     """
-    from pathlib import Path as _Path
 
     # 审计 #3 修复：可选随机种子，使 fallback 分支（pybel rotor search）生成的构象集可复现。
     # 使用独立 random.Random 实例，避免污染模块级 random 全局状态（不影响并发的其他任务）。

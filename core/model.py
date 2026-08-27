@@ -16,28 +16,27 @@ Model - 核心业务逻辑
   6. 【重构】resolve_secure_output_path_external 简化为对 path_utils.resolve_secure_output_path 的委托，
      消除代码重复。
 """
-import os
-import re
 import csv
-import json
-import stat
-import shutil
-import hashlib
-import threading
 from datetime import datetime
+import hashlib
+import json
+import os
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+import re
+import shutil
+import threading
 
-from utils.logger import default_logger as logger
-from utils.constants import SUPPORTED_EXTS
-from utils.path_utils import (
-    is_windows_junction,
-    enforce_no_symlink_target,
-    resolve_secure_output_path,
-    get_backup_dir,
-)
 import chem.openbabel_utils as ob_utils
 import chem.psi4_compute as psi4_utils
+from utils.constants import SUPPORTED_EXTS
+from utils.logger import default_logger as logger
+from utils.path_utils import (
+    enforce_no_symlink_target,
+    get_backup_dir,
+    is_windows_junction,
+    resolve_secure_output_path,
+)
+
 
 # ---- 向后兼容别名（原 model 模块级函数，现已统一到 path_utils）----
 # 保留旧函数名，确保外部导入（如 psi4_compute / reaction_animation）不报错
@@ -200,7 +199,7 @@ class MolManagerModel:
             return False
 
     # ---------- 🗂️ 备份（F17 / T09-T10）----------
-    def configure_backup(self, backup_cfg: Optional[Dict] = None) -> None:
+    def configure_backup(self, backup_cfg: dict | None = None) -> None:
         """
         用 config["backup"] 配置备份行为。controller 初始化时调用一次即可。
 
@@ -282,14 +281,14 @@ class MolManagerModel:
             logger.warning("⚠️ 创建快照失败（不影响主操作）: %s", exc)
             return None
 
-    def get_mapping_artifacts(self) -> List[Path]:
+    def get_mapping_artifacts(self) -> list[Path]:
         """
         返回「映射表产物集合」——F17 快照按产物集合而非单文件备份（架构 §7 风险表）。
 
         C9：映射表历史上是**读 TSV / 写 JSON** 双格式，两者都要纳入快照，
         否则回滚后会出现 JSON 已还原、TSV 仍是新版的撕裂状态。
         """
-        out: List[Path] = []
+        out: list[Path] = []
         seen: set = set()
 
         def _add(p) -> None:
@@ -313,7 +312,7 @@ class MolManagerModel:
         """映射表 JSON 的默认落盘位置（与 mapping_dialog 历史行为一致）。"""
         return Path(self.work_dir) / "分子命名映射.json"
 
-    def save_mapping(self, mapping_dict: Dict[str, str], *,
+    def save_mapping(self, mapping_dict: dict[str, str], *,
                      path=None, backup: bool = True) -> Path:
         """
         保存映射表到磁盘（T10：从 ui/dialogs/mapping_dialog.py 下沉而来）。
@@ -353,7 +352,7 @@ class MolManagerModel:
                 logger.warning("⚠️ 映射表快照失败（保存继续）: %s", exc)
 
         # ---- 2) 原子写（复用 config.save_config 范式，C19）----
-        tmp_path: Optional[Path] = None
+        tmp_path: Path | None = None
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
@@ -383,7 +382,7 @@ class MolManagerModel:
             raise FileNotFoundError(f"文件不存在: {path}")
         mapping = {}
         duplicate_count = 0
-        with open(path, 'r', encoding='utf-8-sig') as f:
+        with open(path, encoding='utf-8-sig') as f:
             lines = f.readlines()
         if len(lines) < 2:
             raise ValueError("映射文件为空或格式错误")
@@ -623,7 +622,7 @@ class MolManagerModel:
         # F17：覆盖既有导出产物前先快照（失败只警告，不阻断导出）
         self.create_backup_snapshot("export", [safe_path], "导出完整映射表前的自动快照")
         with self._lock:
-            rows: List[Tuple[str, str]] = sorted(
+            rows: list[tuple[str, str]] = sorted(
                 self.mapping.items(), key=lambda kv: str(kv[0]).lower()
             )
         with open(safe_path, 'w', newline='', encoding='utf-8-sig') as f:
@@ -642,7 +641,7 @@ class MolManagerModel:
         skipped = 0
         errors = 0
         total_rows = 0
-        with open(safe_path, 'r', encoding='utf-8-sig', newline='') as f:
+        with open(safe_path, encoding='utf-8-sig', newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 total_rows += 1
@@ -946,11 +945,7 @@ class MolManagerModel:
             mapping_snap = dict(self.mapping)
         for f in self.scan_files(ext_filter=['.mol', '.xyz']):
             correct_name = None
-            if f['has_chinese']:
-                eng = f['eng']
-                if eng in mapping_snap:
-                    correct_name = f"{eng}（{mapping_snap[eng]}）"
-            elif f['status'] == "⏳ 待重命名":
+            if f['has_chinese'] or f['status'] == "⏳ 待重命名":
                 eng = f['eng']
                 if eng in mapping_snap:
                     correct_name = f"{eng}（{mapping_snap[eng]}）"
@@ -1329,7 +1324,7 @@ class MolManagerModel:
         d.mkdir(exist_ok=True)
         return d
 
-    def delete_files(self, filenames: List[str], *, _filtered_names: List[str] | None = None):
+    def delete_files(self, filenames: list[str], *, _filtered_names: list[str] | None = None):
         if not filenames:
             return 0, []
         filenames = list(filenames)
@@ -1566,9 +1561,9 @@ class MolManagerModel:
         except TypeError:
             raise ValueError("paths 必须是可迭代的路径集合")
 
-        imported: List[Tuple[str, str]] = []
-        skipped: List[str] = []
-        errors: List[str] = []
+        imported: list[tuple[str, str]] = []
+        skipped: list[str] = []
+        errors: list[str] = []
         total = len(items)
 
         for idx, src in enumerate(items):
@@ -1842,20 +1837,7 @@ class MolManagerModel:
             file_pairs = entry['files']
             step_success = 0
             step_error = 0
-            if op_type in ('rename', 'move', 'fix'):
-                for src, dst in file_pairs:
-                    try:
-                        if Path(dst).exists():
-                            if Path(src).exists():
-                                step_error += 1
-                                continue
-                            Path(dst).rename(src)
-                            step_success += 1
-                        else:
-                            step_error += 1
-                    except Exception:
-                        step_error += 1
-            elif op_type == 'delete':
+            if op_type in ('rename', 'move', 'fix') or op_type == 'delete':
                 for src, dst in file_pairs:
                     try:
                         if Path(dst).exists():
@@ -1886,20 +1868,7 @@ class MolManagerModel:
             file_pairs = entry['files']
             step_success = 0
             step_error = 0
-            if op_type in ('rename', 'move', 'fix'):
-                for src, dst in file_pairs:
-                    try:
-                        if Path(src).exists():
-                            if Path(dst).exists():
-                                step_error += 1
-                                continue
-                            Path(src).rename(dst)
-                            step_success += 1
-                        else:
-                            step_error += 1
-                    except Exception:
-                        step_error += 1
-            elif op_type == 'delete':
+            if op_type in ('rename', 'move', 'fix') or op_type == 'delete':
                 for src, dst in file_pairs:
                     try:
                         if Path(src).exists():
@@ -2020,13 +1989,12 @@ class MolManagerModel:
     def _read_summary_json(self, path: Path) -> dict:
         import json
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, encoding='utf-8') as f:
                 return json.load(f)
         except Exception:
             return {}
 
     def collect_results(self) -> list[dict]:
-        import json
         rows = []
         if not self.work_dir.exists():
             return rows
@@ -2149,7 +2117,7 @@ class MolManagerModel:
                 })
         return results
 
-    def _file_signature(self, path: Path) -> Tuple[int, float]:
+    def _file_signature(self, path: Path) -> tuple[int, float]:
         try:
             st = path.stat()
             return (st.st_size, st.st_mtime_ns)
@@ -2159,8 +2127,8 @@ class MolManagerModel:
     def compare_directories(self, left: str | Path, right: str | Path) -> dict:
         left_path = Path(left)
         right_path = Path(right)
-        left_files: Dict[str, Tuple[int, float]] = {}
-        right_files: Dict[str, Tuple[int, float]] = {}
+        left_files: dict[str, tuple[int, float]] = {}
+        right_files: dict[str, tuple[int, float]] = {}
         only_left: list[dict] = []
         only_right: list[dict] = []
         diff_content: list[dict] = []

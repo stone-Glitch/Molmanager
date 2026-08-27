@@ -31,18 +31,20 @@ F17 自动备份 —— 快照管理器（T09 / Phase 1）
 """
 from __future__ import annotations
 
-import json
-import os
-import re
-import shutil
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+import json
+import os
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+import re
+import shutil
+from typing import Any
 
 from utils.logger import default_logger as _default_logger
 from utils.path_utils import chmod_quiet, enforce_no_symlink_target
 from utils.version import __version__ as APP_VERSION
+
 
 # ---------------------------------------------------------------- 常量
 
@@ -58,11 +60,11 @@ TRIGGER_EXPORT: str = "export"
 TRIGGER_CONFIG: str = "config"
 TRIGGER_PRERESTORE: str = "prerestore"
 
-KNOWN_TRIGGERS: Tuple[str, ...] = (
+KNOWN_TRIGGERS: tuple[str, ...] = (
     TRIGGER_MAPPING, TRIGGER_EXPORT, TRIGGER_CONFIG, TRIGGER_PRERESTORE,
 )
 
-TRIGGER_LABELS: Dict[str, str] = {
+TRIGGER_LABELS: dict[str, str] = {
     TRIGGER_MAPPING: "映射表",
     TRIGGER_EXPORT: "导出产物",
     TRIGGER_CONFIG: "应用配置",
@@ -123,7 +125,7 @@ def _atomic_write_json(path: Path, payload: Any) -> bool:
 
     返回 True/False，不抛异常。
     """
-    tmp_path: Optional[Path] = None
+    tmp_path: Path | None = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = path.with_suffix(path.suffix + ".tmp")
@@ -158,21 +160,21 @@ class SnapshotMeta:
     trigger: str = TRIGGER_MAPPING
     description: str = ""
     app_version: str = APP_VERSION
-    files: List[Dict[str, Any]] = field(default_factory=list)
+    files: list[dict[str, Any]] = field(default_factory=list)
     total_size: int = 0
 
     # ---- 序列化 ----
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Any) -> Optional["SnapshotMeta"]:
+    def from_dict(cls, data: Any) -> SnapshotMeta | None:
         """从 dict 还原；结构不合法时返回 None（不抛）。"""
         if not isinstance(data, dict):
             return None
         try:
             raw_files = data.get("files")
-            files: List[Dict[str, Any]] = []
+            files: list[dict[str, Any]] = []
             if isinstance(raw_files, list):
                 for item in raw_files:
                     if isinstance(item, dict):
@@ -264,9 +266,9 @@ class BackupManager:
     def configure(
         self,
         *,
-        enabled: Optional[bool] = None,
-        keep_per_type: Optional[int] = None,
-        max_file_bytes: Optional[int] = None,
+        enabled: bool | None = None,
+        keep_per_type: int | None = None,
+        max_file_bytes: int | None = None,
     ) -> None:
         """运行期更新配置（用户在设置里改了 backup.* 时调用）。"""
         if enabled is not None:
@@ -291,7 +293,7 @@ class BackupManager:
 
     # ------------------------------------------------------------ 路径
 
-    def ensure_root(self) -> Optional[Path]:
+    def ensure_root(self) -> Path | None:
         """确保备份根目录存在；失败返回 None（不抛）。"""
         try:
             self.backup_root.mkdir(parents=True, exist_ok=True)
@@ -301,7 +303,7 @@ class BackupManager:
             self._warn("⚠️ 备份目录创建失败（已跳过备份，不影响主操作）: %s", exc)
             return None
 
-    def get_snapshot_dir(self, snapshot_id: Any) -> Optional[Path]:
+    def get_snapshot_dir(self, snapshot_id: Any) -> Path | None:
         """
         由 snapshot_id 解析出快照目录，并校验它确实位于 backup_root 之内。
 
@@ -322,7 +324,7 @@ class BackupManager:
             return None
         return candidate
 
-    def _allocate_snapshot_dir(self, trigger: str) -> Optional[Tuple[str, Path]]:
+    def _allocate_snapshot_dir(self, trigger: str) -> tuple[str, Path] | None:
         """生成不冲突的快照目录并创建之。返回 (snapshot_id, dir)；失败返回 None。"""
         root = self.ensure_root()
         if root is None:
@@ -350,7 +352,7 @@ class BackupManager:
         trigger: Any,
         files: Iterable[Any],
         description: str = "",
-    ) -> Optional[SnapshotMeta]:
+    ) -> SnapshotMeta | None:
         """
         为 ``files`` 里**已存在的普通文件**创建一份快照。
 
@@ -381,7 +383,7 @@ class BackupManager:
                 return None
             snapshot_id, snap_dir = allocated
 
-            entries: List[Dict[str, Any]] = []
+            entries: list[dict[str, Any]] = []
             total = 0
             used_names: set[str] = {META_FILENAME}
             for src in sources:
@@ -421,9 +423,9 @@ class BackupManager:
             self._warn("⚠️ 创建备份快照失败（不影响主操作）: %s", exc)
             return None
 
-    def _collect_sources(self, files: Iterable[Any]) -> List[Path]:
+    def _collect_sources(self, files: Iterable[Any]) -> list[Path]:
         """把入参规整为「去重后的、真实存在的普通文件」列表。"""
-        out: List[Path] = []
+        out: list[Path] = []
         seen: set[str] = set()
         try:
             iterator = list(files or [])
@@ -457,7 +459,7 @@ class BackupManager:
         src: Path,
         snap_dir: Path,
         used_names: set[str],
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """把单个文件拷进快照目录，返回该文件的 meta 条目；失败返回 None。"""
         try:
             size = src.stat().st_size
@@ -515,14 +517,14 @@ class BackupManager:
 
     # ------------------------------------------------------------ 列举 / 预览
 
-    def list_snapshots(self, trigger: Any = None) -> List[SnapshotMeta]:
+    def list_snapshots(self, trigger: Any = None) -> list[SnapshotMeta]:
         """
         列出所有快照，按时间倒序（最新在前）。
 
         ``trigger`` 非空时只返回该类型。目录缺 meta.json 或 meta 损坏时跳过并记 debug。
         永不抛异常，失败返回空列表。
         """
-        result: List[SnapshotMeta] = []
+        result: list[SnapshotMeta] = []
         try:
             if not self.backup_root.is_dir():
                 return result
@@ -548,7 +550,7 @@ class BackupManager:
         return result
 
     @staticmethod
-    def _snapshot_sort_key(meta: "SnapshotMeta") -> Tuple[str, int]:
+    def _snapshot_sort_key(meta: SnapshotMeta) -> tuple[str, int]:
         """
         快照排序键：``(时间戳, 同秒序号)``。
 
@@ -571,12 +573,12 @@ class BackupManager:
                 seq = 0
         return (stamp, seq)
 
-    def _read_meta(self, snap_dir: Path) -> Optional[SnapshotMeta]:
+    def _read_meta(self, snap_dir: Path) -> SnapshotMeta | None:
         meta_path = snap_dir / META_FILENAME
         try:
             if not meta_path.is_file():
                 return None
-            with open(meta_path, "r", encoding="utf-8") as f:
+            with open(meta_path, encoding="utf-8") as f:
                 data = json.load(f)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
             self._debug("快照元数据不可读，已跳过 %s: %s", snap_dir.name, exc)
@@ -588,7 +590,7 @@ class BackupManager:
         meta.snapshot_id = snap_dir.name
         return meta
 
-    def get_snapshot(self, snapshot_id: Any) -> Optional[SnapshotMeta]:
+    def get_snapshot(self, snapshot_id: Any) -> SnapshotMeta | None:
         """按 id 读取单个快照的元数据；不存在返回 None。"""
         snap_dir = self.get_snapshot_dir(snapshot_id)
         if snap_dir is None:
@@ -600,7 +602,7 @@ class BackupManager:
             return None
         return self._read_meta(snap_dir)
 
-    def preview_snapshot(self, snapshot_id: Any) -> List[Dict[str, Any]]:
+    def preview_snapshot(self, snapshot_id: Any) -> list[dict[str, Any]]:
         """
         返回快照内文件的展示信息列表：
 
@@ -612,7 +614,7 @@ class BackupManager:
         if meta is None:
             return []
         snap_dir = self.get_snapshot_dir(snapshot_id)
-        rows: List[Dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         for entry in meta.files:
             orig_path = str(entry.get("orig_path", "") or "")
             stored_name = str(entry.get("stored_name", "") or "")
@@ -650,7 +652,7 @@ class BackupManager:
         *,
         target_dir: Any = None,
         pre_snapshot: bool = True,
-    ) -> Tuple[int, List[str]]:
+    ) -> tuple[int, list[str]]:
         """
         把快照内容还原回原位置（或 ``target_dir``）。
 
@@ -662,14 +664,14 @@ class BackupManager:
         返回:
             ``(成功还原数, 错误信息列表)``。永不抛异常。
         """
-        errors: List[str] = []
+        errors: list[str] = []
         try:
             meta = self.get_snapshot(snapshot_id)
             snap_dir = self.get_snapshot_dir(snapshot_id)
             if meta is None or snap_dir is None:
                 return 0, [f"快照不存在或元数据损坏: {snapshot_id}"]
 
-            dest_root: Optional[Path] = None
+            dest_root: Path | None = None
             if target_dir is not None:
                 try:
                     dr = Path(target_dir)
@@ -682,7 +684,7 @@ class BackupManager:
 
             # 1) 先给「即将被覆盖的现存文件」做一次保险快照
             if pre_snapshot:
-                doomed: List[Path] = []
+                doomed: list[Path] = []
                 for entry in meta.files:
                     dst = self._resolve_restore_target(entry, dest_root)
                     if dst is None:
@@ -733,7 +735,7 @@ class BackupManager:
             return 0, [f"回滚失败: {exc}"]
 
     @staticmethod
-    def _resolve_restore_target(entry: Dict[str, Any], dest_root: Optional[Path]) -> Optional[Path]:
+    def _resolve_restore_target(entry: dict[str, Any], dest_root: Path | None) -> Path | None:
         """算出某条目应还原到哪个路径。"""
         try:
             if dest_root is not None:
@@ -786,7 +788,7 @@ class BackupManager:
         """
         removed = 0
         try:
-            triggers: List[str]
+            triggers: list[str]
             if trigger:
                 triggers = [sanitize_trigger(trigger)]
             else:

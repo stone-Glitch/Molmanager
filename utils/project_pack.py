@@ -11,17 +11,16 @@ E-05 项目打包器 .molproj（纯逻辑层）
 """
 import json
 import os
-import zipfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+import zipfile
 
 
 MANIFEST_NAME = "molproj.json"
 DEFAULT_EXCLUDE_EXTS = (".pyc", ".tmp", ".bak", ".molproj")
 
 
-def _iter_files(src_dir: Path, exclude_exts: Tuple[str, ...]) -> List[Path]:
-    out: List[Path] = []
+def _iter_files(src_dir: Path, exclude_exts: tuple[str, ...]) -> list[Path]:
+    out: list[Path] = []
     for root, _dirs, files in os.walk(src_dir):
         for f in files:
             p = Path(root) / f
@@ -34,9 +33,9 @@ def _iter_files(src_dir: Path, exclude_exts: Tuple[str, ...]) -> List[Path]:
 def pack_project(
     src_dir: str,
     out_zip: str,
-    exclude_exts: Tuple[str, ...] = DEFAULT_EXCLUDE_EXTS,
-    extra_exclude: Optional[List[str]] = None,
-) -> Dict:
+    exclude_exts: tuple[str, ...] = DEFAULT_EXCLUDE_EXTS,
+    extra_exclude: list[str] | None = None,
+) -> dict:
     """
     打包目录为 .molproj（ZIP+清单）。返回清单 dict。
 
@@ -78,7 +77,7 @@ def pack_project(
     return manifest
 
 
-def read_manifest(zip_path: str) -> Optional[Dict]:
+def read_manifest(zip_path: str) -> dict | None:
     """读取 .molproj 里的清单；损坏/缺失返回 None。"""
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
@@ -90,7 +89,7 @@ def read_manifest(zip_path: str) -> Optional[Dict]:
         return None
 
 
-def unpack_project(zip_path: str, dest_dir: str, overwrite: bool = False) -> Dict:
+def unpack_project(zip_path: str, dest_dir: str, overwrite: bool = False) -> dict:
     """
     解包 .molproj 到 dest_dir。返回 {extracted, skipped, manifest}。
 

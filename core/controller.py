@@ -5,14 +5,26 @@ Controller - 协调 Model 和 View
 修复：所有任务函数正确传递进度回调
 """
 import logging
-import os
 from pathlib import Path
-from tkinter import filedialog, messagebox, simpledialog, Toplevel, Label, Entry, Button, StringVar, Frame, LEFT, RIGHT, BOTH, X, Y, END
-from utils.logger import default_logger as logger, performance_timer
+from tkinter import (
+    LEFT,
+    Button,
+    Entry,
+    Frame,
+    Label,
+    StringVar,
+    Toplevel,
+    X,
+    filedialog,
+    messagebox,
+)
+
 from core.model import MolManagerModel
-from utils.constants import SUPPORTED_EXTS
 import utils.config as config
 from utils.config import save_config
+from utils.constants import SUPPORTED_EXTS
+from utils.logger import default_logger as logger
+from utils.logger import performance_timer
 
 
 class Controller:
@@ -672,8 +684,9 @@ class Controller:
         _workers = _env_workers or _cfg_workers or 1
 
         def _compute_one(item):
-            import chem.openbabel_utils as obu
             from pathlib import Path
+
+            import chem.openbabel_utils as obu
             iid, fpath = item
             name = Path(fpath).name
             res = obu.calculate_descriptors(fpath)

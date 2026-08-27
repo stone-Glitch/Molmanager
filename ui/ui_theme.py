@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import ttk
+import weakref
+
 
 # ---------- 双调色板（深色护眼 + 浅色，与 UI_DESIGN.md / 原型一致） ----------
 # 两个调色板键名完全一致，确保 COLORS 代理与 ttk 样式在切换时无 KeyError。
@@ -124,8 +126,8 @@ def get_palette() -> dict:
 
 # ---------- 主题偏好持久化（用户级，跨会话记忆） ----------
 import json
-import os
 from pathlib import Path
+
 
 _PREF_PATH = Path.home() / ".molmanager" / "theme_pref.json"
 
@@ -173,22 +175,35 @@ COLORS = ThemeColors()
 
 
 # ---------- 工厂控件注册表（供运行时切换主题后就地刷新） ----------
-_THEMED = []
+# 🔴 内存泄漏修复：原实现 `_THEMED` 存 (widget, restyle_fn) 强引用，
+# 对话框关闭后控件因被列表持有而无法 GC，长期运行会泄漏到 OOM。
+# 改为存 weakref.ref(widget)；控件销毁后 ref() 返回 None，刷新时跳过，
+# 列表中的死引用在遍历时即时清除（无害且自收敛）。
+# 注意：restyle_fn 闭包只通过参数 wd 引用控件、不捕获控件本身，
+# 因此 weakref 不会因闭包而被撑活（已在 card/section_title 等工厂核实）。
+_THEMED: list[tuple[weakref.ref, callable]] = []
 
 
 def _register(widget, restyle_fn):
-    _THEMED.append((widget, restyle_fn))
+    _THEMED.append((weakref.ref(widget), restyle_fn))
 
 
 def refresh_themed_widgets() -> None:
     """切换主题后，重绘所有经工厂创建的控件（卡片/按钮/标题）。"""
     P = get_palette()
-    for w, fn in _THEMED:
+    alive: list[tuple[weakref.ref, callable]] = []
+    for ref, fn in _THEMED:
+        w = ref()
+        if w is None:
+            continue  # 控件已销毁：丢弃死引用，释放列表占用
+        alive.append((ref, fn))
         try:
             if w.winfo_exists():
                 fn(w, P)
         except Exception:
             pass
+    # 原地替换为仅存活条目，避免反复开关对话框后列表无限增长
+    _THEMED[:] = alive
 
 
 def bind_treeview_hover(tree, hover_bg=None):

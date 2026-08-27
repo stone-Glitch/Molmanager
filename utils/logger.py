@@ -17,8 +17,11 @@
   - 移除重复的 _app_data_dir()，改用 path_utils.get_app_data_dir()
   - 保持所有外部接口不变
 """
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime
+from functools import wraps
 import gzip
-import io
 import json
 import logging
 import logging.config
@@ -28,18 +31,15 @@ import shutil
 import sys
 import threading
 import time
+import traceback
+from typing import Any
 import uuid
-from contextlib import contextmanager
-from dataclasses import dataclass, field
-from datetime import datetime
-from functools import wraps
-from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Iterator, Optional, List, Tuple
 
-from utils.path_utils import get_app_data_dir
 # F15：级别 + 关键词匹配纯函数（无 Tk 依赖，可单测）。
 # ⚠️ log_filter 只 import typing，不反向 import logger，故无循环导入风险。
 from utils import log_filter
+from utils.path_utils import get_app_data_dir
+
 
 # GUI 依赖：如果是非 GUI 环境（cli 脚本 / 测试），不 import tkinter，
 # 但 GuiLogHandler 需要 tk.END 等常量，这里在模块开头先确定值。
@@ -80,6 +80,28 @@ def success(self: logging.Logger, msg: object, *args: Any, **kwargs: Any) -> Non
 
 logging.Logger.success = success  # type: ignore[attr-defined]
 
+
+def log_exception(logger: "logging.Logger", msg: str = "",
+                  exc: "BaseException | None" = None,
+                  level: int = logging.ERROR) -> None:
+    """在 ``except Exception`` 处记录完整堆栈，便于排查（Phase B · 可维护性）。
+
+    相比只记 ``str(e)``，本函数会输出 ``traceback.format_exception`` 全栈，
+    定位根因更快。用法::
+
+        try:
+            ...
+        except Exception as _e:              # 不要裸 except: pass
+            log_exception(default_logger, "加载映射失败", _e)
+    """
+    if exc is None:
+        exc = sys.exc_info()[1]
+    if exc is None:
+        logger.log(level, msg or "异常（无 exc 对象）")
+        return
+    tb_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    logger.log(level, "%s: %s\n%s", msg, exc, tb_text)
+
 # ---------------- ANSI 彩色 ----------------
 
 
@@ -97,7 +119,7 @@ class _Ansi:
     RED_BG  = "\033[48;2;229;72;77m"    # 红底
 
 
-_LEVEL_STYLES: Dict[int, str] = {
+_LEVEL_STYLES: dict[int, str] = {
     logging.DEBUG:    _Ansi.DIM + _Ansi.GRAY,
     logging.INFO:     _Ansi.WHITE,
     LEVEL_SUCCESS:    _Ansi.BOLD + _Ansi.GREEN,
@@ -182,7 +204,7 @@ class JsonLinesFormatter(logging.Formatter):
                 record.session_id = _LOGGER_CONTEXT.session_id
             except Exception:
                 record.session_id = "-"
-        rec: Dict[str, Any] = {
+        rec: dict[str, Any] = {
             "ts":   datetime.fromtimestamp(record.created).isoformat(timespec="milliseconds"),
             "lvl":  record.levelname,
             "name": record.name,
@@ -233,10 +255,10 @@ class ContextFilter(logging.Filter):
 class LoggerContext:
     session_id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     # 性能 Top-N 排行（只保留最耗时的前 32 条，防止无限增长）
-    _perf_records: list[Dict[str, Any]] = field(default_factory=list)
+    _perf_records: list[dict[str, Any]] = field(default_factory=list)
     work_dir: str = ""
 
-    def record_perf(self, name: str, seconds: float, meta: Optional[Dict[str, Any]] = None) -> None:
+    def record_perf(self, name: str, seconds: float, meta: dict[str, Any] | None = None) -> None:
         self._perf_records.append({
             "name": name, "ms": round(seconds * 1000, 2), "meta": meta,
             "ts": datetime.now().strftime(DATE_FORMAT),
@@ -245,7 +267,7 @@ class LoggerContext:
             self._perf_records.sort(key=lambda x: x["ms"], reverse=True)
             self._perf_records[:] = self._perf_records[:32]
 
-    def top_perf(self, n: int = 10) -> list[Dict[str, Any]]:
+    def top_perf(self, n: int = 10) -> list[dict[str, Any]]:
         return sorted(self._perf_records, key=lambda x: x["ms"], reverse=True)[:n]
 
 
@@ -263,9 +285,9 @@ def set_work_dir(path: str | os.PathLike[str]) -> None:
 
 # ---------- performance_timer ----------
 
-def performance_timer(name: Optional[str] = None, logger: Optional[logging.Logger] = None,
+def performance_timer(name: str | None = None, logger: logging.Logger | None = None,
                       level: int = logging.DEBUG, min_ms: float = 1.0,
-                      meta: Optional[Dict[str, Any]] = None) -> Callable[[Any], Any]:
+                      meta: dict[str, Any] | None = None) -> Callable[[Any], Any]:
     """
     装饰器 / 上下文管理器两用：性能计时。
     只记 >= min_ms 毫秒的调用，避免 DEBUG 噪音。
@@ -348,7 +370,7 @@ class GuiLogHandler(logging.Handler):
         # 不存在循环引用，因此这里改存强引用是安全且正确的。
         self._get_app = get_app_callable
         self._use_weakref = False
-        self._active: Dict[str, bool] = {
+        self._active: dict[str, bool] = {
             "DEBUG": True, "INFO": True, "SUCCESS": True,
             "WARNING": True, "ERROR": True, "CRITICAL": True,
         }
@@ -358,7 +380,7 @@ class GuiLogHandler(logging.Handler):
         # 4 元组：(levelno, levelname, display_msg, raw_message)
         self._queue: list[tuple[int, str, str, str]] = []
         self._all_records: list[tuple[int, str, str, str]] = []
-        self._max_records = 50000
+        self._max_records = LOG_PANEL_MAX_LINES  # 20000，与面板渲染上限一致（原为 50000）
         # —— F15 过滤条状态（与 _active 芯片是 AND 关系）——
         self._filter_level: str = log_filter.LEVEL_ALL
         self._filter_keyword: str = ""
@@ -367,7 +389,7 @@ class GuiLogHandler(logging.Handler):
         with self._lock:
             return list(self._all_records)
 
-    def get_records_for_export(self) -> list[Dict[str, Any]]:
+    def get_records_for_export(self) -> list[dict[str, Any]]:
         from datetime import datetime
         out = []
         with self._lock:
@@ -416,7 +438,7 @@ class GuiLogHandler(logging.Handler):
 
     # ---------------- F15：过滤条（级别阈值 + 关键词）----------------
 
-    def set_filter(self, level: Optional[str] = None, keyword: Optional[str] = None) -> None:
+    def set_filter(self, level: str | None = None, keyword: str | None = None) -> None:
         """
         设置过滤条件。参数为 None 表示「该维度不变」。
 
@@ -443,7 +465,7 @@ class GuiLogHandler(logging.Handler):
             self._filter_level = log_filter.LEVEL_ALL
             self._filter_keyword = ""
 
-    def _visible(self, rec: tuple, active_snap: Dict[str, bool],
+    def _visible(self, rec: tuple, active_snap: dict[str, bool],
                  level: str, keyword: str) -> bool:
         """单条记录是否应显示：级别芯片 AND 过滤条。"""
         try:
@@ -642,7 +664,7 @@ class GuiLogHandler(logging.Handler):
                 log_text.delete("1.0", f"{last_line - LOG_PANEL_MAX_LINES}.0")
             if _was_at_bottom:
                 log_text.see(_TK_END)
-        except TclError:
+        except Exception:
             # GUI 已销毁（destroy 期间仍可能触发 flush），widget 不可用时静默丢弃
             pass
         finally:
@@ -671,17 +693,30 @@ def _make_console_handler() -> logging.Handler:
     return h
 
 
-def _make_file_handler() -> logging.Handler:
-    h = GzTimedRotatingFileHandler(
-        filename=str(LOG_FILE), when="midnight", interval=1,
-        backupCount=14, encoding="utf-8", delay=False, utc=False,
-    )
+def _make_file_handler() -> logging.Handler | None:
+    """创建落盘 FileHandler。
+
+    防御式容错：当日志目录不可写（受限环境 / 权限被 HIPS 拦截 /
+    父目录不存在）时，不抛异常、不拖垮整个模块导入，仅返回 None，
+    由 setup_logging 退化为控制台 + GUI 日志。
+    """
+    try:
+        parent = os.path.dirname(str(LOG_FILE))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        h = GzTimedRotatingFileHandler(
+            filename=str(LOG_FILE), when="midnight", interval=1,
+            backupCount=14, encoding="utf-8", delay=True, utc=False,
+        )
+    except Exception as _e:  # 目录不可写等极端情况
+        print(f"[logger] 无法创建日志文件 {LOG_FILE}：{_e}（已退化为仅控制台日志）")
+        return None
     h.setLevel(logging.DEBUG)
     h.setFormatter(VerboseFormatter(fmt=VERBOSE_FMT, datefmt=DATE_FORMAT))
     return h
 
 
-def _make_json_handler() -> Optional[logging.Handler]:
+def _make_json_handler() -> logging.Handler | None:
     if not bool(int(os.environ.get("MOLMAN_JSON_LOG", "0"))):
         return None
     h = GzTimedRotatingFileHandler(
@@ -707,7 +742,9 @@ def setup_logging() -> logging.Logger:
     root.addHandler(startup_handler)
     # 去重（同一 session 不要重复添加）
     root.addHandler(_make_console_handler())
-    root.addHandler(_make_file_handler())
+    fh = _make_file_handler()
+    if fh is not None:
+        root.addHandler(fh)
     jh = _make_json_handler()
     if jh is not None:
         root.addHandler(jh)
@@ -727,7 +764,7 @@ def setup_logging() -> logging.Logger:
 # ⚠️ T04 同步点：这里的元组结构必须与 GuiLogHandler._all_records **完全一致**（4 元组），
 #    因为 attach_gui_handler 会把本队列 extend 进 _all_records。
 #    若两边元组长度不一致，repaint_all 解包时会崩，且症状是「启动即白屏」。
-_STARTUP_RECORDS: List[Tuple[int, str, str, str]] = []
+_STARTUP_RECORDS: list[tuple[int, str, str, str]] = []
 _STARTUP_RECORDS_LOCK = threading.Lock()
 _STARTUP_COLLECTED_MAX = 10000  # 再长就截断避免占内存
 
@@ -758,7 +795,7 @@ class _StartupRecordCollector(logging.Handler):
                 _STARTUP_RECORDS[:] = _STARTUP_RECORDS[-_STARTUP_COLLECTED_MAX // 2:]
 
 
-def drain_startup_records() -> List[Tuple[int, str, str, str]]:
+def drain_startup_records() -> list[tuple[int, str, str, str]]:
     """取出启动队列并清空；只在 attach_gui_handler 回放时用一次。"""
     with _STARTUP_RECORDS_LOCK:
         snap = list(_STARTUP_RECORDS)
@@ -769,7 +806,7 @@ def drain_startup_records() -> List[Tuple[int, str, str, str]]:
 default_logger = setup_logging()
 
 # 全局 GUI handler：MainView.build_ui 后调用 `attach_gui_handler(app)` 才有效
-_GUI_HANDLER: Optional[GuiLogHandler] = None
+_GUI_HANDLER: GuiLogHandler | None = None
 
 
 def attach_gui_handler(app_ref: Callable[[], Any]) -> GuiLogHandler:
@@ -810,7 +847,7 @@ def attach_gui_handler(app_ref: Callable[[], Any]) -> GuiLogHandler:
     return handler
 
 
-def get_gui_handler() -> Optional[GuiLogHandler]:
+def get_gui_handler() -> GuiLogHandler | None:
     return _GUI_HANDLER
 
 

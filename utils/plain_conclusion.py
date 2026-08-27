@@ -9,7 +9,8 @@ U-09 计算结果「通俗结论」区域 · 纯逻辑层
 只做「字段 → 通俗文字」的映射，绝不新增/伪造数值；字段缺失就照实
 说「未取得」，与项目「正确 > 假数据」红线一致。
 """
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 
 TASK_LABELS = {
     "energy": "单点能",
@@ -23,16 +24,16 @@ TASK_LABELS = {
 }
 
 
-def _g(res: Dict[str, Any], key: str, default: Optional[Any] = None) -> Any:
+def _g(res: dict[str, Any], key: str, default: Any | None = None) -> Any:
     return res.get(key, default)
 
 
-def conclusion_for(result: Dict[str, Any]) -> str:
+def conclusion_for(result: dict[str, Any]) -> str:
     """返回一句话结论（可能含换行分句）。入参为空/非 dict 时给兜底句。"""
     if not isinstance(result, dict) or not result:
         return "暂无计算结果。"
 
-    parts: List[str] = []
+    parts: list[str] = []
 
     task = str(_g(result, "task", "") or "").lower()
     task_label = TASK_LABELS.get(task, task or "计算")
@@ -68,7 +69,7 @@ def conclusion_for(result: Dict[str, Any]) -> str:
     return " ".join(parts)
 
 
-def conclusion_plain(result: Dict[str, Any]) -> str:
+def conclusion_plain(result: dict[str, Any]) -> str:
     """alias，语义化命名，供 UI 直接 import。"""
     return conclusion_for(result)
 

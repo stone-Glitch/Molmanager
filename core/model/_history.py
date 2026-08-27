@@ -68,7 +68,7 @@ class HistoryMixin:
             path = self._history_file_path()
             if not path.exists():
                 return
-            with open(win_longpath(path), "r", encoding="utf-8") as f:
+            with open(win_longpath(path), encoding="utf-8") as f:
                 data = json.load(f)
             if not isinstance(data, list):
                 return
@@ -86,6 +86,27 @@ class HistoryMixin:
                 self._log(f"📂 已从 .history 恢复 {len(self.history)} 条操作历史", 'info')
         except Exception as _e:
             logger.debug("历史恢复失败（已忽略，重新开始）: %s", _e)
+
+    def _file_md5(self, p: Path) -> str:
+        h = hashlib.md5()
+        with open(p, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    def _copy_is_pristine(self, src: Path, dst: Path) -> bool:
+        """判断工作目录里的导入副本 dst 是否仍是源文件 src 的「未改动」副本。
+
+        先比文件大小（瞬时、零拷贝），大小相同再比 MD5（编辑后恰好同大小属极罕见情形，
+        此时仍需兜底校验内容）。用于撤销导入时的数据安全红线：
+        只有确认副本未被用户编辑过，才允许删掉它。
+        """
+        try:
+            if src.stat().st_size != dst.stat().st_size:
+                return False
+            return self._file_md5(src) == self._file_md5(dst)
+        except OSError:
+            return False
 
     def undo_last(self):
         if not self.history:
@@ -133,8 +154,13 @@ class HistoryMixin:
                     error_count += 1
         elif op_type == 'import':
             # F06 导入（复制模式）的撤销：删掉工作目录里的**副本**，外部原件一动不动。
-            # 🔴 数据安全兜底：如果外部原件已经不在了（用户导入后把源文件删了/移走了），
-            #    此时删副本 = 唯一一份数据消失，绝不允许 —— 改为把副本搬回原位置。
+            # 🔴 数据安全兜底（两层）：
+            #   1) 外部原件已不在（用户导入后删了/移走源文件）：此时删副本=唯一数据消失，
+            #      绝不允许 → 把副本搬回原位置。
+            #   2) 外部原件仍在：先比 MD5 判断副本是否被用户编辑过。
+            #      - 副本==原件（未改动）：它是冗余副本，安全 unlink。
+            #      - 副本被编辑过：绝不直接 unlink 造成数据永久丢失，而是隔离到
+            #        .trash_backup（受保护目录，不出现在文件列表），让用户能找回。
             for src, dst in file_pairs:
                 try:
                     src_p, dst_p = Path(src), Path(dst)
@@ -142,9 +168,18 @@ class HistoryMixin:
                         self._log(f"⚠️ 撤销导入失败: 副本不存在 {dst}", 'warning')
                         error_count += 1
                         continue
-                    if src_p.exists():
+                    if src_p.exists() and self._copy_is_pristine(src_p, dst_p):
                         dst_p.unlink()
-                        self._log(f"↩️ 撤销导入: 已移除副本 {dst_p.name}", 'info')
+                        self._log(f"↩️ 撤销导入: 已移除未改动的重复副本 {dst_p.name}", 'info')
+                    elif src_p.exists():
+                        trash_dir = self.work_dir / ".trash_backup"
+                        trash_dir.mkdir(parents=True, exist_ok=True)
+                        quar = trash_dir / f"{dst_p.name}.undo_import_{int(datetime.now().timestamp())}.bak"
+                        shutil.move(str(dst_p), str(quar))
+                        self._log(
+                            f"⚠️ 撤销导入：副本 {dst_p.name} 已被修改，已隔离到 .trash_backup"
+                            f"（未直接删除，可找回）", 'warning'
+                        )
                     else:
                         src_p.parent.mkdir(parents=True, exist_ok=True)
                         shutil.move(str(dst_p), str(src_p))
@@ -248,20 +283,7 @@ class HistoryMixin:
             file_pairs = entry['files']
             step_success = 0
             step_error = 0
-            if op_type in ('rename', 'move', 'fix'):
-                for src, dst in file_pairs:
-                    try:
-                        if Path(dst).exists():
-                            if Path(src).exists():
-                                step_error += 1
-                                continue
-                            Path(dst).rename(src)
-                            step_success += 1
-                        else:
-                            step_error += 1
-                    except Exception:
-                        step_error += 1
-            elif op_type == 'delete':
+            if op_type in ('rename', 'move', 'fix') or op_type == 'delete':
                 for src, dst in file_pairs:
                     try:
                         if Path(dst).exists():
@@ -292,20 +314,7 @@ class HistoryMixin:
             file_pairs = entry['files']
             step_success = 0
             step_error = 0
-            if op_type in ('rename', 'move', 'fix'):
-                for src, dst in file_pairs:
-                    try:
-                        if Path(src).exists():
-                            if Path(dst).exists():
-                                step_error += 1
-                                continue
-                            Path(src).rename(dst)
-                            step_success += 1
-                        else:
-                            step_error += 1
-                    except Exception:
-                        step_error += 1
-            elif op_type == 'delete':
+            if op_type in ('rename', 'move', 'fix') or op_type == 'delete':
                 for src, dst in file_pairs:
                     try:
                         if Path(src).exists():

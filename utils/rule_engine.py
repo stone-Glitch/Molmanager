@@ -26,7 +26,8 @@ E-03 智能规则引擎（if-this-then-that）· 纯逻辑层
 红线：字段缺失时，比较类条件一律 False（绝不把缺失当命中）。
 """
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 
 # 操作符别名 → 规范名
 _OPS = {
@@ -50,14 +51,14 @@ _COLLECTION_OPS = {"in", "not_in"}
 _PRESENCE_OPS = {"exists", "missing"}
 
 
-def normalize_op(op: Any) -> Optional[str]:
+def normalize_op(op: Any) -> str | None:
     """别名 → 规范操作符；未知返回 None。"""
     if isinstance(op, str):
         return _OPS.get(op.strip().lower())
     return None
 
 
-def _resolve(entry: Dict[str, Any], field: str) -> Any:
+def _resolve(entry: dict[str, Any], field: str) -> Any:
     """按点号路径取值；中间缺失返回 None。"""
     cur: Any = entry
     for seg in str(field).split("."):
@@ -68,7 +69,7 @@ def _resolve(entry: Dict[str, Any], field: str) -> Any:
     return cur
 
 
-def _coerce_number(v: Any) -> Optional[float]:
+def _coerce_number(v: Any) -> float | None:
     if isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
@@ -81,7 +82,7 @@ def _coerce_number(v: Any) -> Optional[float]:
     return None
 
 
-def _match_single(cond: Dict[str, Any], entry: Dict[str, Any]) -> bool:
+def _match_single(cond: dict[str, Any], entry: dict[str, Any]) -> bool:
     op = normalize_op(cond.get("op"))
     if op is None:
         return False  # 未知操作符：不命中，宁漏勿错
@@ -144,7 +145,7 @@ def _match_single(cond: Dict[str, Any], entry: Dict[str, Any]) -> bool:
     return False
 
 
-def match_condition(when: Any, entry: Dict[str, Any]) -> bool:
+def match_condition(when: Any, entry: dict[str, Any]) -> bool:
     """递归求值条件组（dict 可含 all/any 或直接是单条件）。"""
     if not isinstance(when, dict):
         return False
@@ -157,7 +158,7 @@ def match_condition(when: Any, entry: Dict[str, Any]) -> bool:
     return _match_single(when, entry)
 
 
-def match_rule(rule: Dict[str, Any], entry: Dict[str, Any]) -> bool:
+def match_rule(rule: dict[str, Any], entry: dict[str, Any]) -> bool:
     """单条规则是否命中（enabled=False 直接不命中）。"""
     if not isinstance(rule, dict):
         return False
@@ -167,14 +168,14 @@ def match_rule(rule: Dict[str, Any], entry: Dict[str, Any]) -> bool:
     return match_condition(when, entry) if when is not None else False
 
 
-def evaluate_rules(rules: List[Dict[str, Any]], entry: Dict[str, Any]) -> List[Dict[str, Any]]:
+def evaluate_rules(rules: list[dict[str, Any]], entry: dict[str, Any]) -> list[dict[str, Any]]:
     """返回命中的规则列表（保持输入顺序）。"""
     return [r for r in rules if match_rule(r, entry)]
 
 
-def render_actions(matched: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def render_actions(matched: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """把命中规则的动作展开成可执行动作描述列表。"""
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for r in matched:
         then = r.get("then") or {}
         action = then.get("action", "notify")
@@ -188,9 +189,9 @@ def render_actions(matched: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-def validate_rule(rule: Dict[str, Any]) -> Tuple[bool, List[str]]:
+def validate_rule(rule: dict[str, Any]) -> tuple[bool, list[str]]:
     """校验规则结构，返回 (ok, 错误列表)。"""
-    errs: List[str] = []
+    errs: list[str] = []
     if not isinstance(rule, dict):
         return False, ["规则必须是对象"]
     if not rule.get("id"):
@@ -219,7 +220,7 @@ def validate_rule(rule: Dict[str, Any]) -> Tuple[bool, List[str]]:
     return (len(errs) == 0), errs
 
 
-def load_rules(text: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+def load_rules(text: str) -> tuple[list[dict[str, Any]], list[str]]:
     """解析 JSON 规则文本（数组或单对象），返回 (规则列表, 错误列表)。"""
     import json
     try:

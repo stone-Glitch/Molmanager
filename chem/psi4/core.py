@@ -3,27 +3,30 @@
 """
 PSI4 核心模块 - run_psi4_task, check_psi4_installed, 基础辅助函数
 """
-import os
-import re
-import json
+import atexit
+from collections.abc import Callable
 import csv
+import json
+import logging  # ← 添加这一行！
+import os
+from pathlib import Path
+import re
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
 import threading
-import logging  # ← 添加这一行！
 import time
-import sys
-import signal
-import atexit
-from pathlib import Path
-from typing import Dict, Optional, Callable, Any, List, Tuple
+from typing import Any
 
-from utils.logger import default_logger as logger, performance_timer
-from utils.constants import PSI4_PRESETS
-from utils.path_utils import secure_output_path, default_base_dir_from_input, win_longpath
-from utils.cache import LRUCache, make_file_cache_key
 import chem.openbabel_utils as ob_utils
+from utils.cache import LRUCache, make_file_cache_key
+from utils.constants import PSI4_PRESETS
+from utils.logger import default_logger as logger
+from utils.logger import performance_timer
+from utils.path_utils import default_base_dir_from_input, secure_output_path, win_longpath
+
 
 # ---------- NumPy 兼容性补丁 ----------
 try:
@@ -185,12 +188,12 @@ _XYZ_CACHE_MISS = object()
 
 
 # ---------- 环境检测 ----------
-def check_psi4_installed() -> Tuple[bool, str, Dict[str, Any]]:
+def check_psi4_installed() -> tuple[bool, str, dict[str, Any]]:
     """
     增强版 PSI4 安装与功能支持检测
     返回 (可用性, 消息, 详情字典)
     """
-    details: Dict[str, Any] = {
+    details: dict[str, Any] = {
         "version": None,
         "has_energy": False,
         "has_optimize": False,
@@ -243,7 +246,7 @@ def check_psi4_installed_simple() -> bool:
     return ok
 
 
-def get_preset_info(preset_name: str) -> Dict:
+def get_preset_info(preset_name: str) -> dict:
     return PSI4_PRESETS.get(preset_name, {})
 
 
@@ -332,7 +335,7 @@ def _run_process_with_timeout(
     except subprocess.TimeoutExpired:
         logger.warning("子进程超时 (%.1fs): %s", timeout, args)
         return 124
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         logger.error("子进程可执行文件不存在: %s", arg0)
         return 127
     except OSError as e:
@@ -356,7 +359,7 @@ def convert_with_obabel(input_file: str, output_file: str) -> bool:
 
 
 # ---------- 读取 XYZ ----------
-def read_xyz_content(file_path: str) -> Optional[str]:
+def read_xyz_content(file_path: str) -> str | None:
     key = make_file_cache_key(file_path)
     # 查缓存（命中即返回；LRUCache 内部加锁，字典读写原子）
     if key is not None:
@@ -367,7 +370,7 @@ def read_xyz_content(file_path: str) -> Optional[str]:
     content: str | None = None
     for enc in encodings:
         try:
-            with open(win_longpath(file_path), 'r', encoding=enc) as f:
+            with open(win_longpath(file_path), encoding=enc) as f:
                 content = f.read()
             break
         except UnicodeDecodeError:
@@ -425,10 +428,10 @@ def read_xyz_content(file_path: str) -> Optional[str]:
 
 
 # ---------- 解析 PSI4 输出 ----------
-def parse_psi4_output(log_file: str, task_type: str = 'energy') -> Dict:
+def parse_psi4_output(log_file: str, task_type: str = 'energy') -> dict:
     result = {"energy": None, "optimized_xyz": None}
     try:
-        with open(log_file, 'r', encoding='utf-8') as f:
+        with open(log_file, encoding='utf-8') as f:
             content = f.read()
         en_patterns = [
             r'@.*?Final\s+energy\s+([-\d.]+)',
@@ -478,17 +481,17 @@ def run_psi4_task(
     task_type: str = 'energy',
     method: str = 'b3lyp',
     basis: str = '6-31g*',
-    output_dir: Optional[str] = None,
-    preset_name: Optional[str] = None,
-    solvent: Optional[str] = None,
+    output_dir: str | None = None,
+    preset_name: str | None = None,
+    solvent: str | None = None,
     d3: bool = False,
     charge: int = 0,
     multiplicity: int = 1,
     memory: str = '4 GB',
-    xyz_content: Optional[str] = None,
-    base_name: Optional[str] = None,
+    xyz_content: str | None = None,
+    base_name: str | None = None,
     **kwargs
-) -> Dict:
+) -> dict:
     """运行单个 PSI4 任务。
 
     P-03 增强：当 ``xyz_content`` 提供时，跳过一切基于文件路径的校验
@@ -505,9 +508,9 @@ def run_psi4_task(
     if xyz_content is None and not os.path.exists(input_file):
         return {"success": False, "error": f"文件不存在: {input_file}"}
 
-    progress_callback: Optional[Callable] = kwargs.get('_progress_callback', None)
-    extra_options: Dict[str, Any] = kwargs.get('extra_options', None) or {}
-    extra_post_hook = kwargs.get('_extra_post_hook', None)
+    progress_callback: Callable | None = kwargs.get('_progress_callback')
+    extra_options: dict[str, Any] = kwargs.get('extra_options') or {}
+    extra_post_hook = kwargs.get('_extra_post_hook')
 
     def report(percent: float, msg: str) -> None:
         if progress_callback:
@@ -709,7 +712,7 @@ def run_psi4_task(
             logger.warning("准备分子失败: %s", e, exc_info=True)
             return {"success": False, "error": f"准备分子失败: {e}"}
 
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "success": False,
             "energy": None,
             "optimized_xyz": None,
@@ -819,7 +822,7 @@ def run_psi4_task(
                 while not _progress_stop.is_set():
                     if _progress_out and os.path.exists(_progress_out):
                         try:
-                            with open(_progress_out, "r", errors="replace") as _fh:
+                            with open(_progress_out, errors="replace") as _fh:
                                 _txt = _fh.read()
                             _opt = _re.findall(r"[Oo]ptimization Step\s+(\d+)", _txt)
                             _step = int(_opt[-1]) if _opt else 0
@@ -1243,7 +1246,7 @@ def _read_new_progress(progress_path: str, state: dict, progress_callback) -> No
     if progress_callback is None or not os.path.exists(progress_path):
         return
     try:
-        with open(progress_path, "r", encoding="utf-8") as pf:
+        with open(progress_path, encoding="utf-8") as pf:
             content = pf.read()
     except Exception:
         return
@@ -1272,7 +1275,7 @@ def _run_psi4_subprocess(
     solvent, d3, charge, multiplicity, memory, *,
     progress_callback=None, cancel_check=None, timeout=None, poll_interval=0.2,
     **kwargs
-) -> Dict:
+) -> dict:
     """
     在独立子进程里运行 run_psi4_task，主进程轮询 cancel_check / timeout，
     一旦触发就杀掉整个进程树实现强制取消。结果从临时 JSON 读回。
@@ -1358,7 +1361,7 @@ def _run_psi4_subprocess(
         return {"success": False, "error": "子进程未产出结果（可能崩溃或被强杀）"}
 
     try:
-        with open(result_path, "r", encoding="utf-8") as rf:
+        with open(result_path, encoding="utf-8") as rf:
             result = json.load(rf)
     except Exception as e:
         return {"success": False, "error": f"读取子进程结果失败: {e}"}
@@ -1432,7 +1435,7 @@ def _run_psi4_worker(
     solvent, d3, charge, multiplicity, memory, *,
     progress_callback=None, cancel_check=None, timeout=None, poll_interval=0.2,
     **kwargs
-) -> Dict:
+) -> dict:
     work_root = Path(__file__).resolve().parents[2]
     tmp = tempfile.mkdtemp(prefix="psi4_wk_")
     result_path = os.path.join(tmp, "result.json")
@@ -1489,7 +1492,7 @@ def _run_psi4_worker(
         return {"success": False, "cancelled": True, "error": "任务已被取消（超时或用户取消）"}
 
     try:
-        with open(result_path, "r", encoding="utf-8") as rf:
+        with open(result_path, encoding="utf-8") as rf:
             result = json.load(rf)
     except Exception as e:
         raise RuntimeError(f"读取 worker 结果失败: {e}")
@@ -1503,19 +1506,19 @@ def run_psi4_task_cancellable(
     task_type: str = 'energy',
     method: str = 'b3lyp',
     basis: str = '6-31g*',
-    output_dir: Optional[str] = None,
-    preset_name: Optional[str] = None,
-    solvent: Optional[str] = None,
+    output_dir: str | None = None,
+    preset_name: str | None = None,
+    solvent: str | None = None,
     d3: bool = False,
     charge: int = 0,
     multiplicity: int = 1,
     memory: str = '4 GB',
     *,
-    cancel_check: Optional[Callable[[], bool]] = None,
-    timeout: Optional[float] = None,
+    cancel_check: Callable[[], bool] | None = None,
+    timeout: float | None = None,
     poll_interval: float = 0.2,
     **kwargs
-) -> Dict:
+) -> dict:
     """
     可取消版本的 run_psi4_task。三级回退保证健壮：
       1) 常驻热 worker（psi4 仅导入一次，开销最低，支持取消/超时强杀）；

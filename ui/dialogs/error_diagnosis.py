@@ -20,7 +20,8 @@ import re
 import tkinter as tk
 
 import ui.ui_theme as ui_theme
-from ui.ui_theme import COLORS, get_current_theme
+from ui.ui_theme import get_current_theme
+
 
 _RULES_CACHE = None
 
@@ -34,7 +35,7 @@ def load_rules():
     try:
         here = os.path.dirname(os.path.abspath(__file__))
         path = os.path.join(here, "error_patterns.json")
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         for r in data.get("rules", []):
             try:

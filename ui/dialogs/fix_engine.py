@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 
+
 # 常见基组拼写 / 大小写纠正表（key 统一小写用于归一化匹配）。
 # 仅覆盖 PSI4 内置可用基组里最容易被写错的那批；其余交给用户确认。
 _BASIS_CORRECTIONS = {
@@ -152,7 +153,6 @@ def _fix_memory(app, error_text, params):
     gb = int(params.get("gb", 2) or 2)
     # 若可探测物理内存，把默认值限制在「物理内存一半」以内，避免越设越大
     try:
-        import os as _os
         try:
             import psutil
             total = psutil.virtual_memory().total // (1024 ** 3)

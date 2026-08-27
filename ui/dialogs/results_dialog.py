@@ -6,12 +6,11 @@
 import csv
 import os
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, scrolledtext
-from pathlib import Path
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
-from utils.logger import default_logger as logger
-from .common import _safe_open_file
 from utils.dialog_geom import fit_dialog_geometry
+
+from .common import _safe_open_file
 
 
 def show_results_browser_dialog(app, controller):
@@ -49,13 +48,7 @@ def show_results_browser_dialog(app, controller):
             if col == "base":
                 tree.heading(col, text=col, anchor=tk.W)
                 tree.column(col, width=140, anchor=tk.W, stretch=False)
-            elif col == "task_type":
-                tree.heading(col, text=col, anchor=tk.W)
-                tree.column(col, width=80, anchor=tk.W, stretch=False)
-            elif col == "method":
-                tree.heading(col, text=col, anchor=tk.W)
-                tree.column(col, width=80, anchor=tk.W, stretch=False)
-            elif col == "basis":
+            elif col == "task_type" or col == "method" or col == "basis":
                 tree.heading(col, text=col, anchor=tk.W)
                 tree.column(col, width=80, anchor=tk.W, stretch=False)
             elif col == "energy_Ha":
@@ -143,13 +136,7 @@ def show_results_browser_dialog(app, controller):
         if col == "base":
             tree.heading(col, text=col, anchor=tk.W)
             tree.column(col, width=140, anchor=tk.W, stretch=False)
-        elif col == "task_type":
-            tree.heading(col, text=col, anchor=tk.W)
-            tree.column(col, width=80, anchor=tk.W, stretch=False)
-        elif col == "method":
-            tree.heading(col, text=col, anchor=tk.W)
-            tree.column(col, width=80, anchor=tk.W, stretch=False)
-        elif col == "basis":
+        elif col == "task_type" or col == "method" or col == "basis":
             tree.heading(col, text=col, anchor=tk.W)
             tree.column(col, width=80, anchor=tk.W, stretch=False)
         elif col == "energy_Ha":

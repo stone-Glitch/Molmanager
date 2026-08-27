@@ -19,7 +19,9 @@ F15 日志过滤 —— 纯匹配逻辑（T03 / Phase 1）
 """
 from __future__ import annotations
 
-from typing import Any, Iterable, List, Sequence, Tuple
+from collections.abc import Iterable, Sequence
+from typing import Any
+
 
 # ---------------------------------------------------------------- 级别定义
 # 与 logging 模块及 utils/logger.LEVEL_SUCCESS(=25) 保持一致。
@@ -36,7 +38,7 @@ LEVEL_VALUES: dict[str, int] = {
 }
 
 #: 过滤条下拉框的取值顺序（英文键，写入 config 的也是这些键）
-LEVEL_ORDER: Tuple[str, ...] = (
+LEVEL_ORDER: tuple[str, ...] = (
     LEVEL_ALL, "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL",
 )
 
@@ -202,7 +204,7 @@ def filter_records(
     level: Any = LEVEL_ALL,
     keyword: Any = "",
     case_sensitive: bool = False,
-) -> List[Sequence[Any]]:
+) -> list[Sequence[Any]]:
     """返回所有命中的记录（保持原顺序）。"""
     return [
         r for r in records
@@ -216,7 +218,7 @@ def count_matches(
     level: Any = LEVEL_ALL,
     keyword: Any = "",
     case_sensitive: bool = False,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """
     统计 ``(命中条数, 总条数)``，用于过滤条右侧的「显示 X / 共 Y 条」。
 

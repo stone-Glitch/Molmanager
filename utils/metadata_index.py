@@ -9,17 +9,18 @@ E-01 深度元数据索引（.log/.out/.fchk 动态列）· 纯逻辑层
 纯正则/文本解析，无外部依赖，可在沙箱用合成文本单测。
 """
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from utils.calc_log_parser import parse_calc_log
+
 
 # .fchk 头部：一行「标签  类型字符(R/I/C/L)  值」
 _FCHK_LINE = re.compile(r"^(?P<label>.+?)\s+[RICL]\s+(?P<value>.+)$")
 
 
-def parse_fchk(text: str) -> Dict[str, Any]:
+def parse_fchk(text: str) -> dict[str, Any]:
     """解析 Gaussian .fchk 头部，返回 {标签: 值}（值转成数字/布尔/字符串）。"""
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     for line in (text or "").splitlines():
         m = _FCHK_LINE.match(line)
         if not m:
@@ -45,7 +46,7 @@ def parse_fchk(text: str) -> Dict[str, Any]:
     return out
 
 
-def extract_metadata(path: str, text: Optional[str] = None) -> Dict[str, Any]:
+def extract_metadata(path: str, text: str | None = None) -> dict[str, Any]:
     """
     按扩展名分派解析，返回统一元数据 dict（含 "source" 字段标注来源扩展名）。
 
@@ -65,7 +66,7 @@ def extract_metadata(path: str, text: Optional[str] = None) -> Dict[str, Any]:
     return {"source": ext}
 
 
-def collect_columns(metadata_list: List[Dict[str, Any]]) -> List[str]:
+def collect_columns(metadata_list: list[dict[str, Any]]) -> list[str]:
     """
     把一批文件的元数据归并成「动态列」键名（确定性排序）。
     返回的列名是出现过的所有键的并集，按字母序排列，保证 UI 稳定渲染。
@@ -77,7 +78,7 @@ def collect_columns(metadata_list: List[Dict[str, Any]]) -> List[str]:
     return sorted(keys)
 
 
-def index_files(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def index_files(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     便捷入口：entries 里每项含 {name/path, meta}（meta 由调用方经
     extract_metadata 得到）。返回带 "_columns" 的汇总，便于 UI 直接画表。

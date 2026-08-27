@@ -26,10 +26,11 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
 
 # ---------- 键别名 → 内部规范键 ----------
-_KEY_ALIASES: Dict[str, str] = {
+_KEY_ALIASES: dict[str, str] = {
     "mw": "mw",
     "molecularweight": "mw",
     "molweight": "mw",
@@ -52,7 +53,7 @@ _KEY_ALIASES: Dict[str, str] = {
 _NUMERIC_KEYS = frozenset({"mw", "logp", "heavy", "atoms", "rotors"})
 
 # entry 上实际可能存的字段名（描述符键 vs 我们的别名）
-_FIELD_LOOKUP: Dict[str, Tuple[str, ...]] = {
+_FIELD_LOOKUP: dict[str, tuple[str, ...]] = {
     "mw": ("mw", "molecular_weight"),
     "formula": ("formula", "molecular_formula"),
     "logp": ("logP", "logp", "xlogp"),
@@ -83,7 +84,7 @@ class ChemCondition:
         return f"ChemCondition({self.key!r}{self.op!r}{self.value!r})"
 
 
-def _split_operator(raw: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+def _split_operator(raw: str) -> tuple[str | None, str | None, str | None]:
     """把 'mw:>60' / 'formula:C6H6' 拆成 (key, op, value)。
 
     格式：key 与值之间用冒号分隔；冒号之后可紧跟比较符 > < >= <= =，否则视为 ':'（数值相等 / 公式子串）。
@@ -105,7 +106,7 @@ def _split_operator(raw: str) -> Tuple[Optional[str], Optional[str], Optional[st
     return (key_raw, op, value)
 
 
-def parse_chem_query(query: str) -> Tuple[List[ChemCondition], List[str]]:
+def parse_chem_query(query: str) -> tuple[list[ChemCondition], list[str]]:
     """
     解析查询串 → (化学条件列表, 自由文本词列表)。
 
@@ -113,8 +114,8 @@ def parse_chem_query(query: str) -> Tuple[List[ChemCondition], List[str]]:
     - 其余词 → 自由文本（保留顺序、去前后空格、忽略空串）
     - 空查询 → ([], [])
     """
-    conditions: List[ChemCondition] = []
-    free_terms: List[str] = []
+    conditions: list[ChemCondition] = []
+    free_terms: list[str] = []
     if not query or not query.strip():
         return conditions, free_terms
     for token in query.split():
@@ -128,7 +129,7 @@ def parse_chem_query(query: str) -> Tuple[List[ChemCondition], List[str]]:
     return conditions, free_terms
 
 
-def _entry_field(entry: Dict[str, Any], key: str) -> Any:
+def _entry_field(entry: dict[str, Any], key: str) -> Any:
     """从 entry 取某个规范键对应的真实字段值；多个候选键依次尝试，缺失返回 None。"""
     for fld in _FIELD_LOOKUP.get(key, (key,)):
         if fld in entry and entry[fld] not in (None, "", "N/A"):
@@ -136,7 +137,7 @@ def _entry_field(entry: Dict[str, Any], key: str) -> Any:
     return None
 
 
-def _to_float(val: Any) -> Optional[float]:
+def _to_float(val: Any) -> float | None:
     try:
         return float(val)
     except (TypeError, ValueError):
@@ -170,7 +171,7 @@ def _cmp_text(entry_val: Any, op: str, target: str) -> bool:
     return t in s
 
 
-def match_entry(entry: Dict[str, Any], conditions: List[ChemCondition]) -> bool:
+def match_entry(entry: dict[str, Any], conditions: list[ChemCondition]) -> bool:
     """
     判断单个 entry 是否满足全部化学条件（AND）。
     任一条件不满足即 False。缺失字段的条件 → False（不造假阳性）。
@@ -186,7 +187,7 @@ def match_entry(entry: Dict[str, Any], conditions: List[ChemCondition]) -> bool:
     return True
 
 
-def matches_free_text(entry: Dict[str, Any], free_terms: List[str]) -> bool:
+def matches_free_text(entry: dict[str, Any], free_terms: list[str]) -> bool:
     """自由文本：所有词必须作为子串出现在 name/base/eng/chn 之一（大小写不敏感）。"""
     if not free_terms:
         return True
@@ -196,7 +197,7 @@ def matches_free_text(entry: Dict[str, Any], free_terms: List[str]) -> bool:
     return all(term.lower() in hay for term in free_terms)
 
 
-def filter_entries(entries: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
+def filter_entries(entries: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
     """
     纯引擎入口：按化学查询过滤 entries。
     - 无任何条件且无自由文本（空查询）→ 原样返回全部（调用方负责 status/ext 过滤）。

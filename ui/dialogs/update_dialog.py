@@ -27,14 +27,15 @@ F18 新版本提示对话框（T15 / Phase 1 批次二）
 from __future__ import annotations
 
 import tkinter as tk
-import webbrowser
 from tkinter import messagebox, scrolledtext, ttk
-from typing import Any, Optional
+from typing import Any
+import webbrowser
 
 from utils import updater
 from utils import version as ver
 from utils.dialog_geom import fit_dialog_geometry
 from utils.logger import default_logger as logger
+
 
 #: 按钮返回值
 ACTION_DOWNLOAD = "download"
@@ -57,7 +58,7 @@ def _log(app: Any, msg: str, level: str = "info") -> None:
         pass
 
 
-def _config_of(app: Any) -> Optional[dict]:
+def _config_of(app: Any) -> dict | None:
     """取主窗口的 config_data（拿不到时返回 None，updater 会自行 load_config）。"""
     cfg = getattr(app, "config_data", None)
     return cfg if isinstance(cfg, dict) else None
@@ -238,7 +239,7 @@ def _build_update_dialog(app: Any, info: Any, *, manual: bool) -> str:
 # 手动检查的其余两种反馈
 # ============================================================================
 
-def show_no_update_dialog(app: Any, current_version: Optional[str] = None) -> None:
+def show_no_update_dialog(app: Any, current_version: str | None = None) -> None:
     """手动检查且**已是最新**时的反馈。静默检查绝不调用此函数。"""
     version_text = str(current_version or ver.get_version())
     try:

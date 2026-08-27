@@ -13,13 +13,14 @@
 所有函数保持原有行为不变，仅做命名空间统一。
 """
 import os
-import sys
-import stat
-import tempfile
-import shutil
-import time
 from pathlib import Path
-from typing import Optional, Union
+import shutil
+import stat
+import sys
+import tempfile
+import time
+from typing import Union
+
 
 PathLike = Union[str, os.PathLike]
 
@@ -102,7 +103,7 @@ def get_app_data_dir() -> Path:
 BACKUP_DIR_NAME = ".backup"
 
 
-def get_backup_dir(work_dir: Optional[PathLike] = None, *, create: bool = True) -> Path:
+def get_backup_dir(work_dir: PathLike | None = None, *, create: bool = True) -> Path:
     """
     获取备份根目录（F17 快照的存放位置）。
 
@@ -409,7 +410,7 @@ def resolve_secure_output_path(
 def resolve_secure_input_file(
     path: PathLike,
     *,
-    base_dir: Optional[PathLike] = None,
+    base_dir: PathLike | None = None,
     allow_outside: bool = True,
 ) -> Path:
     """
@@ -461,8 +462,8 @@ def resolve_secure_input_file(
 # ==================== 默认 base_dir 推断 ====================
 
 def default_base_dir_from_input(
-    *inputs: Optional[PathLike],
-    fallback: Optional[PathLike] = None,
+    *inputs: PathLike | None,
+    fallback: PathLike | None = None,
 ) -> Path:
     """
     从输入文件/目录推断默认的 base_dir。
@@ -610,8 +611,9 @@ def cleanup_stale_tempdirs(max_age_seconds: int = 3 * 24 * 3600) -> int:
 # 全项目所有「散落各处的 mkdtemp」都应改走这里：创建即注册，由 atexit 统一兜底清理，
 # 防止进程异常退出（崩溃 / 强杀）时残留临时目录。手动清理后调用 unregister_temp_dir
 # 可移除登记（不调用也无害——cleanup_all_temp_dirs 对已不存在的目录自动跳过）。
-import threading as _threading
 import atexit as _atexit
+import threading as _threading
+
 
 _TEMP_DIRS: list[Path] = []
 _TEMP_DIRS_LOCK = _threading.Lock()

@@ -9,11 +9,10 @@ U-10 示例分子库 + 失败案例教育（纯数据/逻辑层）
 
 纯数据 + 查找函数，无 tkinter 依赖，可在沙箱单测。
 """
-from typing import Dict, List, Optional
 
 
 # 示例分子：覆盖有机小分子的几类典型结构
-EXAMPLE_MOLECULES: List[Dict] = [
+EXAMPLE_MOLECULES: list[dict] = [
     {"name": "水", "english": "water", "formula": "H2O", "smiles": "O",
      "category": "无机", "note": "最简单的极性分子，单点能基准测试常用。"},
     {"name": "甲醇", "english": "methanol", "formula": "CH4O", "smiles": "CO",
@@ -33,7 +32,7 @@ EXAMPLE_MOLECULES: List[Dict] = [
 ]
 
 # 失败案例教育：把「新手常踩的坑」结构化，UI 可逐条弹提示
-FAILURE_CASES: List[Dict] = [
+FAILURE_CASES: list[dict] = [
     {"title": "把 .log 当结构文件去重命名",
      "why": ".log/.out 是计算结果，不是分子结构；用 M-01 的 STRUCTURE_EXTS 区分。"},
     {"title": "中文名映射到两个不同英文名",
@@ -47,7 +46,7 @@ FAILURE_CASES: List[Dict] = [
 ]
 
 
-def get_examples(category: Optional[str] = None) -> List[Dict]:
+def get_examples(category: str | None = None) -> list[dict]:
     """返回示例分子；category 非空时按分类过滤（大小写不敏感）。"""
     if not category:
         return list(EXAMPLE_MOLECULES)
@@ -55,7 +54,7 @@ def get_examples(category: Optional[str] = None) -> List[Dict]:
     return [m for m in EXAMPLE_MOLECULES if m.get("category", "").lower() == cat]
 
 
-def lookup_example(name: str) -> Optional[Dict]:
+def lookup_example(name: str) -> dict | None:
     """按中文名或英文名精确（大小写不敏感）查找一个示例分子。"""
     if not name:
         return None
@@ -66,11 +65,11 @@ def lookup_example(name: str) -> Optional[Dict]:
     return None
 
 
-def get_failure_cases() -> List[Dict]:
+def get_failure_cases() -> list[dict]:
     return list(FAILURE_CASES)
 
 
-def categories() -> List[str]:
+def categories() -> list[str]:
     seen = []
     for m in EXAMPLE_MOLECULES:
         c = m.get("category", "")

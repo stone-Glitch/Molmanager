@@ -3,19 +3,17 @@
 """
 OpenBabel 工具对话框 - 格式转换、SMILES生成、结构优化、描述符、分子叠加、2D预览
 """
-import os
 import csv
-import sys
-import subprocess
-import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog, messagebox
+import os
 from pathlib import Path
+import tkinter as tk
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 
-from utils.logger import default_logger as logger
-from .base import _append_text, _clear_text, show_friendly_error
-from .common import _safe_open_file
 import chem.openbabel_utils as ob_utils
 from utils.dialog_geom import fit_dialog_geometry
+
+from .base import _append_text, _clear_text
+from .common import _safe_open_file
 
 
 def show_openbabel_dialog(app, controller):

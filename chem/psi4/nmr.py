@@ -3,17 +3,19 @@
 """
 NMR 模拟模块 - Boltzmann 加权 ¹H NMR 谱
 """
-import os
 import csv
-import math
-import re
 import logging
+import math
+import os
 from pathlib import Path
+import re
 from typing import Any
 
-from utils.logger import default_logger as logger, performance_timer
-from .core import run_psi4_task, check_psi4_installed
+from utils.logger import default_logger as logger
+from utils.logger import performance_timer
+
 from .conformer import conformer_search_ensemble
+from .core import check_psi4_installed, run_psi4_task
 from .utils import _parse_xyz
 
 
@@ -130,7 +132,7 @@ def run_nmr_simulation(
                 shifts = []
                 H_idx_shift = []
                 if log_p and os.path.exists(log_p):
-                    with open(log_p, "r", encoding="utf-8", errors="replace") as _lf:
+                    with open(log_p, encoding="utf-8", errors="replace") as _lf:
                         lines = _lf.readlines()
                     in_block = False
                     for line in lines:

@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
+
 
 # ---------------------------------------------------------------- 常量
 APP_NAME: str = "MolManager"
@@ -84,7 +84,7 @@ def normalize_version(raw: object) -> str:
     return m.group(1) if m else ""
 
 
-def parse_version(raw: object) -> Optional[Tuple[int, ...]]:
+def parse_version(raw: object) -> tuple[int, ...] | None:
     """
     把版本串解析成可比较的整数元组（降级路径专用）。
 
@@ -106,7 +106,7 @@ def parse_version(raw: object) -> Optional[Tuple[int, ...]]:
     return tuple(parts) if parts else None
 
 
-def _pad(a: Tuple[int, ...], b: Tuple[int, ...]) -> Tuple[Tuple[int, ...], Tuple[int, ...]]:
+def _pad(a: tuple[int, ...], b: tuple[int, ...]) -> tuple[tuple[int, ...], tuple[int, ...]]:
     """把两个版本元组右侧补 0 到等长，便于逐位比较。"""
     n = max(len(a), len(b))
     return a + (0,) * (n - len(a)), b + (0,) * (n - len(b))

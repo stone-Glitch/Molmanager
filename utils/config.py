@@ -17,7 +17,8 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from utils.logger import default_logger as logger
-from utils.path_utils import get_app_data_dir, chmod_quiet
+from utils.path_utils import chmod_quiet, get_app_data_dir
+
 
 APP_DATA_DIR = get_app_data_dir()
 CONFIG_FILE = APP_DATA_DIR / "mol_manager_config.json"
@@ -127,7 +128,7 @@ def load_config():
         if CONFIG_FILE.exists():
             # 先补一次权限（兼容旧版本创建的 0o644 文件）
             chmod_quiet(CONFIG_FILE, 0o600)
-            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            with open(CONFIG_FILE, encoding='utf-8') as f:
                 raw = json.load(f)
             if not isinstance(raw, dict):
                 logger.warning("配置文件格式不是字典，使用默认配置")

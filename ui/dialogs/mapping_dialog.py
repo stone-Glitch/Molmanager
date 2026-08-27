@@ -3,14 +3,15 @@
 """
 映射管理对话框 - 映射表导入/导出/编辑
 """
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, simpledialog
 from pathlib import Path
+import tkinter as tk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from utils.logger import default_logger as logger
 from utils.dialog_geom import fit_dialog_geometry
 from utils.mapping_utils import (
-    fuzzy_suggestions, find_fuzzy_pairs, generate_blank_template, filter_mapping_rows,
+    find_fuzzy_pairs,
+    fuzzy_suggestions,
+    generate_blank_template,
     suggest_mapping_from_dir,
 )
 

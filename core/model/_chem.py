@@ -1,5 +1,6 @@
 """chem 子系统 mixin（由原 core/model.py 拆分而来）。"""
 from ._common import *  # noqa: F401,F403
+from typing import Dict, Tuple
 
 
 class ChemMixin:
@@ -78,13 +79,12 @@ class ChemMixin:
     def _read_summary_json(self, path: Path) -> dict:
         import json
         try:
-            with open(win_longpath(path), 'r', encoding='utf-8') as f:
+            with open(win_longpath(path), encoding='utf-8') as f:
                 return json.load(f)
         except Exception:
             return {}
 
     def collect_results(self) -> list[dict]:
-        import json
         rows = []
         if not self.work_dir.exists():
             return rows

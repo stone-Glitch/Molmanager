@@ -1,5 +1,6 @@
 """mapping 子系统 mixin（由原 core/model.py 拆分而来）。"""
 from ._common import *  # noqa: F401,F403
+from typing import Dict, List, Optional, Tuple
 
 
 class MappingMixin:
@@ -82,7 +83,7 @@ class MappingMixin:
         eng_conflicts: List[str] = []   # 重复的英文名（后者被静默丢弃）
         chn_conflicts: List[Tuple[str, str, str]] = []   # 科学红线 S-06
         seen_chn: Dict[str, str] = {}
-        with open(win_longpath(path), 'r', encoding='utf-8-sig') as f:
+        with open(win_longpath(path), encoding='utf-8-sig') as f:
             lines = f.readlines()
         if len(lines) < 2:
             raise ValueError("映射文件为空或格式错误")

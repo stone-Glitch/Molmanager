@@ -10,7 +10,6 @@ E-09 HPC 作业脚本生成器（SLURM / PBS）· 纯逻辑层
   - SLURM：sbatch（#SBATCH 指令）
   - PBS/Torque：qsub（#PBS 指令）
 """
-from typing import Dict, List, Optional
 
 
 def _sanitize_name(name: str) -> str:
@@ -19,14 +18,14 @@ def _sanitize_name(name: str) -> str:
     return out or "job"
 
 
-def generate_slurm(job: Dict) -> str:
+def generate_slurm(job: dict) -> str:
     """
     job 字段（均可选）：
       name, partition, nodes, ntasks, cpus_per_task, gres, walltime,
       memory_gb, output, error, modules(list), commands(list[str])
     """
     name = _sanitize_name(job.get("name", "molmanager_job"))
-    lines: List[str] = ["#!/bin/bash"]
+    lines: list[str] = ["#!/bin/bash"]
     lines.append(f"#SBATCH --job-name={name}")
     if job.get("partition"):
         lines.append(f"#SBATCH --partition={job['partition']}")
@@ -60,10 +59,10 @@ def generate_slurm(job: Dict) -> str:
     return "\n".join(lines)
 
 
-def generate_pbs(job: Dict) -> str:
+def generate_pbs(job: dict) -> str:
     """PBS/Torque 版本，字段同上（partition→queue）。"""
     name = _sanitize_name(job.get("name", "molmanager_job"))
-    lines: List[str] = ["#!/bin/bash"]
+    lines: list[str] = ["#!/bin/bash"]
     lines.append(f"#PBS -N {name}")
     queue = job.get("partition") or job.get("queue")
     if queue:
@@ -91,7 +90,7 @@ def generate_pbs(job: Dict) -> str:
     return "\n".join(lines)
 
 
-def generate_script(scheduler: str, job: Dict) -> str:
+def generate_script(scheduler: str, job: dict) -> str:
     """按调度器名（slurm/pbs，大小写不敏感）分发。"""
     s = (scheduler or "").strip().lower()
     if s == "pbs" or s == "torque":
