@@ -8,9 +8,19 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import pytest
 
-from chem.openbabel_utils import (
+# 收集阶段就跳过：模块级 from chem.openbabel_utils import ... 会触发
+# openbabel 的真实导入，光用 usefixtures 拦不住。
+if not (importlib.util.find_spec("openbabel") or importlib.util.find_spec("pybel")):
+    pytest.skip(
+        "需要 OpenBabel 的 Python 绑定（pybel）：conda install -c conda-forge openbabel",
+        allow_module_level=True,
+    )
+
+from chem.openbabel_utils import (  # noqa: E402
     calculate_descriptors,
     compute_fingerprint,
     similarity_search,

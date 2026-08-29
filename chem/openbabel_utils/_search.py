@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 
-import openbabel as ob
+from ._common import ob
 
 logger = logging.getLogger(__name__)
 
