@@ -28,7 +28,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 # ---------- 键别名 → 内部规范键 ----------
 _KEY_ALIASES: dict[str, str] = {
     "mw": "mw",
@@ -130,10 +129,29 @@ def parse_chem_query(query: str) -> tuple[list[ChemCondition], list[str]]:
 
 
 def _entry_field(entry: dict[str, Any], key: str) -> Any:
-    """从 entry 取某个规范键对应的真实字段值；多个候选键依次尝试，缺失返回 None。"""
-    for fld in _FIELD_LOOKUP.get(key, (key,)):
+    """从 entry 取某个规范键对应的真实字段值；多个候选键依次尝试，缺失返回 None。
+
+    匹配顺序：
+      1. 候选键精确命中（``molecular_weight``、``logP`` …）；
+      2. 候选键的**大小写不敏感**命中 —— 因为 UI 与导出的 CSV 里同一字段
+         常被写成 ``MW`` / ``LogP`` / ``TPSA``，而描述符实际输出的是
+         ``molecular_weight`` / ``logP``。少了这一步，用户照着表头输入
+         ``MW>200`` 会一条都查不到（表现为「搜索框失灵」）。
+
+    注意：这里只放宽「字段名写法」，**不放宽字段缺失**——
+    目标字段不存在时依然返回 None，由比较函数判 False（红线：不造假阳性）。
+    """
+    candidates = _FIELD_LOOKUP.get(key, (key,))
+    for fld in candidates:
         if fld in entry and entry[fld] not in (None, "", "N/A"):
             return entry[fld]
+
+    # 大小写不敏感兜底（每次调用构造一次映射，条目量级很小，代价可忽略）
+    lowered = {str(k).lower(): v for k, v in entry.items()}
+    for fld in candidates:
+        val = lowered.get(str(fld).lower())
+        if val not in (None, "", "N/A"):
+            return val
     return None
 
 

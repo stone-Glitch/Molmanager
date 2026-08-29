@@ -22,7 +22,6 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from typing import Any
 
-
 # ---------------------------------------------------------------- 级别定义
 # 与 logging 模块及 utils/logger.LEVEL_SUCCESS(=25) 保持一致。
 LEVEL_ALL: str = "ALL"

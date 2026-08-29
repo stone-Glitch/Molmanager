@@ -13,7 +13,6 @@ from typing import Any
 
 from utils.calc_log_parser import parse_calc_log
 
-
 # .fchk 头部：一行「标签  类型字符(R/I/C/L)  值」
 _FCHK_LINE = re.compile(r"^(?P<label>.+?)\s+[RICL]\s+(?P<value>.+)$")
 

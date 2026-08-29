@@ -11,7 +11,6 @@ U-09 计算结果「通俗结论」区域 · 纯逻辑层
 """
 from typing import Any
 
-
 TASK_LABELS = {
     "energy": "单点能",
     "optimize": "几何优化",

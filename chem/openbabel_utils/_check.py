@@ -1,5 +1,5 @@
-from pathlib import Path
 import tempfile
+from pathlib import Path
 from typing import Any
 
 from utils.constants import (
@@ -8,10 +8,17 @@ from utils.constants import (
 )
 from utils.logger import default_logger as logger
 
-from ._cli import _load_manual_from_config, _resolve_obabel_cli, _run_obabel
+from ._cli import (
+    _load_manual_from_config,
+    _resolve_obabel_cli,
+    _run_obabel,
+    get_manual_obabel_path,
+    set_manual_obabel_path,
+)
+from ._common import *  # noqa: F403  # 取 ob / pybel / PYBEL_AVAILABLE / OB_INSTALL_GUIDE
 
 # ======================== 导入与版本兼容 ========================
-from ._common import _DEFAULT_BASE_DIR, _OBABEL_CLI_LOCK
+from ._common import _DEFAULT_BASE_DIR
 
 
 def set_default_base_dir(path=None) -> None:
@@ -94,7 +101,6 @@ def check_openbabel() -> tuple[bool, str, dict[str, Any]]:
       - install_guide: str (OB_INSTALL_GUIDE，UI 可直接展示)
       - diagnosis: str[] (按严重程度排的诊断建议)
     """
-    global _MANUAL_OBABEL_PATH
     details: dict[str, Any] = {
         "interfaces_available": [],
         "pybel_version": None,
@@ -109,12 +115,13 @@ def check_openbabel() -> tuple[bool, str, dict[str, Any]]:
     warning_list: list[str] = details["warnings"]
     diagnosis_list: list[str] = details["diagnosis"]
 
-    # 首次探测：懒加载手动路径（加锁保护全局状态，避免与 _resolve_obabel_cli / set_manual_obabel_path 竞争；
-    # 锁块仅设置 _MANUAL_OBABEL_PATH，不含后续对 _resolve_obabel_cli 的调用，避免不可重入锁死锁，审计 3.2）
-    with _OBABEL_CLI_LOCK:
-        if _MANUAL_OBABEL_PATH is None:
-            _MANUAL_OBABEL_PATH = _load_manual_from_config()
-    if _MANUAL_OBABEL_PATH:
+    # 首次探测：手动路径的**真相源在 _cli**（set_manual_obabel_path / _resolve_obabel_cli
+    # 都在那里维护并加锁），这里只做一次懒加载后读取。
+    # 早前这里在本模块另存了一份 `_MANUAL_OBABEL_PATH` 副本，拆包时又漏了显式导入，
+    # 结果一读就 NameError —— 整份环境诊断因此全线报错。
+    if get_manual_obabel_path() is None:
+        set_manual_obabel_path(_load_manual_from_config())
+    if get_manual_obabel_path():
         details["manual_path_used"] = True
 
     # 1. 检测 pybel

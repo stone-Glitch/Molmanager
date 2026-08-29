@@ -18,13 +18,12 @@ from __future__ import annotations
 
 import re
 
-
 # ---------------------------------------------------------------- 常量
 APP_NAME: str = "MolManager"
 APP_DISPLAY_NAME: str = "分子管理器"
 
-#: 应用语义化版本号。发版时**只改这一处**。
-__version__: str = "1.0.0"
+#: 应用语义化版本号。发版时**只改这一处**（pyproject.toml / CHANGELOG.md 跟着对齐）。
+__version__: str = "1.0.1"
 
 #: 构建标识（可选，例如 CI 号 / 日期戳）。空串表示未标注。
 BUILD_TAG: str = ""

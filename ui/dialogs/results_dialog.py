@@ -130,7 +130,8 @@ def show_results_browser_dialog(app, controller):
     v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
     h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
     tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    import ui.ui_theme as _ut; _ut.bind_treeview_hover(tree)
+    import ui.ui_theme as _ut
+    _ut.bind_treeview_hover(tree)
 
     for col in current_columns:
         if col == "base":

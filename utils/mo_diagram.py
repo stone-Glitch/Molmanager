@@ -11,7 +11,6 @@ E-13 MO 能级图 / 能量趋势图（.fchk 轨道能级 → SVG）· 纯逻辑�
 """
 import re
 
-
 _FLOAT = re.compile(r"[-+]?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?")
 
 

@@ -7,11 +7,11 @@
 UI 中剥离到这里，UI 层只负责调用；这样无需 GUI 即可在 managed python 下验证正确性
 （遵循本项目「验证 > 承诺」：先确认逻辑再接线）。
 """
-from collections.abc import Iterable
 import csv
 import os
-from pathlib import Path
 import re
+from collections.abc import Iterable
+from pathlib import Path
 
 
 def levenshtein(a: str, b: str) -> int:

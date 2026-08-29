@@ -30,7 +30,6 @@ from typing import Any
 from utils.logger import default_logger as logger
 from utils.version import get_user_agent
 
-
 # ---------------------------------------------------------------- 常量
 
 #: 连接超时（秒）。架构 §3.4 硬性要求。

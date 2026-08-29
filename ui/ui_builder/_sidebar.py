@@ -4,7 +4,6 @@ from ui.ui_theme import (
     COLORS,
 )
 
-
 # ------------------------- 🎨 主题颜色常量 -------------------------
 
 def build_sidebar(app, body):

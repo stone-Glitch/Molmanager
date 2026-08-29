@@ -4,10 +4,10 @@
 反应动画对话框 - 多反应物/多产物动画生成
 """
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
 from utils.dialog_geom import fit_dialog_geometry, make_scrollable_body

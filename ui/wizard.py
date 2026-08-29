@@ -10,13 +10,12 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import TYPE_CHECKING
 
 from utils.dialog_geom import fit_dialog_geometry
-
 
 if TYPE_CHECKING:
     from core.view import MainView

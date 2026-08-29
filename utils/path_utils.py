@@ -13,14 +13,13 @@
 所有函数保持原有行为不变，仅做命名空间统一。
 """
 import os
-from pathlib import Path
 import shutil
 import stat
 import sys
 import tempfile
 import time
+from pathlib import Path
 from typing import Union
-
 
 PathLike = Union[str, os.PathLike]
 
@@ -613,7 +612,6 @@ def cleanup_stale_tempdirs(max_age_seconds: int = 3 * 24 * 3600) -> int:
 # 可移除登记（不调用也无害——cleanup_all_temp_dirs 对已不存在的目录自动跳过）。
 import atexit as _atexit
 import threading as _threading
-
 
 _TEMP_DIRS: list[Path] = []
 _TEMP_DIRS_LOCK = _threading.Lock()

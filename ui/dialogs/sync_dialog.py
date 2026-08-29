@@ -58,7 +58,8 @@ def show_diff_sync_dialog(app, controller):
         v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
         tv.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        import ui.ui_theme as _ut; _ut.bind_treeview_hover(tv)
+        import ui.ui_theme as _ut
+        _ut.bind_treeview_hover(tv)
         for i, col in enumerate(columns):
             tv.heading(col, text=col, command=lambda c=col, ii=i: _sort_treeview_column(tv, c, ii, False))
             if col in ("filename", "name"):

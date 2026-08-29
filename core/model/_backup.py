@@ -1,6 +1,7 @@
 """backup 子系统 mixin（由原 core/model.py 拆分而来）。"""
-from ._common import *  # noqa: F401,F403
 from typing import Dict, List, Optional
+
+from ._common import *  # noqa: F401,F403
 
 
 class BackupMixin:

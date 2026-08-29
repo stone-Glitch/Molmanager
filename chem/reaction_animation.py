@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 import csv
 import hashlib
 import logging
 import math
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
+
+import numpy as np  # _kabsch_rotation() 做 SVD 构象对齐用
 
 import chem.openbabel_utils as ob_utils
 from chem.psi4.utils import _lerp_coords, _parse_xyz, _write_xyz
@@ -18,7 +20,6 @@ from utils.cache import LRUCache
 from utils.logger import default_logger as logger
 from utils.logger import performance_timer
 from utils.path_utils import default_base_dir_from_input, resolve_secure_input_file, secure_output_path
-
 
 try:
     from PIL import Image, ImageDraw, ImageFont  # type: ignore

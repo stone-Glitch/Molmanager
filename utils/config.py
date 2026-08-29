@@ -19,7 +19,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from utils.logger import default_logger as logger
 from utils.path_utils import chmod_quiet, get_app_data_dir
 
-
 APP_DATA_DIR = get_app_data_dir()
 CONFIG_FILE = APP_DATA_DIR / "mol_manager_config.json"
 

@@ -17,7 +17,6 @@ from ui.wizard import maybe_show_first_run_wizard  # 首次使用向导
 from utils.config import CONFIG_FILE, load_config, save_config
 from utils.logger import default_logger as logger
 
-
 # _apply_aurora_theme 不再调用（新版清爽扁平 UI 统一用 LabelFrame + ttk 原生样式，
 # 不再依赖 Aurora Frost 的 Canvas / 粒子装饰），但保留导入避免旧插件/脚本误用。
 # 如需启用旧版主题，可在 build_ui() 之前手工调用 _apply_aurora_theme(self)。

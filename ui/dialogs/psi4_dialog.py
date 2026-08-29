@@ -4,9 +4,9 @@
 PSI4 计算设置对话框
 """
 import os
-from pathlib import Path
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, scrolledtext, ttk
 
 from chem.psi4_compute import (

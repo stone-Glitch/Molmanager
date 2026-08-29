@@ -1,0 +1,42 @@
+# MolManager · 分子管理器 —— conda 运行环境
+#
+# 用途：一次性拉起含 PSI4 / OpenBabel 的完整环境（Windows / Linux / macOS 通用）。
+#
+#   conda env create -f environment.yml
+#   conda activate mol_manager_312
+#   python main.py
+#
+# 说明：
+#   1. psi4 与 openbabel 是 C++ 扩展，**必须走 conda-forge**（pip 轮子不可靠）；
+#   2. openbabel 的 conda 包自带 Python 绑定（``from openbabel import openbabel``
+#      与 ``from openbabel import pybel``），不要再用 pip 装同名包，否则会冲突；
+#   3. pydantic / tkinterdnd2 走 pip（conda-forge 上版本滞后或缺失）；
+#   4. tk 必须显式声明：Linux 下 conda 的 python 常不带 Tk，缺了 main.py 起不来。
+name: mol_manager_312
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # ---- 运行时基础 ----
+  - python=3.12
+  - tk                 # Tkinter 本体（Linux 必装，Windows/macOS 由官方安装包自带）
+  - pip
+
+  # ---- 数值 / 绘图 ----
+  - numpy
+  - scipy
+  - matplotlib
+  - pillow             # 2D 结构图 PNG 后处理（chem/openbabel_utils/_advanced.py）
+
+  # ---- 化学能力（核心）----
+  - openbabel          # 格式转换 / 描述符 / 指纹检索（自带 pybel 绑定）
+  - psi4               # 量化计算：单点能 / 优化 / 频率 / SAPT …
+
+  # ---- 工程依赖 ----
+  - psutil             # 子进程管理（chem/psi4/core.py）、修复引擎进程探测
+  - packaging          # 版本号比较（utils/version.py，缺失时自动降级为内置比较）
+
+  # ---- pip 部分 ----
+  - pip:
+      - "pydantic>=2.0"      # utils/config.py 配置模型校验（硬依赖）
+      - "tkinterdnd2>=0.4"   # 文件拖拽（缺失时自动降级为「不支持拖放」，不阻断启动）

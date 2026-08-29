@@ -6,8 +6,8 @@
 import csv
 import logging
 import os
-from pathlib import Path
 import random
+from pathlib import Path
 from typing import Any
 
 import chem.openbabel_utils as ob_utils

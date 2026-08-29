@@ -12,13 +12,13 @@
 """
 
 import csv
-from datetime import datetime
 import logging
 import os
-from pathlib import Path
 import threading
 import time
 import tkinter as tk
+from datetime import datetime
+from pathlib import Path
 from tkinter import filedialog, messagebox
 
 from ui.ui_theme import CHECK_GLYPH
@@ -33,7 +33,6 @@ from utils.logger import (
 from utils.logger import (
     get_context as get_log_context,
 )
-
 
 _LOG_BATCH_WINDOW_MS = 20
 _PROGRESS_THROTTLE_MS = 10
@@ -473,7 +472,8 @@ class AppHelpers:
         # "sel" 列就是勾选框：Treeview 没有原生 checkbox，用 ☑/☐ 字符 + 点击切换实现
         cols = ("sel", "idx", "action", "from", "to")
         tree = ttk.Treeview(frame, columns=cols, show="headings", selectmode="none")
-        import ui.ui_theme as _ut; _ut.bind_treeview_hover(tree)
+        import ui.ui_theme as _ut
+        _ut.bind_treeview_hover(tree)
         widths = {"sel": 46, "idx": 50, "action": 96, "from": 280, "to": 280}
         titles = {"sel": "选", "idx": "#", "action": "操作", "from": "从（原）", "to": "到（新）"}
         for c in cols:

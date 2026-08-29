@@ -3,8 +3,8 @@
 """
 映射管理对话框 - 映射表导入/导出/编辑
 """
-from pathlib import Path
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from utils.dialog_geom import fit_dialog_geometry
@@ -438,7 +438,8 @@ def show_mapping_editor_dialog(app, controller):
     v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
     h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
     tv.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    import ui.ui_theme as _ut; _ut.bind_treeview_hover(tv)
+    import ui.ui_theme as _ut
+    _ut.bind_treeview_hover(tv)
     tv.heading("英文名", text="英文名", command=lambda: _tv_sort_column(tv, "英文名", False))
     tv.heading("中文名", text="中文名", command=lambda: _tv_sort_column(tv, "中文名", False))
     tv.column("英文名", width=280, anchor=tk.W, stretch=True)

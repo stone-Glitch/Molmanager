@@ -1,5 +1,6 @@
 import csv
 import logging
+import math
 import os
 import re
 import tempfile
@@ -14,7 +15,86 @@ from utils.logger import performance_timer
 # ======================== 导入与版本兼容 ========================
 from ._cache import _cache_key
 from ._cli import _run_obabel, _secure_output_path
+from ._common import *  # noqa: F403  # 取 ob / pybel / PYBEL_AVAILABLE / desc_cache
 from ._io import _read_molecules
+
+
+def _predict_descriptor(obmol, *names: str) -> float | None:
+    """按给定名字依次尝试 ``OBDescriptor``，返回首个可用的预测值。
+
+    这是 OpenBabel 官方的「描述符」计算入口（``obprop`` 插件体系）：
+    ``logP`` / ``TPSA`` / ``HBD`` / ``rotors`` / ``MW`` 都从这里取值。
+
+    ⚠ 历史 bug（重要）
+    ----------------
+    旧实现用 ``getattr(pybel.Molecule, "logP")`` 取值，但 OB >= 3.1 的
+    ``pybel.Molecule`` **根本没有** ``.logP`` / ``.tpsa`` 属性，异常被
+    ``except`` 吞掉后，LogP 与 TPSA **恒为 0.0** —— 界面上看着有数，其实是假的。
+    同理 ``OBMol.NumHBD()`` / ``NumHBA()`` / ``NumSSSR()`` 在新版 SWIG 绑定里
+    也不存在，导致氢键供受体数与环数恒为 0。
+
+    参数:
+        obmol: ``OBMol`` 实例。
+        *names: 依次尝试的描述符名（不同 OB 版本命名有差异，如 HBA / HBA1）。
+
+    返回:
+        预测值（float）；全部不可用或结果为 NaN 时返回 ``None``。
+    """
+    if ob is None:
+        return None
+    for name in names:
+        try:
+            desc = ob.OBDescriptor.FindType(name)
+        except Exception:
+            continue
+        if desc is None:
+            continue
+        try:
+            value = desc.Predict(obmol)
+        except Exception:
+            continue
+        if value is None:
+            continue
+        try:
+            fvalue = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isnan(fvalue) or math.isinf(fvalue):
+            continue
+        return fvalue
+    return None
+
+
+def _fallback_num(obmol, method_name: str) -> float | None:
+    """调用 ``OBMol`` 上的 ``Num*()`` 方法（老版本 OB 的入口），不可用返回 None。"""
+    fn = getattr(obmol, method_name, None)
+    if not callable(fn):
+        return None
+    try:
+        return float(fn())
+    except Exception:
+        return None
+
+
+def _count_rings(obmol) -> int:
+    """环数（SSSR 大小）。
+
+    ``OBMol.NumSSSR()`` 只在部分 OB 版本/绑定里存在，新版统一走 ``GetSSSR()``。
+    """
+    try:
+        sssr = obmol.GetSSSR()
+        if sssr is not None:
+            return len(sssr)
+    except Exception:
+        pass
+    for method in ("NumSSSR",):
+        fn = getattr(obmol, method, None)
+        if callable(fn):
+            try:
+                return int(fn())
+            except Exception:
+                pass
+    return 0
 
 
 @performance_timer(name="ob.calculate_descriptors", level=logging.DEBUG, min_ms=10.0)
@@ -39,16 +119,29 @@ def calculate_descriptors(input_path: str) -> dict[str, Any]:
             else:
                 mol = mols[0]
                 obmol = mol.OBMol
+
+                # 氢键供体 / 受体：OB >= 3.1 没有 NumHBD()/NumHBA()，
+                # 走 OBDescriptor（HBA 在不同版本叫 HBA / HBA1 / HBA2，依次尝试）。
+                hbd = _predict_descriptor(obmol, "HBD")
+                if hbd is None:
+                    hbd = _fallback_num(obmol, "NumHBD")
+                hba = _predict_descriptor(obmol, "HBA", "HBA1", "HBA2")
+                if hba is None:
+                    hba = _fallback_num(obmol, "NumHBA")
+                rotors = _predict_descriptor(obmol, "rotors")
+                if rotors is None:
+                    rotors = _fallback_num(obmol, "NumRotors")
+
                 descriptors = {
                     "molecular_weight": 0.0,
                     "logP": 0.0,
                     "tpsa": 0.0,
                     "heavy_atoms": obmol.NumAtoms() if hasattr(obmol, "NumAtoms") else len(mol.atoms),
                     "bonds": obmol.NumBonds() if hasattr(obmol, "NumBonds") else None,
-                    "hbd": obmol.NumHBD() if hasattr(obmol, "NumHBD") else 0,
-                    "hba": obmol.NumHBA() if hasattr(obmol, "NumHBA") else 0,
-                    "rotors": obmol.NumRotors() if hasattr(obmol, "NumRotors") else 0,
-                    "rings": obmol.NumSSSR() if hasattr(obmol, "NumSSSR") else 0,
+                    "hbd": int(hbd) if hbd is not None else 0,
+                    "hba": int(hba) if hba is not None else 0,
+                    "rotors": int(rotors) if rotors is not None else 0,
+                    "rings": _count_rings(obmol),
                 }
                 # E-04 化学感知搜索：补充「分子式」与「总原子数」两个常用检索维度。
                 # 纯增量，不影响已有键（重命名占位符仅引用其中的部分键）。
@@ -60,15 +153,25 @@ def calculate_descriptors(input_path: str) -> dict[str, Any]:
                     descriptors["num_atoms"] = len(mol.atoms)
                 except Exception as _ae:
                     logger.debug("获取总原子数失败: %s", _ae)
-                for attr_name, attr_key in (("molwt", "molecular_weight"),
-                                            ("logP", "logP"), ("tpsa", "tpsa")):
-                    try:
-                        v = getattr(mol, attr_name)
-                        if callable(v):
-                            v = v()
+                # 数值描述符：优先 OBDescriptor（官方计算入口），失败再回退 pybel 属性。
+                # 旧实现只取 pybel 属性，而 OB >= 3.1 的 Molecule 没有 .logP / .tpsa，
+                # 异常被吞掉后这两个键恒为 0.0 —— 界面上有数、实际是假的。
+                for ob_name, attr_name, attr_key in (
+                    ("MW", "molwt", "molecular_weight"),
+                    ("logP", "logP", "logP"),
+                    ("TPSA", "tpsa", "tpsa"),
+                ):
+                    v = _predict_descriptor(obmol, ob_name)
+                    if v is None:
+                        try:
+                            v2 = getattr(mol, attr_name)
+                            if callable(v2):
+                                v2 = v2()
+                            v = float(v2)
+                        except Exception as _de:
+                            logger.debug("计算描述符 %s 失败: %s", attr_key, _de)
+                    if v is not None:
                         descriptors[attr_key] = float(v)
-                    except Exception as _de:
-                        logger.debug("计算描述符 %s 失败: %s", attr_key, _de)
                 result = {"success": True, "message": "描述符计算成功", "descriptors": descriptors}
         else:
             # 命令行模式（有限支持）

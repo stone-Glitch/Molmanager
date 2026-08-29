@@ -15,9 +15,8 @@ helpers / on_task_*）一律不变。
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import ttk
 import weakref
-
+from tkinter import ttk
 
 # ---------- 双调色板（深色护眼 + 浅色，与 UI_DESIGN.md / 原型一致） ----------
 # 两个调色板键名完全一致，确保 COLORS 代理与 ttk 样式在切换时无 KeyError。
@@ -127,7 +126,6 @@ def get_palette() -> dict:
 # ---------- 主题偏好持久化（用户级，跨会话记忆） ----------
 import json
 from pathlib import Path
-
 
 _PREF_PATH = Path.home() / ".molmanager" / "theme_pref.json"
 

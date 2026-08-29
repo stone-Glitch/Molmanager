@@ -5,8 +5,8 @@ OpenBabel 工具对话框 - 格式转换、SMILES生成、结构优化、描述�
 """
 import csv
 import os
-from pathlib import Path
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 import chem.openbabel_utils as ob_utils

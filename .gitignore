@@ -1,0 +1,56 @@
+# ---------------- Python ----------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.installed.cfg
+
+# ---------------- 测试 / 覆盖率 ----------------
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# ---------------- 虚拟环境 ----------------
+.venv/
+venv/
+env/
+ENV/
+
+# ---------------- 应用运行产物 ----------------
+# 工作目录扫描缓存、导出产物、临时目录、SQLite 数据库
+*.db
+*.db-journal
+*.sqlite3
+logs/
+temp*/
+tmp*/
+output/
+exports/
+previews/
+.molmanager/
+
+# 量化计算中间文件（体积大，不入库）
+*.wfn
+*.molden
+*.fchk
+*.hess
+*.grid_*
+psi4_scratch/
+*.psi4clean
+
+# ---------------- 编辑器 / 系统 ----------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -4,12 +4,10 @@
 PSI4 核心模块 - run_psi4_task, check_psi4_installed, 基础辅助函数
 """
 import atexit
-from collections.abc import Callable
 import csv
 import json
 import logging  # ← 添加这一行！
 import os
-from pathlib import Path
 import re
 import shutil
 import signal
@@ -18,6 +16,8 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import chem.openbabel_utils as ob_utils
@@ -27,6 +27,7 @@ from utils.logger import default_logger as logger
 from utils.logger import performance_timer
 from utils.path_utils import default_base_dir_from_input, secure_output_path, win_longpath
 
+from .utils import _plot_ir  # 频率任务绘制 IR 光谱图用
 
 # ---------- NumPy 兼容性补丁 ----------
 try:

@@ -3,7 +3,8 @@
 基于 **Tkinter** 的桌面分子管理工具：统一管理计算产物文件、批量格式转换、调用
 **PSI4** 做量化计算、**OpenBabel** 做结构渲染与描述符，并生成反应动画字幕。
 
-> 技术栈：Python 3.12 · Tkinter · PSI4 · OpenBabel · NumPy/SciPy/Matplotlib
+> 当前版本：**1.0.1**
+> 技术栈：Python 3.12 · Tkinter · PSI4 · OpenBabel · NumPy/SciPy/Matplotlib · FastAPI（可选）
 > 运行环境固定见 `environment.yml`（conda-forge，含 psi4 / openbabel C++ 扩展）。
 
 ---
@@ -36,12 +37,19 @@ Windows 双击启动器：`run_main.bat` / `rebuild_env_windows.bat`。
 ### 方式二：Docker
 
 ```bash
-docker build -t molmanager:0.1.0 .
-docker run --rm -it molmanager:0.1.0          # GUI（需 X11 转发）
-# 或仅跑 API：
-docker run --rm -p 8000:8000 molmanager:0.1.0 \
-  bash -lc "pip install -e '.[api]' && uvicorn api.server:app --host 0.0.0.0 --port 8000"
+docker build -t molmanager:1.0.1 .
+
+# GUI（需 X11 转发）
+xhost +local:docker
+docker run --rm -it \
+  -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix \
+  molmanager:1.0.1
+
+# 或仅跑 API
+docker run --rm -p 8000:8000 molmanager:1.0.1 api
 ```
+
+镜像内已装好接口层依赖，无需再 `pip install`；无 `DISPLAY` 时会自动退到 Xvfb 虚拟显示。
 
 ---
 
@@ -57,9 +65,19 @@ pip install -e ".[dev]"     # 开发：pytest / ruff / mypy
 
 ```bash
 uvicorn api.server:app --reload --port 8000
-# 文档： http://127.0.0.1:8000/docs
-# 端点： /health /descriptors /inchikey /substructure /similarity /query
+# 交互式文档： http://127.0.0.1:8000/docs
 ```
+
+| 端点 | 说明 | 需要 OpenBabel |
+| --- | --- | --- |
+| `GET /health` | 健康检查 + 后端能力探测（`?refresh=true` 强制重探） | 否 |
+| `POST /inchikey` | SMILES → InChIKey，支持批量，单条失败不影响整体 | 是（pybel） |
+| `POST /descriptors` | 分子描述符：MW / logP / TPSA / HBD / HBA / 环数 …，入参可为 `smiles` 或 `path` | 是（pybel） |
+| `POST /substructure` | SMARTS 子结构检索 | 是 |
+| `POST /similarity` | 指纹相似性检索（默认 FP2，可选 threshold / top_n） | 是 |
+| `POST /query` | 化学条件过滤（`MW>200 logP<3` 这类串），纯 Python | 否 |
+
+后端缺 OpenBabel 时，需要它的端点返回 **503 + 安装指引**，`/health` 与 `/query` 照常可用。
 
 ---
 
@@ -81,9 +99,20 @@ tests/       单元测试（pytest）
 
 ## 🔧 开发规范
 
-- **格式化 / 导入排序**：`ruff check .` 与 `ruff format .`
-- **类型检查**：`mypy core/domain.py core/storage_sqlite.py`
-- **测试**：`pytest tests/ -q`
-- **CI**：`.github/workflows/ci.yml` 自动跑 ruff 检查 + conda 环境下 pytest
+```bash
+ruff check .                                   # 静态检查（含 F821 未定义名称、I001 导入顺序）
+ruff format .                                  # 格式化
+mypy core/domain.py core/storage_sqlite.py     # 类型检查
+pytest tests/ -q                               # 单元测试
+```
 
-详见 `CHANGELOG.md`。
+- **测试策略**：需要 OpenBabel / PSI4 / FastAPI 的用例通过 `tests/conftest.py`
+  里的 fixture 自动跳过，因此**纯 pip 环境下也能跑通大部分测试**。
+  其中 `tests/test_openbabel_namespace.py` 是拆包事故的回归防线，
+  不装 OpenBabel 同样会执行。
+- **CI**：`.github/workflows/ci.yml` 跑 ruff（+ mypy）+ 两轮 pytest
+  （conda 完整环境 / 纯 pip 环境）。
+- **已知欠账**：历史代码尚未统一跑过 `ruff format`（全量格式化约 1.9 万行 diff），
+  CI 中该步骤目前只提示不阻塞，待专项整改。
+
+详见 `CHANGELOG.md`（1.0.1 记录了本轮修复的两个严重功能缺陷）。

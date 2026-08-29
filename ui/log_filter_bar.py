@@ -30,7 +30,6 @@ from utils import log_filter
 from utils.logger import default_logger as logger
 from utils.logger import get_gui_handler
 
-
 #: 关键词输入防抖窗口（毫秒）。架构 §3.1 实测 5 万条全量重绘 <120ms，250ms 足够。
 DEBOUNCE_MS: int = 250
 

@@ -4,11 +4,11 @@
 通用对话框 - 文件类型选择、字体大小、环境诊断、OB路径设置、最近目录
 """
 import os
-from pathlib import Path
 import subprocess
 import sys
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 import chem.openbabel_utils as ob_utils
@@ -505,8 +505,10 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
             try:
                 import chem.psi4_compute as _pc
             except Exception as _imp_err:
-                dialog.after(0, lambda: _finish_test(
-                    f"❌ 无法加载 PSI4 计算模块（不影响文件整理）：{_imp_err}", False))
+                # ⚠ except 绑定的名字在 except 块结束时会被 Python 自动删除，
+                # 直接放进 lambda 里延迟求值会抛 NameError —— 先固化成局部字符串。
+                _msg = f"❌ 无法加载 PSI4 计算模块（不影响文件整理）：{_imp_err}"
+                dialog.after(0, lambda _m=_msg: _finish_test(_m, False))
                 return
             _tdir = None
             try:
@@ -527,8 +529,8 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
                 )
                 elapsed = _time.time() - t0
             except Exception as _e:
-                dialog.after(0, lambda: _finish_test(
-                    f"❌ 快速测试异常：{_e}", False))
+                _msg = f"❌ 快速测试异常：{_e}"
+                dialog.after(0, lambda _m=_msg: _finish_test(_m, False))
                 return
             if res.get("success"):
                 e = res.get("energy")

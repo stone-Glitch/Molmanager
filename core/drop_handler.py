@@ -24,12 +24,11 @@
 """
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-import os
 from pathlib import Path
 from typing import Any
-
 
 # ---------------------------------------------------------------- 常量
 

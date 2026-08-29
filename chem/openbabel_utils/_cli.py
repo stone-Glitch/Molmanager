@@ -1,8 +1,8 @@
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from typing import Any
 
 from utils.constants import (
@@ -12,8 +12,14 @@ from utils.constants import (
 )
 from utils.logger import default_logger as logger
 
+from ._common import *  # noqa: F403  # 取 ob / pybel / PYBEL_AVAILABLE / OB_INSTALL_GUIDE
+
 # ======================== 导入与版本兼容 ========================
-from ._common import _DEFAULT_BASE_DIR, _OBABEL_CLI_LOCK
+# ⚠ _MANUAL_OBABEL_PATH 以下划线开头，不会被上面的 `import *` 带进来，必须显式导入。
+# 漏了它，set/get_manual_obabel_path 与 _resolve_obabel_cli 会在运行时 NameError，
+# 表现为「状态栏 OB 指示灯一直报错、手动指定 obabel 路径无效」。
+# 本模块是手动路径的**真相源**，其他模块请走 get_manual_obabel_path() 读取。
+from ._common import _DEFAULT_BASE_DIR, _MANUAL_OBABEL_PATH, _OBABEL_CLI_LOCK
 
 
 def set_manual_obabel_path(path: str | None) -> None:

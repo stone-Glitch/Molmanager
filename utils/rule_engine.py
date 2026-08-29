@@ -28,7 +28,6 @@ E-03 智能规则引擎（if-this-then-that）· 纯逻辑层
 import re
 from typing import Any
 
-
 # 操作符别名 → 规范名
 _OPS = {
     "eq": "eq", "==": "eq", "=": "eq",

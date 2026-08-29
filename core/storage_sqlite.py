@@ -23,7 +23,6 @@ from typing import Any
 
 from core.domain import CalcResult, MappingEntry, MoleculeRecord
 
-
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS molecule (
     name        TEXT PRIMARY KEY,

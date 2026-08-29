@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import re
 
-
 # 常见基组拼写 / 大小写纠正表（key 统一小写用于归一化匹配）。
 # 仅覆盖 PSI4 内置可用基组里最容易被写错的那批；其余交给用户确认。
 _BASIS_CORRECTIONS = {

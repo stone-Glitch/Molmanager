@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------- 静态检查
+  lint:
+    name: ruff (lint + format)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装 ruff
+        run: python -m pip install --upgrade pip "ruff>=0.6"
+
+      - name: ruff check
+        run: ruff check .
+
+      # 历史代码从未统一格式化过（全量 format 会产生约 1.9 万行 diff），
+      # 一次性刷格式会淹没真正的改动，因此这里只做「提示」不阻塞合并。
+      # 待格式整改单独立项后，可把 continue-on-error 去掉。
+      - name: ruff format --check
+        run: ruff format --check .
+        continue-on-error: true
+
+  # ---------------------------------------------------------------- 类型检查
+  typecheck:
+    name: mypy (core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "mypy>=1.10" pydantic numpy
+
+      - name: mypy core 纯数据层
+        run: mypy core/domain.py core/storage_sqlite.py
+
+  # ---------------------------------------------------------------- 单元测试
+  test:
+    name: pytest (conda: psi4 + openbabel)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      # PSI4 / OpenBabel 是 C++ 扩展，必须走 conda-forge；这里用 micromamba 缓存环境
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          environment-name: mol_manager_312
+          cache-environment: true
+          cache-downloads: true
+
+      - name: 安装项目（开发 + 接口层额外依赖）
+        run: python -m pip install --no-deps -e ".[dev,api]"
+
+      - name: 冒烟：确认化学依赖可用
+        run: |
+          python -c "from openbabel import openbabel, pybel; print('openbabel OK', openbabel.OBReleaseVersion())"
+          python -c "import utils.config, utils.chem_query, core.domain; print('pure-python OK')"
+
+      - name: pytest
+        run: pytest tests/ -q
+
+  # ---------------------------------------------------------------- 纯 Python 兜底
+  # 不依赖 conda 也能验证纯逻辑工具（fork / 离线环境友好）
+  test-pure:
+    name: pytest (pure-python, no conda)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pydantic packaging
+
+      - name: pytest（自动跳过需 OpenBabel / PSI4 的用例）
+        run: pytest tests/ -q

@@ -19,8 +19,8 @@ from tkinter import (
     messagebox,
 )
 
-from core.model import MolManagerModel
 import utils.config as config
+from core.model import MolManagerModel
 from utils.config import save_config
 from utils.constants import SUPPORTED_EXTS
 from utils.logger import default_logger as logger

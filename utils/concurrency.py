@@ -16,11 +16,10 @@
 """
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-import threading
 from typing import Any
-
 
 # 单函数最长运行时间无统一上限；这里仅约束线程池生命周期
 _DEFAULT_MAX_WORKERS = 1

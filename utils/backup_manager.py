@@ -31,20 +31,19 @@ F17 自动备份 —— 快照管理器（T09 / Phase 1）
 """
 from __future__ import annotations
 
+import json
+import os
+import re
+import shutil
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-import json
-import os
 from pathlib import Path
-import re
-import shutil
 from typing import Any
 
 from utils.logger import default_logger as _default_logger
 from utils.path_utils import chmod_quiet, enforce_no_symlink_target
 from utils.version import __version__ as APP_VERSION
-
 
 # ---------------------------------------------------------------- 常量
 

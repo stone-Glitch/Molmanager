@@ -13,7 +13,6 @@
 """
 from __future__ import annotations
 
-
 # 术语 → 释义。cat: 分类（便于以后做分组/过滤）。
 # 这份词典刻意保持「小而准」，覆盖 MolManager 用户最高频的困惑点；后续可继续扩充。
 _GLOSSARY: dict[str, dict[str, str]] = {

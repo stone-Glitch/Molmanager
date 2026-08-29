@@ -17,10 +17,6 @@
   - 移除重复的 _app_data_dir()，改用 path_utils.get_app_data_dir()
   - 保持所有外部接口不变
 """
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from datetime import datetime
-from functools import wraps
 import gzip
 import json
 import logging
@@ -32,14 +28,17 @@ import sys
 import threading
 import time
 import traceback
-from typing import Any
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import datetime
+from functools import wraps
+from typing import Any
 
 # F15：级别 + 关键词匹配纯函数（无 Tk 依赖，可单测）。
 # ⚠️ log_filter 只 import typing，不反向 import logger，故无循环导入风险。
 from utils import log_filter
 from utils.path_utils import get_app_data_dir
-
 
 # GUI 依赖：如果是非 GUI 环境（cli 脚本 / 测试），不 import tkinter，
 # 但 GuiLogHandler 需要 tk.END 等常量，这里在模块开头先确定值。

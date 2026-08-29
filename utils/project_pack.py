@@ -11,9 +11,8 @@ E-05 项目打包器 .molproj（纯逻辑层）
 """
 import json
 import os
-from pathlib import Path
 import zipfile
-
+from pathlib import Path
 
 MANIFEST_NAME = "molproj.json"
 DEFAULT_EXCLUDE_EXTS = (".pyc", ".tmp", ".bak", ".molproj")

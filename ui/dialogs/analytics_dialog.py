@@ -63,7 +63,8 @@ def show_formula_dialog(app, controller):
 
         cols = ("元素", "个数", "质量百分比")
         tv = ttk.Treeview(pad, columns=cols, show="headings", height=8)
-        import ui.ui_theme as _ut; _ut.bind_treeview_hover(tv)
+        import ui.ui_theme as _ut
+        _ut.bind_treeview_hover(tv)
         for c, w in zip(cols, (80, 80, 200)):
             tv.heading(c, text=c)
             tv.column(c, width=w, anchor="center")

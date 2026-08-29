@@ -982,7 +982,8 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
 
     columns = ("select", "文件名", "状态", "英文名", "中文名")
     app.tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=18)
-    import ui.ui_theme as _ut; _ut.bind_treeview_hover(app.tree)
+    import ui.ui_theme as _ut
+    _ut.bind_treeview_hover(app.tree)
     app.tree.heading("select", text=CHECK_GLYPH["off"], command=_tree_toggle_all)
     app.tree.heading("文件名", text="文件名")
     app.tree.heading("状态", text="状态")

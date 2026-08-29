@@ -12,6 +12,7 @@ from utils.logger import default_logger as logger
 
 # ======================== 导入与版本兼容 ========================
 from ._cli import _run_obabel, _secure_output_path
+from ._common import *  # noqa: F403  # 取 ob / pybel / PYBEL_AVAILABLE
 from ._io import _read_molecules
 
 

@@ -27,14 +27,13 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from utils import net
 from utils import version as ver
 from utils.logger import default_logger as logger
-
 
 # ---------------------------------------------------------------- 常量
 

@@ -19,18 +19,27 @@ from utils.constants import (
     COMMON_INPUT_FORMATS,
 )
 
-
 # ======================== 导入与版本兼容 ========================
+# 本模块是整个 openbabel_utils 子包的「公共命名空间」：
+# 各子模块（_io / _descriptors / _advanced / _cli / _check / _cache）统一通过
+#   from ._common import *
+# 取用 ob / pybel / PYBEL_AVAILABLE / desc_cache / mol_read_cache / OB_INSTALL_GUIDE。
+# 因此这里必须保证这些名字**始终存在**，否则子模块会在运行时抛 NameError。
+
+# 先占位：即使 OpenBabel 完全没装，名字也存在（值为 None），
+# 让调用方能拿到可读的「未安装」提示，而不是莫名其妙的 NameError。
+ob = None  # type: ignore[assignment]
+pybel = None  # type: ignore[assignment]
 
 try:
     # 新版 OpenBabel (>=3.0) 推荐使用 openbabel 模块
-    import openbabel as ob
-    import openbabel.pybel as pybel
+    import openbabel as ob  # noqa: F401  # 由本模块统一导出给同包子模块使用
+    import openbabel.pybel as pybel  # noqa: F401
     PYBEL_AVAILABLE = True
 except ImportError:
     try:
         # 旧版使用 pybel 顶层模块
-        import pybel
+        import pybel  # noqa: F401
         PYBEL_AVAILABLE = True
     except ImportError:
         PYBEL_AVAILABLE = False

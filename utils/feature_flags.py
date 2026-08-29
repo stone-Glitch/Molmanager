@@ -11,7 +11,6 @@ MolManager 已在 config 中提供 ``ui_mode``（"simple" / "advanced"）。
 """
 from collections.abc import Iterable
 
-
 # 仅专家(advanced)模式可见的功能；simple 模式默认隐藏。
 # 未列出的功能在两种模式下都可见。
 ADVANCED_ONLY: frozenset = frozenset({

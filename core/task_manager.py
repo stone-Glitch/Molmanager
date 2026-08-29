@@ -16,16 +16,15 @@
         # 使用共享的 ThreadPoolExecutor，避免无限开线程；on_done/on_error 自动 after(0) 回主线程
 """
 import atexit
-from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
 import os
 import queue
 import threading
 import time
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any
 
 from utils.logger import default_logger as logger
-
 
 # ===== 审计 P-5（原报告 2.2）：一次性后台任务引用列表的防泄漏参数 =====
 # 若某任务因死锁 / PSI4 僵尸进程 / 无限循环而永不完成（done() 恒为 False），

@@ -22,7 +22,6 @@ import tkinter as tk
 import ui.ui_theme as ui_theme
 from ui.ui_theme import get_current_theme
 
-
 _RULES_CACHE = None
 
 

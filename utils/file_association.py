@@ -11,7 +11,6 @@ E-06 反向追溯（纯逻辑层）
 """
 from typing import NamedTuple
 
-
 # 视为「结构本体」的扩展名（追溯的锚点）
 STRUCTURE_EXTS = (".xyz", ".mol", ".sdf", ".pdb", ".cif", ".mol2", ".pdbqt", ".cml")
 # 视为「计算结果」的扩展名（挂在结构词干下）

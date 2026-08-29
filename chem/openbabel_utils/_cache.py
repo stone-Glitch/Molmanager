@@ -1,5 +1,7 @@
 from utils.cache import make_file_cache_key
 
+from ._common import *  # noqa: F403  # 取 desc_cache / mol_read_cache 等公共对象
+
 # ======================== 导入与版本兼容 ========================
 from ._common import _CONTENT_HASH_MAX_BYTES
 

@@ -31,7 +31,6 @@ from utils import backup_manager as bm
 from utils.dialog_geom import fit_dialog_geometry
 from utils.logger import default_logger as logger
 
-
 #: 类型过滤下拉：显示名 → trigger 值（None 表示不过滤）
 _TRIGGER_FILTER_ITEMS: list[tuple] = [
     ("全部", None),

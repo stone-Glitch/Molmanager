@@ -8,11 +8,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 import logging
+from collections.abc import Iterable
 
 import openbabel as ob
-
 
 logger = logging.getLogger(__name__)
 

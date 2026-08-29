@@ -27,15 +27,14 @@ F18 新版本提示对话框（T15 / Phase 1 批次二）
 from __future__ import annotations
 
 import tkinter as tk
+import webbrowser
 from tkinter import messagebox, scrolledtext, ttk
 from typing import Any
-import webbrowser
 
 from utils import updater
 from utils import version as ver
 from utils.dialog_geom import fit_dialog_geometry
 from utils.logger import default_logger as logger
-
 
 #: 按钮返回值
 ACTION_DOWNLOAD = "download"
