@@ -3,6 +3,38 @@
 本文件记录 MolManager 每个版本值得注意的变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.2] - 2026-08-29
+
+一轮「代码质量与性能」优化（无功能变更，向后兼容）。
+
+### 代码质量（Quality）
+
+- **lint 全清 + 格式标准化**：`ruff check` 全部规则通过；`ruff format` 统一为项目风格
+  （line-length=120，114 个源文件），CI 的 lint/format 门禁不再报红。
+- **移除 87 处冗余的 `# -*- coding: utf-8 -*-` 声明**（Python 3 源文件默认即 UTF-8）。
+- **日志化**：33 处调试/兜底 `print()` 改为 `logging`，仅在 logger 不可用的最终 stderr 兜底处保留
+  `print(..., file=sys.stderr)` 并加 `# noqa: T201`。
+- **现代写法**：20 处 `zip()` 补 `strict=False`；`raise ... from err` 链；
+  `pytest.raises(ValueError, match=...)` 收窄；`dict()`/`list()` 字面量、未用循环变量改名 `_x`。
+
+### 死代码清理（Dead code）
+
+- 删除 14 处「赋值后从未读取」的局部变量（`F841`）。
+- `ui/app_helpers.py`：移除未使用的 `tkinter.messagebox` 导入（同时消解一处 `F811` 重定义）。
+
+### 性能（Performance）
+
+- 2 处「先建空列表再循环 `append`」改写为 `dict.values()` / `list.copy()`，减少不必要的中间对象。
+
+### 修复（Fixes）
+
+- **【潜在 bug】`chem/psi4/conformer.py` / `nmr.py`**：重构遗留的 `prefix` 变量本应作为输出文件
+  前缀传给 `run_psi4_task(base_name=)`，却被丢弃，导致构象 / NMR 输出文件未按 `conf_XX_psi4`、
+  `nmr_confXX` 前缀命名。现已接回 `base_name=prefix`。
+- **【导入健壮性】`chem/openbabel_utils/_search.py`**：`import openbabel as ob` 改为
+  `from ._common import ob`，与 `_io` / `_descriptors` / `_advanced` 等子模块一致；未安装
+  OpenBabel 时 `ob` 由 `_common` 安全置 `None`，不再在导入阶段抛 `ModuleNotFoundError`。
+
 ## [1.0.1] - 2026-08-29
 
 一轮「把 README 承诺补齐 + 把拆分事故收拾干净」的维护版本。
