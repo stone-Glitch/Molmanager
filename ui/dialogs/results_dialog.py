@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 结果浏览器对话框 - 浏览 PSI4 计算结果，支持 ΔE 差值计算
 """
+
 import csv
 import os
 import tkinter as tk
@@ -91,7 +91,7 @@ def show_results_browser_dialog(app, controller):
             initialfile="results_selected.csv",
             filetypes=[("CSV", "*.csv")],
             defaultextension=".csv",
-            parent=dialog
+            parent=dialog,
         )
         if not out_path:
             return
@@ -103,10 +103,10 @@ def show_results_browser_dialog(app, controller):
                 for iid in sel_ids:
                     vals = tree.item(iid, "values")
                     writer.writerow(list(vals))
-            app.helpers.on_log(f"💾 选中行 CSV 已导出: {os.path.basename(out_path)}（{len(sel_ids)} 行）", 'success')
+            app.helpers.on_log(f"💾 选中行 CSV 已导出: {os.path.basename(out_path)}（{len(sel_ids)} 行）", "success")
             messagebox.showinfo("导出成功", f"已导出 {len(sel_ids)} 行到：\n{out_path}", parent=dialog)
         except Exception as e:
-            app.helpers.on_log(f"❌ CSV 导出失败: {e}", 'error')
+            app.helpers.on_log(f"❌ CSV 导出失败: {e}", "error")
             messagebox.showerror("导出失败", f"导出失败：{e}", parent=dialog)
 
     btn_export_csv = ttk.Button(top_btn_frame, text="💾 导出选中行 CSV", command=export_selected_csv)
@@ -123,7 +123,7 @@ def show_results_browser_dialog(app, controller):
         show="headings",
         selectmode=tk.EXTENDED,
         yscrollcommand=v_scroll.set,
-        xscrollcommand=h_scroll.set
+        xscrollcommand=h_scroll.set,
     )
     v_scroll.config(command=tree.yview)
     h_scroll.config(command=tree.xview)
@@ -131,6 +131,7 @@ def show_results_browser_dialog(app, controller):
     h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
     tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     import ui.ui_theme as _ut
+
     _ut.bind_treeview_hover(tree)
 
     for col in current_columns:
@@ -194,25 +195,19 @@ def show_results_browser_dialog(app, controller):
     ttk.Label(op_row, text="运算模式:").pack(side=tk.LEFT, padx=5)
     op_var = tk.StringVar(value="A-B（单分子差）")
     op_combo = ttk.Combobox(
-        op_row,
-        textvariable=op_var,
-        values=["A-B（单分子差）", "C - A - B（反应/结合能）"],
-        state="readonly",
-        width=28
+        op_row, textvariable=op_var, values=["A-B（单分子差）", "C - A - B（反应/结合能）"], state="readonly", width=28
     )
     op_combo.pack(side=tk.LEFT, padx=5)
 
     hint_label = ttk.Label(
-        op_row,
-        text="用鼠标在上方表格选中 2~3 行，再点下方按钮。C 为第 1 个选中项。",
-        foreground="gray"
+        op_row, text="用鼠标在上方表格选中 2~3 行，再点下方按钮。C 为第 1 个选中项。", foreground="gray"
     )
     hint_label.pack(side=tk.LEFT, padx=15)
 
     btn_row = ttk.Frame(delta_frame)
     btn_row.pack(fill=tk.X, pady=4)
 
-    delta_text = scrolledtext.ScrolledText(delta_frame, height=8, wrap=tk.WORD, font=('Consolas', 9))
+    delta_text = scrolledtext.ScrolledText(delta_frame, height=8, wrap=tk.WORD, font=("Consolas", 9))
     delta_text.pack(fill=tk.BOTH, expand=True, pady=2)
 
     last_deltas = []
@@ -256,7 +251,7 @@ def show_results_browser_dialog(app, controller):
             return
         for d in deltas:
             delta_text.insert(tk.END, f"公式 = {d.get('label', '')}\n")
-            comment = d.get('comment', '')
+            comment = d.get("comment", "")
             if comment:
                 delta_text.insert(tk.END, f"  {comment}\n")
             delta_text.insert(tk.END, f"  Ha     = {d.get('delta_Ha', 0):.8f}\n")
@@ -273,24 +268,24 @@ def show_results_browser_dialog(app, controller):
             initialfile="results_delta.csv",
             filetypes=[("CSV", "*.csv")],
             defaultextension=".csv",
-            parent=dialog
+            parent=dialog,
         )
         if not out_path:
             return
         try:
             with open(out_path, "w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.DictWriter(
-                    f,
-                    fieldnames=["label", "delta_Ha", "delta_kJ", "delta_kcal", "comment"],
-                    extrasaction="ignore"
+                    f, fieldnames=["label", "delta_Ha", "delta_kJ", "delta_kcal", "comment"], extrasaction="ignore"
                 )
                 writer.writeheader()
                 for d in last_deltas:
                     writer.writerow(d)
-            app.helpers.on_log(f"💾 ΔE 差值 CSV 已导出: {os.path.basename(out_path)}（{len(last_deltas)} 条）", 'success')
+            app.helpers.on_log(
+                f"💾 ΔE 差值 CSV 已导出: {os.path.basename(out_path)}（{len(last_deltas)} 条）", "success"
+            )
             messagebox.showinfo("导出成功", f"已导出差值结果到：\n{out_path}", parent=dialog)
         except Exception as e:
-            app.helpers.on_log(f"❌ 差值 CSV 导出失败: {e}", 'error')
+            app.helpers.on_log(f"❌ 差值 CSV 导出失败: {e}", "error")
             messagebox.showerror("导出失败", f"导出失败：{e}", parent=dialog)
 
     btn_calc = ttk.Button(btn_row, text="📐 计算差值", command=calc_deltas)

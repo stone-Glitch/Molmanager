@@ -100,6 +100,7 @@ def convert_file(input_path: str, output_path: str, output_format: str, base_dir
 
 # ======================== SMILES → 分子 ========================
 
+
 def generate_from_smiles(
     smiles: str,
     output_prefix: str,
@@ -121,9 +122,11 @@ def generate_from_smiles(
     try:
         from core.model import enforce_no_path_separators
     except Exception:
+
         def enforce_no_path_separators(name: str) -> None:
             if any(ch in name for ch in ("/", "\\", "\x00", "\r", "\n")):
                 raise ValueError(f"文件名前缀包含非法字符: {name!r}")
+
     try:
         enforce_no_path_separators(output_prefix)
     except ValueError as e:
@@ -163,7 +166,7 @@ def generate_from_smiles(
                     "success": False,
                     "message": f"生成 .mol 失败: {result_mol.stderr.strip()}",
                     "mol": None,
-                    "xyz": None
+                    "xyz": None,
                 }
 
             # 从 .mol 转换为 .xyz（无需重新优化）
@@ -177,7 +180,7 @@ def generate_from_smiles(
                     "success": True,
                     "message": f".mol 成功，但 .xyz 转换失败: {result_xyz.stderr.strip()}",
                     "mol": mol_path,
-                    "xyz": None
+                    "xyz": None,
                 }
     except Exception as e:
         return {"success": False, "message": str(e), "mol": None, "xyz": None}
@@ -185,8 +188,8 @@ def generate_from_smiles(
 
 # ======================== 力场优化 ========================
 
-def optimize_geometry(input_path: str, output_path: str,
-                      forcefield: str = DEFAULT_FORCEFIELD) -> dict[str, Any]:
+
+def optimize_geometry(input_path: str, output_path: str, forcefield: str = DEFAULT_FORCEFIELD) -> dict[str, Any]:
     """
     使用 Open Babel 力场优化分子结构。
     返回: {'success': bool, 'message': str, 'output_path': str}

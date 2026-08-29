@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 主窗口 - 整合所有组件
 """
@@ -37,12 +36,13 @@ from utils.logger import default_logger as logger
 try:
     from tkinterdnd2 import DND_FILES as _DND_FILES
     from tkinterdnd2 import TkinterDnD as _TkinterDnD
+
     _DND_BASES: tuple = (_TkinterDnD.DnDWrapper, tk.Tk)
     DND_IMPORT_OK: bool = True
     _DND_IMPORT_ERROR: str = ""
 except Exception as _dnd_imp_err:  # noqa: BLE001 - 缺依赖是预期情况，不是错误
     _TkinterDnD = None
-    _DND_FILES = "DND_Files"          # 常量字面量，缺包时也不会 NameError
+    _DND_FILES = "DND_Files"  # 常量字面量，缺包时也不会 NameError
     _DND_BASES = (tk.Tk,)
     DND_IMPORT_OK = False
     _DND_IMPORT_ERROR = str(_dnd_imp_err)
@@ -60,6 +60,7 @@ def _clamp_geometry_to_screen(root, geom: str, min_w: int = 960, min_h: int = 68
     所以必须改成对 宽/高/x/y 全部做边界钳制。
     """
     import re as _re
+
     try:
         m = _re.match(r"^\s*(\d+)x(\d+)(?:\+(-?\d+)\+(-?\d+))?\s*$", str(geom))
         if not m:
@@ -112,8 +113,9 @@ class MainView(*_DND_BASES):
             # 问题一补充：SetProcessDPIAware 可能失败，尝试 Win10+ 的 Per-Monitor V2；
             # 即便失败也继续走 fallback，不中断启动。
             try:
-                if sys.platform == 'win32':
+                if sys.platform == "win32":
                     import ctypes
+
                     try:
                         # 优先：Per-Monitor V2（Win10 1703+），应对不同屏幕不同 DPI
                         ctypes.windll.shcore.SetProcessDpiAwareness(2)
@@ -131,11 +133,12 @@ class MainView(*_DND_BASES):
             # （第二次调用命中的是同一 config，结果一致，幂等。）
             try:
                 from ui.ui_builder import resolve_font_specs as _resolve_fonts
+
                 _F = _resolve_fonts(self)
                 _default_font = _F["BASE"]
             except Exception as _fe:
                 logger.debug("从 config 计算字体基线失败，使用默认字体: %s", _fe)
-                _default_font = ('Microsoft YaHei UI', 12) if sys.platform == 'win32' else ('Arial', 12)
+                _default_font = ("Microsoft YaHei UI", 12) if sys.platform == "win32" else ("Arial", 12)
 
             # tk.call('tk', 'scaling') 也要调大，保证 ttk 控件的内边距/图标也随之变大
             try:
@@ -143,17 +146,17 @@ class MainView(*_DND_BASES):
                 # 按比例换算：我们的默认 14pt → scaling ≈ 14/9 ≈ 1.56
                 pt = int(_default_font[1]) if len(_default_font) > 1 else 12
                 _s = max(1.1, min(2.2, pt / 9.0))
-                self.tk.call('tk', 'scaling', _s)
+                self.tk.call("tk", "scaling", _s)
             except (tk.TclError, ValueError, OSError) as e:
                 logger.debug("tk scaling 设置失败，使用默认: %s", e)
 
-            self.option_add('*Font', _default_font)
-            self.option_add('*Dialog.msg.font', _default_font)
-            self.option_add('*Menu.Font',    _default_font)
-            self.option_add('*Button.Font',  _default_font)
-            self.option_add('*Label.Font',   _default_font)
-            self.option_add('*Entry.Font',   _default_font)
-            self.option_add('*Text.Font',    _default_font)
+            self.option_add("*Font", _default_font)
+            self.option_add("*Dialog.msg.font", _default_font)
+            self.option_add("*Menu.Font", _default_font)
+            self.option_add("*Button.Font", _default_font)
+            self.option_add("*Label.Font", _default_font)
+            self.option_add("*Entry.Font", _default_font)
+            self.option_add("*Text.Font", _default_font)
 
             # 全局 ttk 样式 + 字体（使用当前平台默认 clam 主题 + 默认 background/fieldbackground，
             # 不强制 Aurora Frost 的 Canvas/粒子美学，保持清爽扁平风格）
@@ -163,11 +166,11 @@ class MainView(*_DND_BASES):
                     _s.theme_use("clam")
                 except tk.TclError:
                     pass
-                _s.configure('.', font=_default_font)
+                _s.configure(".", font=_default_font)
             except Exception:
                 pass
             style = ttk.Style(self)
-            style.configure('.', font=_default_font)
+            style.configure(".", font=_default_font)
 
             # 核心组件（顺序很重要）
             self.task_manager = TaskManager(self)
@@ -219,7 +222,7 @@ class MainView(*_DND_BASES):
             except Exception:
                 pass
             try:
-                self.geometry(self.geometry())   # 强制 <Configure>，让 paned/tree/log 完成权重分配
+                self.geometry(self.geometry())  # 强制 <Configure>，让 paned/tree/log 完成权重分配
             except Exception:
                 pass
             try:
@@ -233,6 +236,7 @@ class MainView(*_DND_BASES):
 
             # 把 GUI 日志面板挂到根 logger（必须在 build_ui 之后，因为 log_text 此时存在）
             from utils.logger import attach_gui_handler
+
             attach_gui_handler(lambda: self)
 
             # —— 问题二：日志空白修复。在 GUI handler 挂载后，立刻输出 2 条 welcome banner，
@@ -244,9 +248,7 @@ class MainView(*_DND_BASES):
                 logger.info(
                     "💡 新手路径：① 左上「浏览…」选择工作目录 → ② 点「🔧 一键修复全部」 → ③ 点「📂 按类型整理」归档"
                 )
-                logger.info(
-                    "💡 查看依赖状态：右下状态栏有 OB 指示灯，点击可一键诊断/手动设置 OpenBabel 路径。"
-                )
+                logger.info("💡 查看依赖状态：右下状态栏有 OB 指示灯，点击可一键诊断/手动设置 OpenBabel 路径。")
             except Exception:
                 pass
 
@@ -263,6 +265,7 @@ class MainView(*_DND_BASES):
                         logger.debug("环境检查调用失败（非致命）：%s", _env_e)
                     except Exception:
                         pass
+
             self.after(350, _env_check_and_apply_status)
 
             # 如果 OB 严重不可用（用户连 Python 包都没装），在 800ms 后主动弹「环境设置」对话框，
@@ -274,6 +277,7 @@ class MainView(*_DND_BASES):
                         fn()
                 except Exception:
                     pass
+
             self.after(800, _maybe_pop_env_dialog)
 
             # -------- 延迟初始化：让主窗口先完整渲染，再在 300ms 后加载映射 + 扫描 --------
@@ -349,6 +353,7 @@ class MainView(*_DND_BASES):
                         self.attributes("-topmost", False)
                     except Exception:
                         pass
+
                 try:
                     self.after(100, _undo_topmost)
                 except Exception:
@@ -358,6 +363,7 @@ class MainView(*_DND_BASES):
                 # 多显示器/负坐标兼容：如果窗口几何中心不在任一屏幕范围内，强制居中
                 try:
                     import re as _re
+
                     geom = self.geometry()  # 格式 "WxH+X+Y"
                     m = _re.match(r"(\d+)x(\d+)\+(-?\d+)\+(-?\d+)", geom)
                     if m:
@@ -389,19 +395,21 @@ class MainView(*_DND_BASES):
             self.bind("<F1>", lambda e: self._show_help())
             self.bind("<Control-z>", self._on_ctrl_z)
             self.bind("<Control-y>", self._on_ctrl_y)
-            self.bind("<Control-Shift-Z>", self._on_ctrl_y)   # 另一种常见的「重做」习惯
+            self.bind("<Control-Shift-Z>", self._on_ctrl_y)  # 另一种常见的「重做」习惯
             self.bind("<F5>", self._on_f5)
             self.bind("<Control-f>", self._on_ctrl_f)
             # F15：日志过滤关键词框（Ctrl+F 已被文件列表搜索占用，这里必须避让）
             self.bind("<Control-Shift-F>", self._on_ctrl_shift_f)
             # 命令面板（设计落地 Phase 1）：Ctrl/Cmd+K 全局唤起
             from ui.command_palette import open_command_palette as _open_cmd_palette
+
             self.bind("<Control-k>", lambda e: _open_cmd_palette(self))
             self.bind("<Command-k>", lambda e: _open_cmd_palette(self))
 
             self.protocol("WM_DELETE_WINDOW", self.on_close)
         except Exception as e:
             import traceback as _tb
+
             # 把完整堆栈先打进日志，这样即使用户看不到弹窗也能在日志文件里查
             logger.error("MainView 初始化失败: %s", e)
             logger.error("堆栈:\n%s", _tb.format_exc())
@@ -411,7 +419,7 @@ class MainView(*_DND_BASES):
             # 选它做父窗口，导致错误对话框也看不见。
             try:
                 # 用 Tkinter 的标准方式判断 tk 解释器是否还活着
-                if bool(getattr(self, 'tk', None)):
+                if bool(getattr(self, "tk", None)):
                     try:
                         self.destroy()
                     except Exception:
@@ -463,6 +471,7 @@ class MainView(*_DND_BASES):
             return
         try:
             from core.drop_handler import DropHandler
+
             if not DropHandler.is_enabled(getattr(self, "config_data", {})):
                 logger.debug("配置 dnd.enabled = false，跳过拖放目标注册")
                 return
@@ -529,6 +538,7 @@ class MainView(*_DND_BASES):
             logger.warning("菜单导入外部文件失败: %s", exc)
             try:
                 from tkinter import messagebox
+
                 messagebox.showerror("导入失败", f"无法打开文件选择框：\n{exc}", parent=self)
             except Exception:
                 pass
@@ -582,6 +592,7 @@ class MainView(*_DND_BASES):
         except Exception as exc:  # noqa: BLE001
             try:
                 from tkinter import messagebox
+
                 messagebox.showerror("检查更新", f"更新模块不可用：\n{exc}", parent=self)
             except Exception:
                 pass
@@ -591,6 +602,7 @@ class MainView(*_DND_BASES):
         if getattr(self, "_update_check_running", False):
             try:
                 from tkinter import messagebox
+
                 messagebox.showinfo("检查更新", "正在检查更新，请稍候…", parent=self)
             except Exception:
                 pass
@@ -662,8 +674,14 @@ class MainView(*_DND_BASES):
             return False
         try:
             return w.winfo_class() in (
-                "Entry", "TEntry", "Text", "ScrolledText",
-                "TCombobox", "Spinbox", "TSpinbox", "Listbox",
+                "Entry",
+                "TEntry",
+                "Text",
+                "ScrolledText",
+                "TCombobox",
+                "Spinbox",
+                "TSpinbox",
+                "Listbox",
             )
         except Exception:
             return False
@@ -746,6 +764,7 @@ F1              显示此帮助
 不会误触发文件操作回滚。"""
         try:
             from tkinter import messagebox
+
             messagebox.showinfo("快捷键帮助", help_text, parent=self)
         except Exception:
             pass
@@ -772,17 +791,19 @@ F1              显示此帮助
         """保存当前配置到文件（内部使用）"""
         self._snapshot_config_before_save("手动保存配置前的自动快照")
         config = dict(self.config_data)
-        config.update({
-            "work_dir": self.work_dir_var.get(),
-            "mapping_file": self.mapping_file_var.get(),
-            "ext_filter": self.ext_filter_var.get(),
-            "window_geometry": self.geometry(),
-            "psi4_config": {
-                "last_method": getattr(self, 'psi4_last_method', 'b3lyp'),
-                "last_basis": getattr(self, 'psi4_last_basis', '6-31g*'),
-                "last_task": getattr(self, 'psi4_last_task', 'energy')
-            },
-        })
+        config.update(
+            {
+                "work_dir": self.work_dir_var.get(),
+                "mapping_file": self.mapping_file_var.get(),
+                "ext_filter": self.ext_filter_var.get(),
+                "window_geometry": self.geometry(),
+                "psi4_config": {
+                    "last_method": getattr(self, "psi4_last_method", "b3lyp"),
+                    "last_basis": getattr(self, "psi4_last_basis", "6-31g*"),
+                    "last_task": getattr(self, "psi4_last_task", "energy"),
+                },
+            }
+        )
         if hasattr(self, "preview_before_operation_var"):
             config["preview_before_operation"] = bool(self.preview_before_operation_var.get())
         save_config(config)
@@ -819,6 +840,7 @@ F1              显示此帮助
         except Exception as e:
             try:
                 from tkinter import messagebox
+
                 messagebox.showerror("打开失败", f"无法打开环境诊断对话框：\n{e}")
             except Exception:
                 pass
@@ -829,12 +851,14 @@ F1              显示此帮助
             dlg = getattr(self, "dialogs", None)
             if dlg is None:
                 from ui.dialogs import Dialogs
+
                 dlg = Dialogs(self, self.controller)
             dlg.show_backup_manager_dialog()
         except Exception as e:
             logger.warning("打开备份管理对话框失败: %s", e)
             try:
                 from tkinter import messagebox
+
                 messagebox.showerror("打开失败", f"无法打开备份管理：\n{e}")
             except Exception:
                 pass
@@ -843,11 +867,13 @@ F1              显示此帮助
         """菜单栏「设置 → 字体大小…」调用：打开滑块对话框。"""
         try:
             from ui.dialogs import Dialogs
+
             dlg = Dialogs(self, self.controller)
             dlg.show_font_size_dialog(parent=self)
         except Exception as e:
             try:
                 from tkinter import messagebox
+
                 messagebox.showerror("打开失败", f"无法打开字体大小设置：\n{e}")
             except Exception:
                 pass
@@ -856,10 +882,12 @@ F1              显示此帮助
         """F07 入口：打开错误诊断弹窗（JSON 规则库驱动）。可在任务失败 / 队列诊断时调用。"""
         try:
             from ui.dialogs.error_diagnosis import show_error_diagnosis as _show
+
             _show(self, error_text, summary=summary, hint=hint)
         except Exception as e:
             try:
                 from tkinter import messagebox
+
                 messagebox.showerror("诊断失败", f"无法打开错误诊断：\n{e}")
             except Exception:
                 pass
@@ -870,6 +898,7 @@ F1              显示此帮助
     def _show_text_dialog(self, title: str, text: str) -> None:
         """只读多行文本查看对话框（供各纯逻辑模块展示结果）。"""
         from tkinter import BOTH, END, LEFT, RIGHT, WORD, Scrollbar, Text, Toplevel, Y
+
         top = Toplevel(self)
         top.title(title)
         top.transient(self)
@@ -889,10 +918,11 @@ F1              显示此帮助
         """E-06 反向追溯：按词干把结构文件与 .log/.fchk/.out 关联。"""
         try:
             from utils.file_association import associate_by_stem
-            files = sorted(f['name'] for f in (getattr(self, 'last_scan_result', []) or []))
+
+            files = sorted(f["name"] for f in (getattr(self, "last_scan_result", []) or []))
             links = associate_by_stem(files)
             if not links:
-                self.helpers.on_log("ℹ️ 未发现可追溯的结构/结果文件", 'info')
+                self.helpers.on_log("ℹ️ 未发现可追溯的结构/结果文件", "info")
                 return
             lines = []
             for lk in links:
@@ -904,43 +934,50 @@ F1              显示此帮助
                     lines.append("   其它: " + ", ".join(lk.extras))
             self._show_text_dialog("反向追溯（.xyz ↔ .log/.fchk/.out）", "\n".join(lines))
         except Exception as e:
-            self.helpers.on_log(f"❌ 反向追溯失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 反向追溯失败: {e}", "error")
 
     def show_rule_engine_from_menu(self) -> None:
         """E-03 规则引擎：用声明式规则匹配当前文件，展示命中结果。"""
         try:
             from utils.rule_engine import evaluate_rules, load_rules, render_actions
-            cfg = getattr(self, 'config_data', {}) or {}
-            rules_text = cfg.get('rules_json', '')
+
+            cfg = getattr(self, "config_data", {}) or {}
+            rules_text = cfg.get("rules_json", "")
             if rules_text:
                 rules, errs = load_rules(rules_text)
                 if errs:
-                    self.helpers.on_log("⚠️ 规则校验有误: " + "; ".join(errs[:3]), 'warning')
+                    self.helpers.on_log("⚠️ 规则校验有误: " + "; ".join(errs[:3]), "warning")
             else:
                 rules = [
-                    {"id": "big_struct", "name": "大结构文件标记待复核",
-                     "when": {"field": "ext", "op": "in", "value": [".xyz", ".mol"]},
-                     "then": {"action": "flag", "target": "status", "label": "review"}},
-                    {"id": "orphan_result", "name": "孤立结果文件提示",
-                     "when": {"field": "ext", "op": "in", "value": [".log", ".out"]},
-                     "then": {"action": "notify"}},
+                    {
+                        "id": "big_struct",
+                        "name": "大结构文件标记待复核",
+                        "when": {"field": "ext", "op": "in", "value": [".xyz", ".mol"]},
+                        "then": {"action": "flag", "target": "status", "label": "review"},
+                    },
+                    {
+                        "id": "orphan_result",
+                        "name": "孤立结果文件提示",
+                        "when": {"field": "ext", "op": "in", "value": [".log", ".out"]},
+                        "then": {"action": "notify"},
+                    },
                 ]
             if not rules:
-                self.helpers.on_log("⚠️ 无可用规则（未配置 rules_json 且规则为空）", 'warning')
+                self.helpers.on_log("⚠️ 无可用规则（未配置 rules_json 且规则为空）", "warning")
                 return
-            entries = getattr(self, 'last_scan_result', []) or []
+            entries = getattr(self, "last_scan_result", []) or []
             lines = []
             for e in entries:
                 matched = evaluate_rules(rules, e)
                 if matched:
-                    desc = ", ".join(a['rule_name'] or str(a['rule_id']) for a in render_actions(matched))
+                    desc = ", ".join(a["rule_name"] or str(a["rule_id"]) for a in render_actions(matched))
                     lines.append(f"{e['name']} → {desc}")
             if not lines:
-                self.helpers.on_log("ℹ️ 规则引擎：无文件命中规则", 'info')
+                self.helpers.on_log("ℹ️ 规则引擎：无文件命中规则", "info")
                 return
             self._show_text_dialog("规则引擎命中", "\n".join(lines))
         except Exception as e:
-            self.helpers.on_log(f"❌ 规则引擎执行失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 规则引擎执行失败: {e}", "error")
 
     def show_hpc_script_from_menu(self) -> None:
         """E-09 HPC 作业脚本生成（SLURM 示例），保存为 .sh 或弹窗预览。"""
@@ -948,21 +985,28 @@ F1              显示此帮助
             from tkinter import filedialog
 
             from utils.hpc_script import generate_script
-            job = {"name": "molmanager_job", "nodes": 1, "ntasks": 4,
-                   "cpus_per_task": 4, "walltime": "12:00:00", "memory_gb": 8,
-                   "commands": ["# 在此填写要运行的命令，例如：", "python main.py --batch --fix-all"]}
+
+            job = {
+                "name": "molmanager_job",
+                "nodes": 1,
+                "ntasks": 4,
+                "cpus_per_task": 4,
+                "walltime": "12:00:00",
+                "memory_gb": 8,
+                "commands": ["# 在此填写要运行的命令，例如：", "python main.py --batch --fix-all"],
+            }
             script = generate_script("slurm", job)
             out = filedialog.asksaveasfilename(
-                defaultextension=".sh", filetypes=[("Shell 脚本", "*.sh")],
-                initialfile="submit_slurm.sh")
+                defaultextension=".sh", filetypes=[("Shell 脚本", "*.sh")], initialfile="submit_slurm.sh"
+            )
             if out:
-                with open(out, 'w', encoding='utf-8') as f:
+                with open(out, "w", encoding="utf-8") as f:
                     f.write(script)
-                self.helpers.on_log(f"📜 SLURM 作业脚本已生成: {out}", 'success')
+                self.helpers.on_log(f"📜 SLURM 作业脚本已生成: {out}", "success")
             else:
                 self._show_text_dialog("SLURM 作业脚本", script)
         except Exception as e:
-            self.helpers.on_log(f"❌ 生成作业脚本失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 生成作业脚本失败: {e}", "error")
 
     def show_project_pack_from_menu(self) -> None:
         """E-05 项目打包：导出 / 导入 .molproj（ZIP+清单）。"""
@@ -970,42 +1014,47 @@ F1              显示此帮助
             from tkinter import filedialog, messagebox
 
             from utils.project_pack import pack_project, unpack_project
+
             choice = messagebox.askyesnocancel(
-                "项目打包 .molproj", "是 = 导出工作目录为 .molproj\n否 = 从 .molproj 导入\n取消 = 返回",
-                parent=self)
+                "项目打包 .molproj", "是 = 导出工作目录为 .molproj\n否 = 从 .molproj 导入\n取消 = 返回", parent=self
+            )
             if choice is None:
                 return
             work = str(self.controller.model.work_dir)
             if choice:
                 out = filedialog.asksaveasfilename(
-                    defaultextension=".molproj", filetypes=[("MolManager 项目", "*.molproj")],
-                    initialfile="project.molproj")
+                    defaultextension=".molproj",
+                    filetypes=[("MolManager 项目", "*.molproj")],
+                    initialfile="project.molproj",
+                )
                 if not out:
                     return
                 manifest = pack_project(work, out)
-                self.helpers.on_log(f"🎒 项目已导出到 {out}（{manifest['file_count']} 个文件）", 'success')
+                self.helpers.on_log(f"🎒 项目已导出到 {out}（{manifest['file_count']} 个文件）", "success")
             else:
                 src = filedialog.askopenfilename(filetypes=[("MolManager 项目", "*.molproj")])
                 if not src:
                     return
                 res = unpack_project(src, work)
                 self.helpers.on_log(
-                    f"📦 项目导入完成：{res['extracted']} 个（跳过已存在 {res['skipped']} 个）", 'success')
+                    f"📦 项目导入完成：{res['extracted']} 个（跳过已存在 {res['skipped']} 个）", "success"
+                )
                 self.controller.scan_files()
         except Exception as e:
-            self.helpers.on_log(f"❌ 项目打包失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 项目打包失败: {e}", "error")
 
     def show_log_parse_from_menu(self) -> None:
         """E-07/E-01 日志解析 + 动态元数据：解析勾选的 .log/.out/.fchk。"""
         try:
             from utils.metadata_index import collect_columns, extract_metadata
+
             sel = self.helpers.get_selected_files()
             lines = []
             for p in sel:
-                if not p.lower().endswith(('.log', '.out', '.fchk')):
+                if not p.lower().endswith((".log", ".out", ".fchk")):
                     continue
                 try:
-                    with open(p, encoding='utf-8', errors='replace') as f:
+                    with open(p, encoding="utf-8", errors="replace") as f:
                         content = f.read()
                 except OSError as oe:
                     lines.append(f"■ {p}\n   （读取失败: {oe}）")
@@ -1015,11 +1064,11 @@ F1              显示此帮助
                 for c in collect_columns([meta]):
                     lines.append(f"   {c}: {meta.get(c)}")
             if not lines:
-                self.helpers.on_log("⚠️ 请先勾选 .log/.out/.fchk 文件", 'warning')
+                self.helpers.on_log("⚠️ 请先勾选 .log/.out/.fchk 文件", "warning")
                 return
             self._show_text_dialog("日志解析 / 动态元数据", "\n".join(lines))
         except Exception as e:
-            self.helpers.on_log(f"❌ 日志解析失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 日志解析失败: {e}", "error")
 
     def show_mo_diagram_from_menu(self) -> None:
         """E-13 MO 能级图：解析勾选的 .fchk 轨道能级，导出 SVG。"""
@@ -1027,123 +1076,134 @@ F1              显示此帮助
             from tkinter import filedialog
 
             from utils.mo_diagram import parse_fchk_int, parse_fchk_orbitals, render_mo_svg
+
             sel = self.helpers.get_selected_files()
-            fchk = next((p for p in sel if p.lower().endswith('.fchk')), None)
+            fchk = next((p for p in sel if p.lower().endswith(".fchk")), None)
             if not fchk:
                 fchk = filedialog.askopenfilename(filetypes=[("Gaussian fchk", "*.fchk")])
             if not fchk:
                 return
-            with open(fchk, encoding='utf-8', errors='replace') as f:
+            with open(fchk, encoding="utf-8", errors="replace") as f:
                 content = f.read()
             energies = parse_fchk_orbitals(content)
             n_el = parse_fchk_int(content, "Number of electrons") or 0
             svg = render_mo_svg(energies, n_el, title="MO 能级图")
             out = filedialog.asksaveasfilename(
-                defaultextension=".svg", filetypes=[("SVG 图", "*.svg")], initialfile="mo_diagram.svg")
+                defaultextension=".svg", filetypes=[("SVG 图", "*.svg")], initialfile="mo_diagram.svg"
+            )
             if out:
-                with open(out, 'w', encoding='utf-8') as f:
+                with open(out, "w", encoding="utf-8") as f:
                     f.write(svg)
-                self.helpers.on_log(f"🖼️ MO 能级图已导出: {out}", 'success')
+                self.helpers.on_log(f"🖼️ MO 能级图已导出: {out}", "success")
             else:
                 self._show_text_dialog("MO 能级图 SVG", svg)
         except Exception as e:
-            self.helpers.on_log(f"❌ 生成 MO 能级图失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 生成 MO 能级图失败: {e}", "error")
 
     def show_structure_score_from_menu(self) -> None:
         """U-16 结构美观度评分：对勾选的结构文件做启发式打分。"""
         try:
             import chem.openbabel_utils as obu
             from utils.structure_score import score_structure
+
             sel = self.helpers.get_selected_files()
-            structure = next((p for p in sel
-                              if p.lower().endswith(('.mol', '.sdf', '.xyz', '.pdb', '.cif', '.mol2'))), None)
+            structure = next(
+                (p for p in sel if p.lower().endswith((".mol", ".sdf", ".xyz", ".pdb", ".cif", ".mol2"))), None
+            )
             if not structure:
-                self.helpers.on_log("⚠️ 请先勾选一个结构文件", 'warning')
+                self.helpers.on_log("⚠️ 请先勾选一个结构文件", "warning")
                 return
             res = obu.calculate_descriptors(structure)
-            if not res.get('success'):
-                self.helpers.on_log(f"⚠️ 无法计算描述符: {res.get('message')}", 'warning')
+            if not res.get("success"):
+                self.helpers.on_log(f"⚠️ 无法计算描述符: {res.get('message')}", "warning")
                 return
-            s = score_structure(res.get('descriptors') or {})
-            text = f"文件: {structure}\n评分: {s['score']}  {s['grade']}\n\n" + \
-                   "\n".join("· " + n for n in s['notes'])
+            s = score_structure(res.get("descriptors") or {})
+            text = f"文件: {structure}\n评分: {s['score']}  {s['grade']}\n\n" + "\n".join("· " + n for n in s["notes"])
             self._show_text_dialog("结构美观度评分", text)
         except Exception as e:
-            self.helpers.on_log(f"❌ 美观度评分失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 美观度评分失败: {e}", "error")
 
     def show_example_library_from_menu(self) -> None:
         """U-10 示例分子库 + 失败案例教育。"""
         try:
             from utils.example_library import get_examples, get_failure_cases
+
             lines = ["【示例分子】"]
             for m in get_examples():
-                lines.append(f"· {m['name']}（{m['english']}） {m['formula']}  "
-                             f"SMILES: {m['smiles']}  [{m['category']}]")
+                lines.append(
+                    f"· {m['name']}（{m['english']}） {m['formula']}  SMILES: {m['smiles']}  [{m['category']}]"
+                )
             lines.append("")
             lines.append("【常见失败案例】")
             for c in get_failure_cases():
                 lines.append(f"· {c['title']}：{c['why']}")
             self._show_text_dialog("示例分子库 & 失败案例", "\n".join(lines))
         except Exception as e:
-            self.helpers.on_log(f"❌ 打开示例库失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 打开示例库失败: {e}", "error")
 
     def show_wizard_steps_from_menu(self) -> None:
         """U-07 新手任务向导（6 场景）只读概览。"""
         try:
             from utils.wizard_steps import get_scenarios
+
             lines = []
             for s in get_scenarios():
                 lines.append(f"■ {s['title']} — {s['description']}")
-                for i, st in enumerate(s['steps'], 1):
+                for i, st in enumerate(s["steps"], 1):
                     lines.append(f"   {i}. {st['title']}：{st['detail']}")
                 lines.append("")
             self._show_text_dialog("新手任务向导（6 场景）", "\n".join(lines))
         except Exception as e:
-            self.helpers.on_log(f"❌ 打开向导失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 打开向导失败: {e}", "error")
 
     def show_cli_batch_from_menu(self) -> None:
         """E-08 CLI 无头模式：展示 --batch --fix-all 的有序计划预览。"""
         try:
             from utils.cli_batch import build_batch_plan, parse_args, plan_summary
+
             opts = parse_args(["--batch", "--fix-all", "--dry-run"])
             plan = build_batch_plan(opts)
             self._show_text_dialog("CLI 无头模式计划预览", plan_summary(plan, dry_run=True))
         except Exception as e:
-            self.helpers.on_log(f"❌ CLI 计划预览失败: {e}", 'error')
+            self.helpers.on_log(f"❌ CLI 计划预览失败: {e}", "error")
 
     def toggle_ui_mode_from_menu(self) -> None:
         """U-06 简易/专家模式切换（写入 config.ui_mode，并提示被隐藏的功能）。"""
         try:
             from utils.feature_flags import ADVANCED_ONLY
-            cfg = getattr(self, 'config_data', {}) or {}
-            cur = cfg.get('ui_mode', 'simple')
-            new = 'advanced' if cur != 'advanced' else 'simple'
-            cfg['ui_mode'] = new
+
+            cfg = getattr(self, "config_data", {}) or {}
+            cur = cfg.get("ui_mode", "simple")
+            new = "advanced" if cur != "advanced" else "simple"
+            cfg["ui_mode"] = new
             self.config_data = cfg
             try:
                 from utils.config import save_config
+
                 save_config(cfg)
             except Exception:
                 pass
-            if new == 'advanced':
+            if new == "advanced":
                 msg = "已切换到「专家」模式：全部高级功能可见。"
             else:
                 hidden = ", ".join(sorted(ADVANCED_ONLY))
                 msg = "已切换到「简易」模式。\n\n以下功能仅在专家模式可用（当前已隐藏）：\n" + hidden
-            self.helpers.on_log(msg, 'info')
+            self.helpers.on_log(msg, "info")
             try:
                 from tkinter import messagebox
+
                 messagebox.showinfo("模式切换", msg, parent=self)
             except Exception:
                 pass
         except Exception as e:
-            self.helpers.on_log(f"❌ 模式切换失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 模式切换失败: {e}", "error")
 
     def show_tree_overview_from_menu(self) -> None:
         """E-02 分层目录树概览（只读，用 tree_builder 从扁平列表构建）。"""
         try:
             from utils.tree_builder import build_tree, count_nodes, iter_tree
-            files = [f['name'] for f in (getattr(self, 'last_scan_result', []) or [])]
+
+            files = [f["name"] for f in (getattr(self, "last_scan_result", []) or [])]
             tree = build_tree(files)
             dirs, fs = count_nodes(tree)
             lines = [f"目录树概览：{dirs} 个目录 / {fs} 个文件"]
@@ -1151,13 +1211,14 @@ F1              显示此帮助
                 lines.append(("📄 " if is_file else "📁 ") + path)
             self._show_text_dialog("分层目录树概览", "\n".join(lines))
         except Exception as e:
-            self.helpers.on_log(f"❌ 目录树概览失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 目录树概览失败: {e}", "error")
 
     def on_close(self):
         # ———— 关闭拦截：若有任务正在运行，先二次确认，避免杀掉正在写的文件 ————
         try:
             if getattr(self, "task_manager", None) is not None and self.task_manager.is_busy():
                 from tkinter import messagebox
+
                 if not messagebox.askyesno(
                     "有任务正在运行",
                     "当前有文件操作或计算任务正在进行中。\n退出可能会中断操作，"
@@ -1189,6 +1250,7 @@ F1              显示此帮助
         # 不摘除则整棵 UI 对象树无法回收；且 destroy 后再写日志会抛 TclError。
         try:
             from utils.logger import detach_gui_handler
+
             detach_gui_handler()
         except Exception:
             pass
@@ -1217,17 +1279,19 @@ F1              显示此帮助
         except Exception:
             config = {}
         # 再覆盖需要实时同步的字段（work_dir、mapping_file 等是运行中会变的）
-        config.update({
-            "work_dir": self.work_dir_var.get(),
-            "mapping_file": self.mapping_file_var.get(),
-            "ext_filter": self.ext_filter_var.get(),
-            "window_geometry": self.geometry(),
-            "psi4_config": {
-                "last_method": getattr(self, 'psi4_last_method', 'b3lyp'),
-                "last_basis": getattr(self, 'psi4_last_basis', '6-31g*'),
-                "last_task": getattr(self, 'psi4_last_task', 'energy')
-            },
-        })
+        config.update(
+            {
+                "work_dir": self.work_dir_var.get(),
+                "mapping_file": self.mapping_file_var.get(),
+                "ext_filter": self.ext_filter_var.get(),
+                "window_geometry": self.geometry(),
+                "psi4_config": {
+                    "last_method": getattr(self, "psi4_last_method", "b3lyp"),
+                    "last_basis": getattr(self, "psi4_last_basis", "6-31g*"),
+                    "last_task": getattr(self, "psi4_last_task", "energy"),
+                },
+            }
+        )
         # 保存 preview 开关（菜单栏可能改过）
         try:
             if hasattr(self, "preview_before_operation_var"):
@@ -1239,6 +1303,7 @@ F1              显示此帮助
         # 同步跑清理线程是同步执行耗时很短，不会卡死（几百毫秒；保证程序退出之前能清得更干净。
         try:
             from utils.path_utils import cleanup_stale_tempdirs
+
             cleanup_stale_tempdirs(max_age_seconds=6 * 3600)
         except Exception as e:
             try:
@@ -1249,6 +1314,7 @@ F1              显示此帮助
         # 防止有人从别的分支跳进来直接执行到 destroy。
         try:
             from utils.logger import detach_gui_handler
+
             detach_gui_handler()
         except Exception:
             pass

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 命令面板（Ctrl/Cmd+K）—— 设计落地 Phase 1，增强版。
 
@@ -50,6 +49,7 @@ def _push_recent(app, c):
         raw.insert(0, key)
         cd["cmd_recent"] = raw[:8]
         from utils.config import save_config
+
         save_config(cd)
     except Exception:
         pass
@@ -101,13 +101,14 @@ def _build_commands(app):
         ("去「任务队列」", 5),
     )
     for label, idx in nav:
-        cmds.append({
-            "group": "导航",
-            "label": label,
-            "hint": "",
-            "run": (lambda i=idx, lb=label: (app._show_page(i),
-                                   _log(app, f"已切换到：{lb}"))),
-        })
+        cmds.append(
+            {
+                "group": "导航",
+                "label": label,
+                "hint": "",
+                "run": (lambda i=idx, lb=label: (app._show_page(i), _log(app, f"已切换到：{lb}"))),
+            }
+        )
 
     # —— 文件（动态，从 tree 读取，审查 6.1）—— 放到最后，避免覆盖动作/导航
     try:
@@ -121,16 +122,20 @@ def _build_commands(app):
                 if not name:
                     continue
                 ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-                cmds.append({
-                    "group": "文件",
-                    "label": name,
-                    "hint": (". " + ext) if ext else "",
-                    "run": (lambda i=iid, n=name: (
-                        app._show_page(1),
-                        _select_and_see(tree, i),
-                        _log(app, f"定位：{n}"),
-                    )),
-                })
+                cmds.append(
+                    {
+                        "group": "文件",
+                        "label": name,
+                        "hint": (". " + ext) if ext else "",
+                        "run": (
+                            lambda i=iid, n=name: (
+                                app._show_page(1),
+                                _select_and_see(tree, i),
+                                _log(app, f"定位：{n}"),
+                            )
+                        ),
+                    }
+                )
     except Exception:
         pass
 
@@ -176,8 +181,8 @@ class _CommandPalette:
         self.items = list(self.recent_cmds) + [c for c in self.all_cmds if id(c) not in self.recent_ids]
         self.query = ""
         self.sel = 0
-        self.line_of_item = []     # items[i] 所在的 Text 行号（1-based）
-        self.item_at_line = {}     # 行号 -> items 下标
+        self.line_of_item = []  # items[i] 所在的 Text 行号（1-based）
+        self.item_at_line = {}  # 行号 -> items 下标
 
         root = tk.Toplevel(app)
         self.root = root
@@ -211,11 +216,18 @@ class _CommandPalette:
         # —— 搜索框 ——
         head = tk.Frame(inner, bg=P["input"], bd=0)
         head.pack(fill=tk.X, padx=10, pady=(10, 6))
-        tk.Label(head, text="🔍", bg=P["input"], fg=P["text_secondary"],
-                 font=("Microsoft YaHei", 13)).pack(side=tk.LEFT, padx=(6, 4))
-        self.entry = tk.Entry(head, bg=P["input"], fg=P["text"],
-                              insertbackground=P["text"], relief=tk.FLAT, bd=0,
-                              font=("Microsoft YaHei", 13))
+        tk.Label(head, text="🔍", bg=P["input"], fg=P["text_secondary"], font=("Microsoft YaHei", 13)).pack(
+            side=tk.LEFT, padx=(6, 4)
+        )
+        self.entry = tk.Entry(
+            head,
+            bg=P["input"],
+            fg=P["text"],
+            insertbackground=P["text"],
+            relief=tk.FLAT,
+            bd=0,
+            font=("Microsoft YaHei", 13),
+        )
         self.entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4, pady=6)
         self.entry.insert(0, "")
         self.entry.focus_set()
@@ -224,35 +236,47 @@ class _CommandPalette:
         list_frame = tk.Frame(inner, bg=P["surface"])
         list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 4))
 
-        self.text = tk.Text(list_frame, bg=P["surface"], fg=P["text"],
-                             relief=tk.FLAT, bd=0, highlightthickness=0,
-                             wrap=tk.NONE, font=("Microsoft YaHei", 12),
-                             cursor="arrow", state=tk.DISABLED,
-                             padx=4, pady=4)
+        self.text = tk.Text(
+            list_frame,
+            bg=P["surface"],
+            fg=P["text"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            wrap=tk.NONE,
+            font=("Microsoft YaHei", 12),
+            cursor="arrow",
+            state=tk.DISABLED,
+            padx=4,
+            pady=4,
+        )
         self.text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         # 标签样式
-        self.text.tag_configure("header", foreground=P["accent"],
-                                font=("Microsoft YaHei", 11, "bold"))
-        self.text.tag_configure("hl", foreground=P["accent"],
-                                font=("Microsoft YaHei", 12, "bold"))
+        self.text.tag_configure("header", foreground=P["accent"], font=("Microsoft YaHei", 11, "bold"))
+        self.text.tag_configure("hl", foreground=P["accent"], font=("Microsoft YaHei", 12, "bold"))
         self.text.tag_configure("selrow", background=P["accent"], foreground=P["bg"])
 
-        vsb = tk.Scrollbar(list_frame, command=self.text.yview,
-                           bg=P["surface"], troughcolor=P["bg"],
-                           bd=0, relief=tk.FLAT, width=10)
+        vsb = tk.Scrollbar(
+            list_frame, command=self.text.yview, bg=P["surface"], troughcolor=P["bg"], bd=0, relief=tk.FLAT, width=10
+        )
         vsb.pack(side=tk.RIGHT, fill=tk.Y)
         self.text.config(yscrollcommand=vsb.set)
 
         # —— 底部提示条 ——
         foot = tk.Frame(inner, bg=P["surface"], bd=0)
         foot.pack(fill=tk.X, padx=10, pady=(2, 8))
-        self.foot_lbl = tk.Label(foot, text="", bg=P["surface"], fg=P["text_light"],
-                                 font=("Microsoft YaHei", 10), anchor="w")
+        self.foot_lbl = tk.Label(
+            foot, text="", bg=P["surface"], fg=P["text_light"], font=("Microsoft YaHei", 10), anchor="w"
+        )
         self.foot_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(foot, text="↑↓ 选择   Enter 执行   Esc 关闭",
-                 bg=P["surface"], fg=P["text_hint"],
-                 font=("Microsoft YaHei", 10)).pack(side=tk.RIGHT)
+        tk.Label(
+            foot,
+            text="↑↓ 选择   Enter 执行   Esc 关闭",
+            bg=P["surface"],
+            fg=P["text_hint"],
+            font=("Microsoft YaHei", 10),
+        ).pack(side=tk.RIGHT)
 
         # —— 事件 ——
         self.entry.bind("<KeyRelease>", self._on_type)
@@ -270,7 +294,7 @@ class _CommandPalette:
 
     # ---------- 渲染 ----------
     def _render(self):
-        P = ui_theme.get_palette()
+        ui_theme.get_palette()
         self.text.configure(state=tk.NORMAL)
         self.text.delete("1.0", tk.END)
         self.line_of_item = []
@@ -340,8 +364,7 @@ class _CommandPalette:
             self.items = list(self.recent_cmds) + [c for c in self.all_cmds if id(c) not in self.recent_ids]
         else:
             q = self.query.lower()
-            self.items = [c for c in self.all_cmds
-                         if q in c["label"].lower() or q in c["group"].lower()]
+            self.items = [c for c in self.all_cmds if q in c["label"].lower() or q in c["group"].lower()]
         self.sel = 0
         self._render()
 

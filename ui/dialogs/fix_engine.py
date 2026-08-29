@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 F07 一键修复执行引擎（设计落地增强）—— 把规则库 fix 字段变成真实可执行的修复。
 
@@ -59,6 +58,7 @@ def _get_psi4_cfg(app):
 def _persist(app):
     try:
         from utils.config import save_config
+
         save_config(getattr(app, "config_data", {}))
     except Exception:
         pass
@@ -91,8 +91,7 @@ def _parse_basis(error_text):
     m = re.search(r"basis\s+set\s+['\"]([^'\"]+)['\"]", error_text, re.IGNORECASE)
     if m:
         return m.group(1)
-    m = re.search(r"['\"]([^'\"]+)['\"]\s+(?:not found|not available|unavailable)",
-                  error_text, re.IGNORECASE)
+    m = re.search(r"['\"]([^'\"]+)['\"]\s+(?:not found|not available|unavailable)", error_text, re.IGNORECASE)
     if m:
         return m.group(1)
     return None
@@ -121,7 +120,7 @@ def _fix_basis(app, error_text, params):
 
     if corrected is None:
         # 无法从错误中确认可纠正拼写：改用稳妥的退路基组并明确告知是猜测
-        corrected = (params.get("fallback") or _FALLBACK_BASIS)
+        corrected = params.get("fallback") or _FALLBACK_BASIS
         guessed = True
     else:
         guessed = False
@@ -141,8 +140,7 @@ def _fix_basis(app, error_text, params):
     _persist(app)
     _reopen_psi4(app)
     if guessed:
-        _log(app, f"⚠️ 无法从错误确认正确基组，已暂用「{corrected}」（PSI4 内置可用）替换，请确认设置。",
-              "warning")
+        _log(app, f"⚠️ 无法从错误确认正确基组，已暂用「{corrected}」（PSI4 内置可用）替换，请确认设置。", "warning")
         return True, f"已将基组替换为退路基组 {corrected}（猜测，请确认）"
     _log(app, f"✅ 已将基组纠正为「{corrected}」并记忆，请确认后重算。", "success")
     return True, f"基组已纠正为 {corrected}"
@@ -154,7 +152,8 @@ def _fix_memory(app, error_text, params):
     try:
         try:
             import psutil
-            total = psutil.virtual_memory().total // (1024 ** 3)
+
+            total = psutil.virtual_memory().total // (1024**3)
             if total:
                 gb = max(1, min(gb, max(1, total // 2)))
         except Exception:
@@ -177,8 +176,7 @@ def _fix_scf(app, error_text, params):
     cfg["scf_options"] = scf_options
     _persist(app)
     _reopen_psi4(app)
-    _log(app, "✅ 已写入 SCF 收敛辅助选项（增大 maxiter / 启用阻尼），下次计算自动注入。",
-          "success")
+    _log(app, "✅ 已写入 SCF 收敛辅助选项（增大 maxiter / 启用阻尼），下次计算自动注入。", "success")
     return True, "已注入 SCF 收敛选项"
 
 
@@ -195,9 +193,9 @@ def _fix_file(app, error_text, params):
     # 兜底：直接弹目录选择
     try:
         from tkinter import filedialog
+
         wd = str(getattr(getattr(ctrl, "model", None), "work_dir", ""))
-        d = filedialog.askdirectory(initialdir=wd or None,
-                                    title="选择输入文件所在的工作目录")
+        d = filedialog.askdirectory(initialdir=wd or None, title="选择输入文件所在的工作目录")
         if d and ctrl is not None and hasattr(ctrl, "model"):
             ctrl.model.work_dir = d
             try:
@@ -227,8 +225,7 @@ def _fix_dep(app, error_text, params):
         copied = True
     except Exception:
         copied = False
-    _log(app, "依赖安装命令：\n" + text + ("\n（已复制到剪贴板）" if copied else ""),
-          "info")
+    _log(app, "依赖安装命令：\n" + text + ("\n（已复制到剪贴板）" if copied else ""), "info")
     # 打开环境诊断，便于在当前环境补装
     fn = getattr(app, "show_environment_dialog_from_menu", None)
     if not callable(fn):

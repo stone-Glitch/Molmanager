@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 E-13 MO 能级图 / 能量趋势图（.fchk 轨道能级 → SVG）· 纯逻辑层
 
@@ -9,6 +8,7 @@ E-13 MO 能级图 / 能量趋势图（.fchk 轨道能级 → SVG）· 纯逻辑�
 红线：轨道能级缺失或电子数非法时，返回带说明的占位 SVG 或明确标记，
 绝不画一张「看起来正常但其实没数据」的假图。
 """
+
 import re
 
 _FLOAT = re.compile(r"[-+]?\d+(?:\.\d*)?(?:[eE][-+]?\d+)?")
@@ -53,7 +53,7 @@ def parse_fchk_int(text: str, key: str) -> int | None:
     for line in (text or "").splitlines():
         s = line.strip()
         if s.startswith(key):
-            m = _FLOAT.search(s[len(key):])
+            m = _FLOAT.search(s[len(key) :])
             if m:
                 return int(float(m.group(0)))
     return None
@@ -69,17 +69,30 @@ def homo_lumo(energies: list[float], n_electrons: int) -> dict:
     e = sorted(energies)
     n = len(e)
     if n == 0 or n_electrons <= 0:
-        return {"homo": None, "lumo": None, "gap": None,
-                "homo_idx": None, "lumo_idx": None, "n_occ": 0, "ok": False}
+        return {"homo": None, "lumo": None, "gap": None, "homo_idx": None, "lumo_idx": None, "n_occ": 0, "ok": False}
     n_occ = n_electrons // 2
     if n_occ >= n:  # 全部占据，无 LUMO
-        return {"homo": e[-1], "lumo": None, "gap": None,
-                "homo_idx": n - 1, "lumo_idx": None, "n_occ": n_occ, "ok": True}
+        return {
+            "homo": e[-1],
+            "lumo": None,
+            "gap": None,
+            "homo_idx": n - 1,
+            "lumo_idx": None,
+            "n_occ": n_occ,
+            "ok": True,
+        }
     homo_idx = max(0, n_occ - 1)
     lumo_idx = n_occ
     homo, lumo = e[homo_idx], e[lumo_idx]
-    return {"homo": homo, "lumo": lumo, "gap": lumo - homo,
-            "homo_idx": homo_idx, "lumo_idx": lumo_idx, "n_occ": n_occ, "ok": True}
+    return {
+        "homo": homo,
+        "lumo": lumo,
+        "gap": lumo - homo,
+        "homo_idx": homo_idx,
+        "lumo_idx": lumo_idx,
+        "n_occ": n_occ,
+        "ok": True,
+    }
 
 
 def build_levels(energies: list[float], n_electrons: int, window: int = 4) -> tuple[list[dict], dict]:
@@ -95,14 +108,16 @@ def build_levels(energies: list[float], n_electrons: int, window: int = 4) -> tu
     levels = []
     for i in range(lo, hi_idx + 1):
         occ = 2 if i <= hi else 0
-        levels.append({
-            "index": i,
-            "energy": e[i],
-            "occ": occ,
-            "kind": "occ" if i <= hi else "virt",
-            "is_homo": i == hi,
-            "is_lumo": (li is not None and i == li),
-        })
+        levels.append(
+            {
+                "index": i,
+                "energy": e[i],
+                "occ": occ,
+                "kind": "occ" if i <= hi else "virt",
+                "is_homo": i == hi,
+                "is_lumo": (li is not None and i == li),
+            }
+        )
     return levels, frontier
 
 
@@ -127,7 +142,7 @@ def render_mo_svg(
     emin = min(lv["energy"] for lv in levels)
     emax = max(lv["energy"] for lv in levels)
     span = (emax - emin) or 1.0
-    plot_w = width - margin_l - margin_r
+    width - margin_l - margin_r
     plot_h = height - margin_t - margin_b
 
     def y_for(energy: float) -> float:
@@ -135,14 +150,11 @@ def render_mo_svg(
 
     parts: list[str] = []
     parts.append(
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-        f'viewBox="0 0 {width} {height}">'
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
     )
+    parts.append(f'<rect width="{width}" height="{height}" fill="#1e1e1e"/>')
     parts.append(
-        f'<rect width="{width}" height="{height}" fill="#1e1e1e"/>'
-    )
-    parts.append(
-        f'<text x="{width//2}" y="24" fill="#e6e6e6" font-size="15" '
+        f'<text x="{width // 2}" y="24" fill="#e6e6e6" font-size="15" '
         f'text-anchor="middle" font-family="sans-serif">{_escape(title)}</text>'
     )
 
@@ -164,18 +176,14 @@ def render_mo_svg(
         is_occ = lv["kind"] == "occ"
         color = "#4c9aff" if is_occ else "#9aa4b0"
         dash = "" if is_occ else ' stroke-dasharray="5,4"'
-        parts.append(
-            f'<line x1="{x1}" y1="{y:.1f}" x2="{x2}" y2="{y:.1f}" '
-            f'stroke="{color}" stroke-width="2"{dash}/>'
-        )
+        parts.append(f'<line x1="{x1}" y1="{y:.1f}" x2="{x2}" y2="{y:.1f}" stroke="{color}" stroke-width="2"{dash}/>')
         # 端点：占据实心、空轨道空心
         fill = color if is_occ else "#1e1e1e"
         parts.append(f'<circle cx="{x1}" cy="{y:.1f}" r="4" fill="{fill}" stroke="{color}"/>')
         # 右侧能级标注
         label = f"MO{lv['index'] + 1}"
         parts.append(
-            f'<text x="{x2 + 4}" y="{y + 4:.1f}" fill="#b6bcc6" font-size="11" '
-            f'font-family="monospace">{label}</text>'
+            f'<text x="{x2 + 4}" y="{y + 4:.1f}" fill="#b6bcc6" font-size="11" font-family="monospace">{label}</text>'
         )
         if lv.get("is_homo"):
             parts.append(
@@ -220,11 +228,11 @@ def _placeholder_svg(title: str, width: int, height: int, msg: str) -> str:
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'viewBox="0 0 {width} {height}">'
         f'<rect width="{width}" height="{height}" fill="#1e1e1e"/>'
-        f'<text x="{width//2}" y="24" fill="#e6e6e6" font-size="15" text-anchor="middle" '
+        f'<text x="{width // 2}" y="24" fill="#e6e6e6" font-size="15" text-anchor="middle" '
         f'font-family="sans-serif">{_escape(title)}</text>'
-        f'<text x="{width//2}" y="{height//2}" fill="#8b949e" font-size="13" '
+        f'<text x="{width // 2}" y="{height // 2}" fill="#8b949e" font-size="13" '
         f'text-anchor="middle" font-family="sans-serif">{esc}</text>'
-        f'</svg>'
+        f"</svg>"
     )
 
 
@@ -232,5 +240,4 @@ def _escape(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-__all__ = ["parse_fchk_orbitals", "parse_fchk_int", "homo_lumo",
-           "build_levels", "render_mo_svg"]
+__all__ = ["parse_fchk_orbitals", "parse_fchk_int", "homo_lumo", "build_levels", "render_mo_svg"]

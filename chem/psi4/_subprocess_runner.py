@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 PSI4 子进程运行器（被 run_psi4_task_cancellable 以 sys.executable 启动）。
 
@@ -11,6 +10,7 @@ progress 文件，计算结束后把结果 JSON 写入 result 文件。这样主
 杀死本进程（含 PSI4 起的子进程树）来强制取消一次长计算 —— 这是 F03 队列调度器
 实现「取消 / 超时终止」的硬地基。
 """
+
 import json
 import sys
 import traceback

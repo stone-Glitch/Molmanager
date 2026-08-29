@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 热化学模块 - 反应能垒图、Eyring 动力学
 """
+
 import csv
 import logging
 import os
@@ -27,6 +27,7 @@ def eyring_kinetics(
       t_{1/2} = ln 2 / k_r
     """
     import math as _m
+
     k_B = 1.380649e-23
     h_P = 6.62607015e-34
     R_J = 8.314462618
@@ -136,10 +137,17 @@ def run_reaction_energy_profile(
 
         if include_frequency:
             r = run_psi4_task(
-                fp, "thermo", method, basis,
+                fp,
+                "thermo",
+                method,
+                basis,
                 output_dir=os.path.dirname(prefix),
-                preset_name=preset_name, solvent=solvent, d3=d3,
-                charge=charge, multiplicity=multiplicity, memory=memory
+                preset_name=preset_name,
+                solvent=solvent,
+                d3=d3,
+                charge=charge,
+                multiplicity=multiplicity,
+                memory=memory,
             )
             if not r.get("success"):
                 result["error"] = f"{label} thermo 失败：{r.get('error')}"
@@ -149,6 +157,7 @@ def run_reaction_energy_profile(
             gibbs = None
             try:
                 import psi4
+
                 for key in ("Gibbs Free Energy", "GIBBS FREE ENERGY", "G(T)"):
                     try:
                         v = psi4.core.variable(key)
@@ -169,16 +178,24 @@ def run_reaction_energy_profile(
                 # 否则用户会拿到无热校正的能垒（可能偏差数十 kcal/mol）而毫无察觉（科学 1.3）。
                 logger.error(
                     "热化学：%s 未取得 Gibbs 自由能（频率计算可能失败），退化为电子能（无热校正），"
-                    "该点自由能结果不可靠、仅作占位。", label
+                    "该点自由能结果不可靠、仅作占位。",
+                    label,
                 )
                 result.setdefault("thermo_fallback", []).append(label)
             energies_G[label] = (gibbs if gibbs is not None else energies_E[label]) * H_to_KCAL
         else:
             r = run_psi4_task(
-                fp, "optimize", method, basis,
+                fp,
+                "optimize",
+                method,
+                basis,
                 output_dir=os.path.dirname(prefix),
-                preset_name=preset_name, solvent=solvent, d3=d3,
-                charge=charge, multiplicity=multiplicity, memory=memory
+                preset_name=preset_name,
+                solvent=solvent,
+                d3=d3,
+                charge=charge,
+                multiplicity=multiplicity,
+                memory=memory,
             )
             if not r.get("success"):
                 result["error"] = f"{label} optimize 失败：{r.get('error')}"
@@ -213,12 +230,30 @@ def run_reaction_energy_profile(
         wr = csv.writer(f)
         wr.writerow(["label", "E_Hartree", "rel_G_kcal_mol", "note"])
         fb = set(result.get("thermo_fallback", []))
-        wr.writerow(["R", energies_E.get("R"), rel.get("R", 0.0),
-                     "反应物 / Reactants" + ("（电子能·无热校正）" if "R" in fb else "")])
-        wr.writerow(["TS", energies_E.get("TS"), rel.get("TS", 0.0),
-                     "过渡态 / Transition State" + ("（电子能·无热校正）" if "TS" in fb else "")])
-        wr.writerow(["P", energies_E.get("P"), rel.get("P", 0.0),
-                     "产物 / Products" + ("（电子能·无热校正）" if "P" in fb else "")])
+        wr.writerow(
+            [
+                "R",
+                energies_E.get("R"),
+                rel.get("R", 0.0),
+                "反应物 / Reactants" + ("（电子能·无热校正）" if "R" in fb else ""),
+            ]
+        )
+        wr.writerow(
+            [
+                "TS",
+                energies_E.get("TS"),
+                rel.get("TS", 0.0),
+                "过渡态 / Transition State" + ("（电子能·无热校正）" if "TS" in fb else ""),
+            ]
+        )
+        wr.writerow(
+            [
+                "P",
+                energies_E.get("P"),
+                rel.get("P", 0.0),
+                "产物 / Products" + ("（电子能·无热校正）" if "P" in fb else ""),
+            ]
+        )
         wr.writerow([])
         wr.writerow(["barrier", "value_kcal_mol"])
         for k, v in result["barriers"].items():
@@ -230,14 +265,19 @@ def run_reaction_energy_profile(
         png_path = output_prefix + "_profile.png"
         xs_step = [0.0, 0.8, 1.0, 2.0, 2.2, 3.0]
         ys_step = [
-            rel.get("R", 0.0), rel.get("R", 0.0),
-            rel.get("TS", 0.0), rel.get("TS", 0.0),
-            rel.get("P", 0.0), rel.get("P", 0.0)
+            rel.get("R", 0.0),
+            rel.get("R", 0.0),
+            rel.get("TS", 0.0),
+            rel.get("TS", 0.0),
+            rel.get("P", 0.0),
+            rel.get("P", 0.0),
         ]
 
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         try:
             if os.name == "nt":
                 for _cand in ("Microsoft YaHei", "SimHei", "SimSun"):
@@ -252,25 +292,45 @@ def run_reaction_energy_profile(
 
         fig, ax = plt.subplots(figsize=(9, 5))
         ax.plot(xs_step, ys_step, color="#1f77b4", linewidth=2.4, marker="o", markersize=8)
-        ax.fill_between(xs_step, ys_step, min(ys_step) - max(1.0, abs(max(ys_step)-min(ys_step))*0.15),
-                        color="#aec7e8", alpha=0.3)
+        ax.fill_between(
+            xs_step,
+            ys_step,
+            min(ys_step) - max(1.0, abs(max(ys_step) - min(ys_step)) * 0.15),
+            color="#aec7e8",
+            alpha=0.3,
+        )
 
-        for xi, yi, lab in zip([0.4, 1.5, 2.6],
-                               [rel.get("R", 0.0), rel.get("TS", 0.0), rel.get("P", 0.0)],
-                               ["Reactants\n(R)", "Transition State\n(TS)", "Products\n(P)"]):
-            ax.text(xi, yi + (max(ys_step)-min(ys_step))*0.03,
-                    lab, ha="center", va="bottom", fontsize=10)
-            ax.text(xi, yi - (max(ys_step)-min(ys_step))*0.03,
-                    f"{yi:.2f} kcal/mol", ha="center", va="top", fontsize=9, color="darkred")
+        for xi, yi, lab in zip(
+            [0.4, 1.5, 2.6],
+            [rel.get("R", 0.0), rel.get("TS", 0.0), rel.get("P", 0.0)],
+            ["Reactants\n(R)", "Transition State\n(TS)", "Products\n(P)"],
+            strict=False,
+        ):
+            ax.text(xi, yi + (max(ys_step) - min(ys_step)) * 0.03, lab, ha="center", va="bottom", fontsize=10)
+            ax.text(
+                xi,
+                yi - (max(ys_step) - min(ys_step)) * 0.03,
+                f"{yi:.2f} kcal/mol",
+                ha="center",
+                va="top",
+                fontsize=9,
+                color="darkred",
+            )
 
         try:
             dGf = result["barriers"]["forward_dG_double_dagger_kcal"]
             dGr = result["barriers"]["reverse_dG_double_dagger_kcal"]
             dGrn = result["barriers"]["reaction_dG_r_kcal"]
             # 箭头标注可简化，这里只加文字
-            ax.text(1.5, min(ys_step) - (max(ys_step)-min(ys_step))*0.05,
-                    f"ΔG‡_fwd = {dGf:.2f} kcal/mol    ΔG‡_rev = {dGr:.2f}    ΔG_r = {dGrn:+.2f}",
-                    ha="center", fontsize=10, color="#2ca02c", fontweight="bold")
+            ax.text(
+                1.5,
+                min(ys_step) - (max(ys_step) - min(ys_step)) * 0.05,
+                f"ΔG‡_fwd = {dGf:.2f} kcal/mol    ΔG‡_rev = {dGr:.2f}    ΔG_r = {dGrn:+.2f}",
+                ha="center",
+                fontsize=10,
+                color="#2ca02c",
+                fontweight="bold",
+            )
         except Exception:
             pass
 
@@ -278,19 +338,28 @@ def run_reaction_energy_profile(
         ax.set_ylabel("Gibbs Free Energy / 相对自由能 (kcal/mol)")
         ax.set_title(f"Reaction Energy Profile / 反应能垒图  (T={T_K:.2f} K)")
         yspan = max(ys_step) - min(ys_step)
-        ax.set_ylim(min(ys_step) - yspan*0.3, max(ys_step) + yspan*0.3)
+        ax.set_ylim(min(ys_step) - yspan * 0.3, max(ys_step) + yspan * 0.3)
         ax.grid(True, axis="y", alpha=0.3)
 
         # 科学红线 S-05：热校正失败点（仅电子能）必须在能垒图右上角用红色大字标注，绝不静默。
         if result.get("thermo_fallback"):
             ax.text(
-                0.99, 0.97,
-                "⚠️ 热化学校正失败\n以下点仅电子能（无热校正）：\n"
-                + "、".join(sorted(set(result["thermo_fallback"]))),
-                transform=ax.transAxes, ha="right", va="top",
-                fontsize=11, fontweight="bold", color="#d40000",
-                bbox=dict(boxstyle="round,pad=0.4", facecolor="#fff3cd",
-                          edgecolor="#d40000", linewidth=1.5, alpha=0.95)
+                0.99,
+                0.97,
+                "⚠️ 热化学校正失败\n以下点仅电子能（无热校正）：\n" + "、".join(sorted(set(result["thermo_fallback"]))),
+                transform=ax.transAxes,
+                ha="right",
+                va="top",
+                fontsize=11,
+                fontweight="bold",
+                color="#d40000",
+                bbox={
+                    "boxstyle": "round,pad=0.4",
+                    "facecolor": "#fff3cd",
+                    "edgecolor": "#d40000",
+                    "linewidth": 1.5,
+                    "alpha": 0.95,
+                },
             )
 
         fig.tight_layout()

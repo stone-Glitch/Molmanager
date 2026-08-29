@@ -1,4 +1,5 @@
 """MolManager 核心模型：原 core/model.py 拆分为子系统 mixin，组合保持 MolManagerModel 接口不变。"""
+
 from ._backup import BackupMixin
 from ._base import MolManagerModelBase
 from ._chem import ChemMixin
@@ -20,4 +21,3 @@ class MolManagerModel(
     ChemMixin,
 ):
     """组合后的核心模型。所有原 MolManagerModel 的公开方法均通过 mixin 继承而来。"""
-    pass

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 版本常量与版本号比较（T01 / Phase 1）
 ────────────────────────────────────
@@ -14,6 +13,7 @@
   - 本模块**不 import requests**（网络唯一入口是 utils/net.py，批次二交付）；
   - 本模块**不 import chem.psi4**（PSI4 命名陷阱）。
 """
+
 from __future__ import annotations
 
 import re
@@ -45,6 +45,7 @@ except Exception:  # pragma: no cover
 
 # ---------------------------------------------------------------- 基本查询
 
+
 def get_version() -> str:
     """返回应用版本号字符串（不含 build tag）。"""
     return __version__
@@ -61,6 +62,7 @@ def get_user_agent() -> str:
 
 
 # ---------------------------------------------------------------- 解析 / 比较
+
 
 def normalize_version(raw: object) -> str:
     """

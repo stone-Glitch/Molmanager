@@ -28,7 +28,8 @@ def analyze_chirality(input_path: str) -> dict[str, Any]:
         mols = _read_molecules(input_path, ext)
         if not mols:
             return {"success": False, "message": "OpenBabel 无法读取该文件为分子"}
-        mol = mols[0]; obmol = mol.OBMol
+        mol = mols[0]
+        obmol = mol.OBMol
         try:
             obmol.UnsetFlag(ob.OB_CHIRALITY_PERCEIVED)
             obmol.PerceiveStereo()
@@ -71,11 +72,13 @@ def analyze_chirality(input_path: str) -> dict[str, Any]:
                 pass
         sym = {a.GetIdx(): a.GetSymbol() for a in obmol.GetAtoms()} if hasattr(obmol, "GetAtoms") else {}
         for idx in sorted(chiral_idxs):
-            centers.append({
-                "idx_1based": int(idx),
-                "symbol": sym.get(idx, "?"),
-                "label": label_by_idx.get(idx, "?"),
-            })
+            centers.append(
+                {
+                    "idx_1based": int(idx),
+                    "symbol": sym.get(idx, "?"),
+                    "label": label_by_idx.get(idx, "?"),
+                }
+            )
         return {
             "success": True,
             "n_centers": len(centers),
@@ -85,7 +88,6 @@ def analyze_chirality(input_path: str) -> dict[str, Any]:
         }
     except Exception as e:
         return {"success": False, "message": f"手性分析失败：{e}"}
-
 
 
 def invert_enantiomer(input_path: str, output_path: str) -> dict[str, Any]:
@@ -103,7 +105,8 @@ def invert_enantiomer(input_path: str, output_path: str) -> dict[str, Any]:
         mols = _read_molecules(input_path, ext)
         if not mols:
             return {"success": False, "message": "OpenBabel 无法读取该文件为分子"}
-        mol = mols[0]; obmol = mol.OBMol
+        mol = mols[0]
+        obmol = mol.OBMol
         try:
             obmol.UnsetFlag(ob.OB_CHIRALITY_PERCEIVED)
             obmol.PerceiveStereo()
@@ -135,6 +138,7 @@ def invert_enantiomer(input_path: str, output_path: str) -> dict[str, Any]:
 
 # ======================== O7：生理 pH=7.4 一键加氢 ========================
 
+
 def protonate_ph(input_path: str, output_path: str, ph: float = 7.4) -> dict[str, Any]:
     """
     用 `obabel -p <ph>` 做 pH 下的质子化：
@@ -150,9 +154,13 @@ def protonate_ph(input_path: str, output_path: str, ph: float = 7.4) -> dict[str
             output_path = str(_secure_output_path(output_path, create_parent=True))
         except ValueError as e:
             return {"success": False, "message": f"输出路径非法: {e}"}
-        with tempfile.NamedTemporaryFile(suffix="." + (os.path.splitext(input_path)[1][1:] or "xyz"), delete=False) as _t1:
+        with tempfile.NamedTemporaryFile(
+            suffix="." + (os.path.splitext(input_path)[1][1:] or "xyz"), delete=False
+        ) as _t1:
             pass
-        with tempfile.NamedTemporaryFile(suffix="." + (os.path.splitext(output_path)[1][1:] or "xyz"), delete=False) as _t2:
+        with tempfile.NamedTemporaryFile(
+            suffix="." + (os.path.splitext(output_path)[1][1:] or "xyz"), delete=False
+        ) as _t2:
             pass
         try:
             shutil.copy2(input_path, _t1.name)
@@ -162,8 +170,12 @@ def protonate_ph(input_path: str, output_path: str, ph: float = 7.4) -> dict[str
             if r.returncode != 0 or not os.path.exists(_t2.name) or os.path.getsize(_t2.name) == 0:
                 return {"success": False, "message": f"obabel -p 返回码 {r.returncode}: {r.stderr[:300]}"}
             shutil.copy2(_t2.name, output_path)
-            return {"success": True, "output_path": output_path, "ph": ph,
-                    "message": f"已在 pH={ph:g} 下加氢：-COOH→-COO⁻、-NH2→-NH3⁺ 等"}
+            return {
+                "success": True,
+                "output_path": output_path,
+                "ph": ph,
+                "message": f"已在 pH={ph:g} 下加氢：-COOH→-COO⁻、-NH2→-NH3⁺ 等",
+            }
         finally:
             for t in (_t1.name, _t2.name):
                 try:
@@ -176,6 +188,7 @@ def protonate_ph(input_path: str, output_path: str, ph: float = 7.4) -> dict[str
 
 # ======================== O8：SDF 拆分/合并 ========================
 
+
 def split_multi_sdf(input_sdf: str, out_dir: str, prefix: str = "mol", format_ext: str = "xyz") -> dict[str, Any]:
     """把一个 SDF（或任何多分子文件，.sdf/.mol2/.xyz 都行）拆成多个单分子文件。"""
     try:
@@ -187,9 +200,11 @@ def split_multi_sdf(input_sdf: str, out_dir: str, prefix: str = "mol", format_ex
         try:
             from core.model import enforce_no_path_separators
         except Exception:
+
             def enforce_no_path_separators(name: str) -> None:
                 if any(ch in name for ch in ("/", "\\", "\x00", "\r", "\n")):
                     raise ValueError(f"文件名前缀包含非法字符: {name!r}")
+
         try:
             enforce_no_path_separators(prefix)
         except ValueError as e:
@@ -221,14 +236,14 @@ def split_multi_sdf(input_sdf: str, out_dir: str, prefix: str = "mol", format_ex
                     uniq += 1
                 mol.write(ext_use, fp, overwrite=True)
                 if os.path.exists(fp):
-                    ok += 1; names.append(fp)
+                    ok += 1
+                    names.append(fp)
             except Exception as _we:
                 logger.debug("拆分分子写入 %s 失败: %s", name, _we)
                 continue
         return {"success": ok > 0, "total": len(mols), "ok": ok, "output_dir": out_dir, "files": names}
     except Exception as e:
         return {"success": False, "message": f"拆分多分子文件失败：{e}"}
-
 
 
 def merge_to_sdf(input_paths: list[str], output_sdf: str) -> dict[str, Any]:
@@ -256,7 +271,7 @@ def merge_to_sdf(input_paths: list[str], output_sdf: str) -> dict[str, Any]:
         with tempfile.NamedTemporaryFile(suffix=".sdf", delete=False, mode="wb") as _tmp:
             tmp_name = _tmp.name
         try:
-            conv = ob.OBConversion() if PYBEL_AVAILABLE and 'ob' in globals() else None
+            conv = ob.OBConversion() if PYBEL_AVAILABLE and "ob" in globals() else None
             if conv is not None:
                 conv.SetOutFormat("sdf")
                 with open(tmp_name, "wb") as f:
@@ -264,7 +279,8 @@ def merge_to_sdf(input_paths: list[str], output_sdf: str) -> dict[str, Any]:
                         try:
                             if hasattr(m, "OBMol"):
                                 s = conv.WriteString(m.OBMol)
-                                if s: f.write(s.encode("utf-8", errors="replace"))
+                                if s:
+                                    f.write(s.encode("utf-8", errors="replace"))
                         except Exception as _we:
                             logger.debug("SDF 合并写入单分子失败: %s", _we)
                             continue
@@ -290,6 +306,7 @@ def merge_to_sdf(input_paths: list[str], output_sdf: str) -> dict[str, Any]:
 
 # ======================== 分子叠加 ========================
 
+
 def align_molecules(ref_path: str, mobile_path: str, output_path: str) -> dict[str, Any]:
     """
     将移动分子叠加到参考分子上。
@@ -311,7 +328,6 @@ def align_molecules(ref_path: str, mobile_path: str, output_path: str) -> dict[s
             return {"success": False, "message": f"叠加失败: {result.stderr.strip()}", "output_path": None}
     except Exception as e:
         return {"success": False, "message": str(e), "output_path": None}
-
 
 
 def render_png_2d(input_path: str, output_path: str, width: int = 800, height: int = 600) -> dict[str, Any]:

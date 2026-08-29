@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 历史记录对话框 - 查看和操作撤销/重做历史
 """
+
 import tkinter as tk
 from tkinter import ttk
 
@@ -19,7 +19,9 @@ def show_history_dialog(app, controller):
 
     top_btn_frame = ttk.Frame(dialog)
     top_btn_frame.pack(fill=tk.X, padx=10, pady=5)
-    ttk.Button(top_btn_frame, text="🔄 刷新", command=lambda: _refresh_history_lists(undo_listbox, redo_listbox, controller)).pack(side=tk.LEFT)
+    ttk.Button(
+        top_btn_frame, text="🔄 刷新", command=lambda: _refresh_history_lists(undo_listbox, redo_listbox, controller)
+    ).pack(side=tk.LEFT)
 
     main_frame = ttk.Frame(dialog)
     main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
@@ -27,7 +29,7 @@ def show_history_dialog(app, controller):
     left_frame = ttk.LabelFrame(main_frame, text="↩️ 撤销栈 (Undo Stack)", padding="5")
     left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
     undo_scroll = ttk.Scrollbar(left_frame, orient=tk.VERTICAL)
-    undo_listbox = tk.Listbox(left_frame, yscrollcommand=undo_scroll.set, font=('Consolas', 9))
+    undo_listbox = tk.Listbox(left_frame, yscrollcommand=undo_scroll.set, font=("Consolas", 9))
     undo_scroll.config(command=undo_listbox.yview)
     undo_scroll.pack(side=tk.RIGHT, fill=tk.Y)
     undo_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -35,7 +37,7 @@ def show_history_dialog(app, controller):
     right_frame = ttk.LabelFrame(main_frame, text="↪️ 重做栈 (Redo Stack)", padding="5")
     right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5)
     redo_scroll = ttk.Scrollbar(right_frame, orient=tk.VERTICAL)
-    redo_listbox = tk.Listbox(right_frame, yscrollcommand=redo_scroll.set, font=('Consolas', 9))
+    redo_listbox = tk.Listbox(right_frame, yscrollcommand=redo_scroll.set, font=("Consolas", 9))
     redo_scroll.config(command=redo_listbox.yview)
     redo_scroll.pack(side=tk.RIGHT, fill=tk.Y)
     redo_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -59,7 +61,7 @@ def show_history_dialog(app, controller):
         result = controller.model.undo_until(target_idx)
         app.helpers.on_log(
             f"⏮️ 批量撤销完成: {result['steps']} 步，成功 {result['total_success']}，失败 {result['total_error']}",
-            'info' if result['total_error'] == 0 else 'warning'
+            "info" if result["total_error"] == 0 else "warning",
         )
         controller.scan_files()
         _refresh_history_lists(undo_listbox, redo_listbox, controller)

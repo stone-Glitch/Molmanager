@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """utils/chem_query.py —— 化学感知搜索的纯逻辑层。
 
 不依赖文件系统 / OpenBabel，因此是 CI 里最该优先跑通的一块。
@@ -21,14 +20,14 @@ from utils.chem_query import (
 
 # ---------------------------------------------------------------- 查询串解析
 @pytest.mark.parametrize(
-    "token,expected",
+    ("token", "expected"),
     [
         ("mw:>60", ("mw", ">", "60")),
         ("mw:>=60", ("mw", ">=", "60")),
         ("logP:<3", ("logp", "<", "3")),
         ("formula:C6H6", ("formula", ":", "C6H6")),
         ("heavy:=10", ("heavy", "=", "10")),
-        ("MW:>60", ("mw", ">", "60")),          # 键不分大小写
+        ("MW:>60", ("mw", ">", "60")),  # 键不分大小写
         ("MolecularWeight:>60", ("molecularweight", ">", "60")),
         ("xlogp:<0.5", ("xlogp", "<", "0.5")),
     ],
@@ -40,10 +39,10 @@ def test_split_operator_recognises(token: str, expected: tuple[str, str, str]) -
 @pytest.mark.parametrize(
     "token",
     [
-        "benzene",          # 无冒号 → 自由文本
-        "unknown:>10",      # 未知键 → 自由文本
-        "mw:",              # 空值 → 自由文本
-        ">",                # 垃圾输入
+        "benzene",  # 无冒号 → 自由文本
+        "unknown:>10",  # 未知键 → 自由文本
+        "mw:",  # 空值 → 自由文本
+        ">",  # 垃圾输入
         "",
     ],
 )
@@ -103,7 +102,9 @@ def test_filter_field_name_is_case_insensitive() -> None:
         {"name": "lower", "mw": 10.0},
         {"name": "mixed", "LogP": 3.5},
     ]
-    assert [e["name"] for e in filter_entries(entries, "mw:>200")] == ["upper", ]
+    assert [e["name"] for e in filter_entries(entries, "mw:>200")] == [
+        "upper",
+    ]
     assert [e["name"] for e in filter_entries(entries, "logp:>3")] == ["mixed"]
 
 

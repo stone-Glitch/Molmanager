@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 PSI4 工具函数 - XYZ 解析、坐标插值、IR 绘图、二面角设置等
 """
+
 import hashlib
 import os
 import struct
@@ -42,7 +42,7 @@ def _write_xyz(n: int, atoms: list[str], coords: list[list[float]]) -> str:
     """
     lines: list[str] = [str(n), ""]
     lines_append = lines.append
-    for sym, xyz in zip(atoms, coords):
+    for sym, xyz in zip(atoms, coords, strict=False):
         x0, x1, x2 = xyz[0], xyz[1], xyz[2]
         lines_append(f"{sym:<3s} {x0:15.10f} {x1:15.10f} {x2:15.10f}")
     return "\n".join(lines) + "\n"
@@ -88,17 +88,25 @@ def _lerp_coords(R: list[list[float]], P: list[list[float]], t: float) -> list[l
     if key is not None:
         cached = lerp_coords_cache.get(key)
         if cached is not None:
-            return [list(c) for c in cached]                       # 返回拷贝，防止外部篡改
-    result = [[one_minus_t * R[i][0] + t * P[i][0],
-               one_minus_t * R[i][1] + t * P[i][1],
-               one_minus_t * R[i][2] + t * P[i][2]] for i in range(n)]
+            return [list(c) for c in cached]  # 返回拷贝，防止外部篡改
+    result = [
+        [one_minus_t * R[i][0] + t * P[i][0], one_minus_t * R[i][1] + t * P[i][1], one_minus_t * R[i][2] + t * P[i][2]]
+        for i in range(n)
+    ]
     if key is not None:
         lerp_coords_cache.put(key, [list(c) for c in result])
     return result
 
 
-def _plot_ir(freqs_cm: list[float], intensities: list[float], out_png: str,
-             fwhm: float = 10.0, vmin: float = 400.0, vmax: float = 4000.0, npts: int = 1600) -> bool:
+def _plot_ir(
+    freqs_cm: list[float],
+    intensities: list[float],
+    out_png: str,
+    fwhm: float = 10.0,
+    vmin: float = 400.0,
+    vmax: float = 4000.0,
+    npts: int = 1600,
+) -> bool:
     """
     P3：洛伦兹展宽画一张模拟 IR 光谱 PNG
     有 matplotlib 就用；没有就退化为 Pillow，都没有返回 False
@@ -108,8 +116,8 @@ def _plot_ir(freqs_cm: list[float], intensities: list[float], out_png: str,
     xs: list[float] = [vmin + (vmax - vmin) * i / max(1, npts - 1) for i in range(npts)]
     ys: list[float] = [0.0 for _ in xs]
     half = fwhm / 2.0
-    g = half ** 2
-    for v, I in zip(freqs_cm, intensities):
+    g = half**2
+    for v, I in zip(freqs_cm, intensities, strict=False):
         if v <= 0:
             continue
         iI = I if I > 0 else 1.0
@@ -126,14 +134,15 @@ def _plot_ir(freqs_cm: list[float], intensities: list[float], out_png: str,
     # A. matplotlib
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         try:
             if os.name == "nt":
                 for _cand in ("Microsoft YaHei", "SimHei", "SimSun", "Arial Unicode MS"):
                     try:
-                        plt.rcParams["font.sans-serif"] = [_cand] + list(
-                            plt.rcParams.get("font.sans-serif", []))
+                        plt.rcParams["font.sans-serif"] = [_cand] + list(plt.rcParams.get("font.sans-serif", []))
                         break
                     except Exception:
                         continue
@@ -142,7 +151,7 @@ def _plot_ir(freqs_cm: list[float], intensities: list[float], out_png: str,
             pass
         fig, ax = plt.subplots(figsize=(9, 4.5), dpi=120)
         ax.plot(xs, ys_abs, color="#1f77b4", linewidth=1.2)
-        for v, I in zip(freqs_cm, intensities):
+        for v, I in zip(freqs_cm, intensities, strict=False):
             if v <= 0:
                 continue
             h = (I if I > 0 else 1.0) / y_max if y_max > 0 else 0.0
@@ -164,6 +173,7 @@ def _plot_ir(freqs_cm: list[float], intensities: list[float], out_png: str,
     try:
         from PIL import Image as _PIL_Image
         from PIL import ImageDraw as _ImageDraw
+
         W, H = 1200, 600
         img = _PIL_Image.new("RGB", (W, H), "white")
         draw = _ImageDraw.Draw(img)
@@ -188,11 +198,11 @@ def _plot_ir(freqs_cm: list[float], intensities: list[float], out_png: str,
             draw.line([(x0, ty, x1, ty)], fill="#cccccc")
             draw.text((x0 - 55, ty - 8), f"{1.0 - pct:.2f}", fill="black")
         pts: list[tuple[int, int]] = [(_X(vmin), _Y(1.0))]
-        for xv, yv in zip(xs, ys_abs):
+        for xv, yv in zip(xs, ys_abs, strict=False):
             pts.append((_X(xv), _Y(yv)))
         pts.append((_X(vmax), _Y(1.0)))
         draw.polygon(pts, outline="#1f77b4", fill="#e3f2fd")
-        for v, I in zip(freqs_cm, intensities):
+        for v, I in zip(freqs_cm, intensities, strict=False):
             if v <= 0:
                 continue
             h = (I if I > 0 else 1.0) / y_max if y_max > 0 else 0.0
@@ -211,9 +221,9 @@ def _plot_ir(freqs_cm: list[float], intensities: list[float], out_png: str,
     return False
 
 
-def _set_dihedral_and_write(n: int, atoms: list[str], coords: list[list[float]],
-                            i: int, j: int, k: int, l: int, angle_deg: float,
-                            out_path: str) -> bool:
+def _set_dihedral_and_write(
+    n: int, atoms: list[str], coords: list[list[float]], i: int, j: int, k: int, l: int, angle_deg: float, out_path: str
+) -> bool:
     """
     用 OpenBabel --tor 对单个分子设置二面角后输出
     参数:
@@ -227,20 +237,20 @@ def _set_dihedral_and_write(n: int, atoms: list[str], coords: list[list[float]],
     """
     tmp_in: str | None = None
     try:
-        with tempfile.NamedTemporaryFile("w", suffix=".xyz", delete=False, encoding='utf-8') as f:
+        with tempfile.NamedTemporaryFile("w", suffix=".xyz", delete=False, encoding="utf-8") as f:
             tmp_in = f.name
             f.write(_write_xyz(n, atoms, coords))
         exe = ob_utils._resolve_obabel_cli()
         import subprocess as _sp
         import sys as _sys
+
         if _sys.platform == "win32":
             si = _sp.STARTUPINFO()
             si.dwFlags |= _sp.STARTF_USESHOWWINDOW
-            kw = {'startupinfo': si, 'creationflags': _sp.CREATE_NO_WINDOW}
+            kw = {"startupinfo": si, "creationflags": _sp.CREATE_NO_WINDOW}
         else:
             kw = {}
-        cmd = [exe, tmp_in, "-O", out_path,
-               "--tor", f"{i+1},{j+1},{k+1},{l+1},{angle_deg:.4f}"]
+        cmd = [exe, tmp_in, "-O", out_path, "--tor", f"{i + 1},{j + 1},{k + 1},{l + 1},{angle_deg:.4f}"]
         r = _sp.run(cmd, capture_output=True, text=True, timeout=120, **kw)
         return r.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 0
     except Exception as e:
@@ -254,8 +264,9 @@ def _set_dihedral_and_write(n: int, atoms: list[str], coords: list[list[float]],
                 pass
 
 
-def _set_dihedral_and_get(n: int, atoms: list[str], coords: list[list[float]],
-                          i: int, j: int, k: int, l: int, angle_deg: float) -> str | None:
+def _set_dihedral_and_get(
+    n: int, atoms: list[str], coords: list[list[float]], i: int, j: int, k: int, l: int, angle_deg: float
+) -> str | None:
     """
     P-03 内存版：用 OpenBabel --tor 设置二面角后，直接返回修改后 XYZ 文本（不落盘输出文件）。
     内部仍用临时文件驱动 obabel（obabel 必须走文件路径），但临时文件会被清理，
@@ -265,7 +276,8 @@ def _set_dihedral_and_get(n: int, atoms: list[str], coords: list[list[float]],
     tmp_out: str | None = None
     try:
         import tempfile as _tf
-        with _tf.NamedTemporaryFile("w", suffix=".xyz", delete=False, encoding='utf-8') as f:
+
+        with _tf.NamedTemporaryFile("w", suffix=".xyz", delete=False, encoding="utf-8") as f:
             tmp_in = f.name
             f.write(_write_xyz(n, atoms, coords))
         fd, tmp_out = _tf.mkstemp(suffix=".xyz")
@@ -273,18 +285,18 @@ def _set_dihedral_and_get(n: int, atoms: list[str], coords: list[list[float]],
         exe = ob_utils._resolve_obabel_cli()
         import subprocess as _sp
         import sys as _sys
+
         if _sys.platform == "win32":
             si = _sp.STARTUPINFO()
             si.dwFlags |= _sp.STARTF_USESHOWWINDOW
-            kw = {'startupinfo': si, 'creationflags': _sp.CREATE_NO_WINDOW}
+            kw = {"startupinfo": si, "creationflags": _sp.CREATE_NO_WINDOW}
         else:
             kw = {}
-        cmd = [exe, tmp_in, "-O", tmp_out,
-               "--tor", f"{i + 1},{j + 1},{k + 1},{l + 1},{angle_deg:.4f}"]
+        cmd = [exe, tmp_in, "-O", tmp_out, "--tor", f"{i + 1},{j + 1},{k + 1},{l + 1},{angle_deg:.4f}"]
         r = _sp.run(cmd, capture_output=True, text=True, timeout=120, **kw)
         if r.returncode != 0 or not os.path.exists(tmp_out) or os.path.getsize(tmp_out) == 0:
             return None
-        with open(tmp_out, encoding='utf-8') as fh:
+        with open(tmp_out, encoding="utf-8") as fh:
             return fh.read()
     except Exception as e:
         logger.debug("内存版设置二面角失败: %s", e)

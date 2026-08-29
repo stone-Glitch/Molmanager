@@ -1,11 +1,14 @@
 """scan 子系统 mixin（由原 core/model.py 拆分而来）。"""
+
 from typing import List, Tuple
 
 from ._common import *  # noqa: F401,F403
 
 
 class ScanMixin:
-    def filter_files(self, entries: list[dict], keyword: str="", status: str="全部", ext: str="全部") -> list[dict]:
+    def filter_files(
+        self, entries: list[dict], keyword: str = "", status: str = "全部", ext: str = "全部"
+    ) -> list[dict]:
         # E-04：化学感知搜索。含已知 key: 前缀（mw:/formula:/logP:…）时走化学查询分支，
         # 惰性按文件算描述符并富集 entry 后再过滤；无前缀时行为与历史完全一致（向后兼容）。
         if keyword and looks_like_chem_query(keyword):
@@ -18,17 +21,18 @@ class ScanMixin:
         if keyword:
             kw = keyword.lower()
             result = [
-                e for e in result
-                if kw in str(e.get('name', '')).lower()
-                or kw in str(e.get('base', '')).lower()
-                or kw in str(e.get('eng', '')).lower()
-                or kw in str(e.get('chn', '')).lower()
+                e
+                for e in result
+                if kw in str(e.get("name", "")).lower()
+                or kw in str(e.get("base", "")).lower()
+                or kw in str(e.get("eng", "")).lower()
+                or kw in str(e.get("chn", "")).lower()
             ]
         if status != "全部":
-            result = [e for e in result if e.get('status') == status]
+            result = [e for e in result if e.get("status") == status]
         if ext != "全部":
             target = "." + ext.lower()
-            result = [e for e in result if e.get('ext', '').lower() == target]
+            result = [e for e in result if e.get("ext", "").lower() == target]
         return result
 
     def _filter_files_chem(self, entries: list[dict], keyword: str, status: str, ext: str) -> list[dict]:
@@ -43,15 +47,15 @@ class ScanMixin:
         desc_cache: dict = {}
 
         def _enrich(e: dict) -> dict:
-            path = self.work_dir / e.get('name', '')
+            path = self.work_dir / e.get("name", "")
             key = str(path)
             d = desc_cache.get(key)
             if d is None:
                 d = {}
                 try:
                     res = self.calculate_descriptors(key)
-                    if res and res.get('success') and res.get('descriptors'):
-                        d = res['descriptors']
+                    if res and res.get("success") and res.get("descriptors"):
+                        d = res["descriptors"]
                 except Exception as _de:
                     logger.debug("富集描述符失败 %s: %s", key, _de)
                 desc_cache[key] = d
@@ -60,12 +64,20 @@ class ScanMixin:
             # 浅拷贝，避免污染缓存的扫描 entry（scan_files 结果可能被别处复用）
             e = dict(e)
             for src, dst in (
-                ("molecular_weight", "mw"), ("mw", "mw"),
-                ("formula", "formula"), ("molecular_formula", "formula"),
-                ("logP", "logP"), ("logp", "logP"), ("xlogp", "logP"),
-                ("heavy_atoms", "heavy"), ("heavy", "heavy"),
-                ("atoms", "atoms"), ("natoms", "atoms"), ("num_atoms", "atoms"),
-                ("rotors", "rotors"), ("rotatable_bonds", "rotors"),
+                ("molecular_weight", "mw"),
+                ("mw", "mw"),
+                ("formula", "formula"),
+                ("molecular_formula", "formula"),
+                ("logP", "logP"),
+                ("logp", "logP"),
+                ("xlogp", "logP"),
+                ("heavy_atoms", "heavy"),
+                ("heavy", "heavy"),
+                ("atoms", "atoms"),
+                ("natoms", "atoms"),
+                ("num_atoms", "atoms"),
+                ("rotors", "rotors"),
+                ("rotatable_bonds", "rotors"),
             ):
                 v = d.get(src)
                 if v not in (None, "", "N/A"):
@@ -75,10 +87,10 @@ class ScanMixin:
         enriched = [_enrich(e) for e in entries]
         result = [e for e in enriched if match_entry(e, conditions) and matches_free_text(e, free_terms)]
         if status != "全部":
-            result = [e for e in result if e.get('status') == status]
+            result = [e for e in result if e.get("status") == status]
         if ext != "全部":
             target = "." + ext.lower()
-            result = [e for e in result if e.get('ext', '').lower() == target]
+            result = [e for e in result if e.get("ext", "").lower() == target]
         return result
 
     def _compute_tree_signature(self, wd: Path) -> bytes:
@@ -128,7 +140,7 @@ class ScanMixin:
             raise FileNotFoundError(f"工作目录不存在: {wd}")
         if ext_filter is None:
             ext_filter = list(SUPPORTED_EXTS)
-        ext_filter = tuple(e.lower() if e.startswith('.') else '.' + e.lower() for e in ext_filter)
+        ext_filter = tuple(e.lower() if e.startswith(".") else "." + e.lower() for e in ext_filter)
 
         # 审计 3.1：缓存键从「仅根目录 mtime」改为「递归目录树签名」。
         # 否则在深层子目录内增删文件不会改变根目录 mtime，缓存会返回陈旧列表。
@@ -182,14 +194,14 @@ class ScanMixin:
                             continue
                         if not entry.is_file(follow_symlinks=False):
                             continue
-                        rel = os.path.relpath(entry.path, root_str).replace(os.sep, '/')
+                        rel = os.path.relpath(entry.path, root_str).replace(os.sep, "/")
                         base = os.path.splitext(name)[0]
-                        has_chinese = '（' in base and '）' in base
+                        has_chinese = "（" in base and "）" in base
                         if has_chinese:
-                            eng, chn = base.split('（', 1)
-                            chn = chn.rstrip('）')
+                            eng, chn = base.split("（", 1)
+                            chn = chn.rstrip("）")
                         else:
-                            eng, chn = base, ''
+                            eng, chn = base, ""
 
                         if ext in STRUCTURE_EXTS:
                             eng_key = str(eng).lower()
@@ -200,25 +212,27 @@ class ScanMixin:
                                 status = "⏳ 纯中文，待修复"
                             else:
                                 status = "❌ 无映射"
-                            mapped_chn_out = mapping_lower.get(eng_key, '')
+                            mapped_chn_out = mapping_lower.get(eng_key, "")
                         else:
                             status = "📄 计算文件"
-                            mapped_chn_out = ''
+                            mapped_chn_out = ""
 
-                        result.append({
-                            'name': rel,
-                            'base': base,
-                            'ext': ext,
-                            'eng': eng,
-                            'chn': chn,
-                            'has_chinese': has_chinese,
-                            'status': status,
-                            'mapped_chn': mapped_chn_out,
-                        })
+                        result.append(
+                            {
+                                "name": rel,
+                                "base": base,
+                                "ext": ext,
+                                "eng": eng,
+                                "chn": chn,
+                                "has_chinese": has_chinese,
+                                "status": status,
+                                "mapped_chn": mapped_chn_out,
+                            }
+                        )
             except (PermissionError, OSError):
                 # 跳过无权限访问的子目录，避免单次扫描整体失败
                 continue
-        result.sort(key=lambda x: x['name'])
+        result.sort(key=lambda x: x["name"])
 
         if sig:
             with self._lock:
@@ -230,19 +244,19 @@ class ScanMixin:
         files = self.scan_files(ext_filter=list(STRUCTURE_EXTS))
         missing = set()
         for f in files:
-            if f['status'] == "❌ 无映射":
-                if f['eng']:
-                    missing.add(f['eng'])
+            if f["status"] == "❌ 无映射":
+                if f["eng"]:
+                    missing.add(f["eng"])
         missing = sorted(missing)
         if missing:
             out_file = self.work_dir / "missing_eng_names.txt"
-            with open(win_longpath(out_file), 'w', encoding='utf-8') as f:
+            with open(win_longpath(out_file), "w", encoding="utf-8") as f:
                 f.write("英文名\n")
                 for name in missing:
                     f.write(f"{name}\n")
-            self._log(f"📋 缺失列表已保存: {out_file} (共 {len(missing)} 个)", 'info')
+            self._log(f"📋 缺失列表已保存: {out_file} (共 {len(missing)} 个)", "info")
         else:
-            self._log("🎉 所有 .mol/.xyz 文件均有映射", 'success')
+            self._log("🎉 所有 .mol/.xyz 文件均有映射", "success")
         return missing
 
     def export_missing_csv(self, csv_path: str) -> int:
@@ -257,11 +271,11 @@ class ScanMixin:
             missing_list = list(missing_eng)
         else:
             missing_list = []
-        with open(win_longpath(safe_path), 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.DictWriter(f, fieldnames=['english', 'chinese'])
+        with open(win_longpath(safe_path), "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=["english", "chinese"])
             writer.writeheader()
             for eng in missing_list:
-                writer.writerow({'english': eng, 'chinese': ''})
+                writer.writerow({"english": eng, "chinese": ""})
         return len(missing_list)
 
     def export_mapping_csv(self, csv_path: str) -> int:
@@ -290,18 +304,16 @@ class ScanMixin:
         # F17：覆盖既有导出产物前先快照（失败只警告，不阻断导出）
         self.create_backup_snapshot("export", [safe_path], "导出完整映射表前的自动快照")
         with self._lock:
-            rows: List[Tuple[str, str]] = sorted(
-                self.mapping.items(), key=lambda kv: str(kv[0]).lower()
-            )
-        with open(win_longpath(safe_path), 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.DictWriter(f, fieldnames=['english', 'chinese'])
+            rows: List[Tuple[str, str]] = sorted(self.mapping.items(), key=lambda kv: str(kv[0]).lower())
+        with open(win_longpath(safe_path), "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=["english", "chinese"])
             writer.writeheader()
             for eng, chn in rows:
-                writer.writerow({'english': eng, 'chinese': chn})
-        self._log(f"📤 已导出完整映射表：{len(rows)} 条 → {Path(safe_path).name}", 'success')
+                writer.writerow({"english": eng, "chinese": chn})
+        self._log(f"📤 已导出完整映射表：{len(rows)} 条 → {Path(safe_path).name}", "success")
         return len(rows)
 
-    def import_mapping_csv(self, csv_path: str, overwrite: bool=False) -> dict:
+    def import_mapping_csv(self, csv_path: str, overwrite: bool = False) -> dict:
         # 导入是「读取」操作：允许用户从任意位置选取映射 CSV（与 load_mapping_file 行为一致）。
         # 仅放宽工作目录限制；resolve_secure_output_path 内部的 symlink/junction 检查仍生效。
         safe_path = self.resolve_secure_output_path(csv_path, create_parent=False, allow_outside_work_dir=True)
@@ -309,29 +321,29 @@ class ScanMixin:
         skipped = 0
         errors = 0
         total_rows = 0
-        chn_conflicts = []   # 科学红线 S-06：中文名冲突（同一中文名被多个英文名共用 → 反向映射塌缩）
+        chn_conflicts = []  # 科学红线 S-06：中文名冲突（同一中文名被多个英文名共用 → 反向映射塌缩）
         # 本次导入批次内已见过的中文名 → 英文名，用于检测「文件内部」的中文名冲突
         batch_chn_seen = {}
-        with open(win_longpath(safe_path), encoding='utf-8-sig', newline='') as f:
+        with open(win_longpath(safe_path), encoding="utf-8-sig", newline="") as f:
             # 🔴 D-03 修复：自动检测分隔符（TSV 制表符 / CSV 逗号）。
             # 旧实现硬编码 csv.DictReader 默认逗号，用户用「导入」选了 TSV 时，
             # 整行被当成单列 → english/chinese 取不到 → 全部 skipped → 静默导入 0 条（丢数据）。
             _head = f.readline()
             f.seek(0)
-            if '\t' in _head:
-                _delim = '\t'
+            if "\t" in _head:
+                _delim = "\t"
             else:
                 # 退化为 Sniffer（兼容分号等罕见分隔符），失败则回退逗号
                 try:
                     _delim = csv.Sniffer().sniff(_head, delimiters=",;\t").delimiter
                 except Exception:
-                    _delim = ','
+                    _delim = ","
             reader = csv.DictReader(f, delimiter=_delim)
             for row in reader:
                 total_rows += 1
                 try:
-                    eng = row.get('english', '').strip()
-                    chn = row.get('chinese', '').strip()
+                    eng = row.get("english", "").strip()
+                    chn = row.get("chinese", "").strip()
                     if not eng or not chn:
                         continue
                     if not overwrite and eng in self.mapping:
@@ -396,11 +408,32 @@ class ScanMixin:
             raise ValueError(f"文件名段不能为 '.': {name!r}")
         if not allow_subdir and len(parts) != 1:
             raise ValueError(f"仅接受单级文件名，禁止子目录: {name!r}")
-        _WIN_RESERVED: frozenset[str] = frozenset({
-            "CON", "PRN", "AUX", "NUL",
-            "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-            "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
-        })
+        _WIN_RESERVED: frozenset[str] = frozenset(
+            {
+                "CON",
+                "PRN",
+                "AUX",
+                "NUL",
+                "COM1",
+                "COM2",
+                "COM3",
+                "COM4",
+                "COM5",
+                "COM6",
+                "COM7",
+                "COM8",
+                "COM9",
+                "LPT1",
+                "LPT2",
+                "LPT3",
+                "LPT4",
+                "LPT5",
+                "LPT6",
+                "LPT7",
+                "LPT8",
+                "LPT9",
+            }
+        )
         for seg in parts:
             seg_stripped = seg.split(".", 1)[0].strip().rstrip(".").strip()
             if seg_stripped.upper() in _WIN_RESERVED:

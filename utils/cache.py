@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 统一缓存模块 —— 取代原先散落在各处的多套 ad-hoc 缓存。
 
@@ -26,6 +25,7 @@
 - 淘汰 / 清空均为原子操作，保证字典不会被并发读写损坏。
 - 容量上限可经 ``.maxsize`` 读取；``clear()`` 返回淘汰条目数便于统计。
 """
+
 from __future__ import annotations
 
 import hashlib

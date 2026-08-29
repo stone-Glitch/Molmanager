@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 首次使用向导 wizard.py
 - 在 MainView.__init__ 延迟 (after(300ms)) 调用；当 config_data["first_run"] == True 时显示。
@@ -7,6 +6,7 @@
 - 完成后把 first_run=False 写入配置，下次启动不再弹。
 - **不阻塞主界面**：所有变量写回 MainView.*_var，最后调用 controller 完成真正的加载/扫描。
 """
+
 from __future__ import annotations
 
 import os
@@ -79,13 +79,12 @@ class FirstRunWizard:
         self.sample_mapping_path: Path | None = None
         try:
             from utils.constants import RUN_PRESETS
+
             preset_names = list(RUN_PRESETS.keys())
         except Exception:
             RUN_PRESETS = {}
             preset_names = []
-        self.preset_value: tk.StringVar = tk.StringVar(
-            value=preset_names[0] if preset_names else "快速（力场）"
-        )
+        self.preset_value: tk.StringVar = tk.StringVar(value=preset_names[0] if preset_names else "快速（力场）")
         self.preset_names = preset_names
         self.RUN_PRESETS = RUN_PRESETS
 
@@ -103,7 +102,7 @@ class FirstRunWizard:
         self.top.minsize(560, 440)
         self.top.resizable(True, True)
         self.top.transient(self.app)  # 始终前置于主窗口
-        self.top.grab_set()            # 模态，防止新手同时乱点主窗口
+        self.top.grab_set()  # 模态，防止新手同时乱点主窗口
 
         self._build_header()
         self._body = tk.Frame(self.top, bg="#161B22", bd=1, relief=tk.SOLID)
@@ -128,13 +127,22 @@ class FirstRunWizard:
         header.pack(fill=tk.X, padx=18, pady=(14, 12))
         titles = ["1/3 工作目录", "2/3 映射模板", "3/3 默认计算预设"]
         for i, t in enumerate(titles):
-            active = (i == self._step)
+            active = i == self._step
             bg = "#3B6EFF" if active else "#FFFFFF"
             fg = "#FFFFFF" if active else "#2C3E50"
-            pill = tk.Label(header, text=t, bg=bg, fg=fg,
-                            font=('Microsoft YaHei UI', 10, "bold"), padx=14, pady=6,
-                            bd=1, relief=tk.SOLID,
-                            highlightthickness=1, highlightbackground="#C8D0DC")
+            pill = tk.Label(
+                header,
+                text=t,
+                bg=bg,
+                fg=fg,
+                font=("Microsoft YaHei UI", 10, "bold"),
+                padx=14,
+                pady=6,
+                bd=1,
+                relief=tk.SOLID,
+                highlightthickness=1,
+                highlightbackground="#C8D0DC",
+            )
             pill.pack(side=tk.LEFT, padx=4)
 
     # ---------------- 根据当前 step 渲染 body ----------------
@@ -195,90 +203,142 @@ class FirstRunWizard:
 
     # ---------------- Step1：工作目录 ----------------
     def _render_step1(self):
-        tk.Label(self._body, text="📂  选择你的工作目录",
-                 bg="#161B22", fg="#E6EDF3",
-                 font=('Microsoft YaHei UI', 15, 'bold')).pack(anchor="w", padx=24, pady=(20, 6))
-        tk.Label(self._body,
-                 text="   工作目录用来存放所有 .mol / .xyz / .fchk / .out 等计算文件。\n"
-                      "   我们推荐使用独立文件夹，后续可随时在顶部工具栏切换。",
-                 bg="#161B22", fg="#9DA7B3",
-                 font=('Microsoft YaHei UI', 10), justify="left", wraplength=500).pack(anchor="w", padx=24)
+        tk.Label(
+            self._body, text="📂  选择你的工作目录", bg="#161B22", fg="#E6EDF3", font=("Microsoft YaHei UI", 15, "bold")
+        ).pack(anchor="w", padx=24, pady=(20, 6))
+        tk.Label(
+            self._body,
+            text="   工作目录用来存放所有 .mol / .xyz / .fchk / .out 等计算文件。\n"
+            "   我们推荐使用独立文件夹，后续可随时在顶部工具栏切换。",
+            bg="#161B22",
+            fg="#9DA7B3",
+            font=("Microsoft YaHei UI", 10),
+            justify="left",
+            wraplength=500,
+        ).pack(anchor="w", padx=24)
 
         row = tk.Frame(self._body, bg="#161B22")
         row.pack(fill=tk.X, padx=24, pady=(20, 12))
-        tk.Label(row, text="目录路径:", bg="#161B22", fg="#E6EDF3",
-                 font=('Microsoft YaHei UI', 11, "bold")).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(row, text="目录路径:", bg="#161B22", fg="#E6EDF3", font=("Microsoft YaHei UI", 11, "bold")).pack(
+            side=tk.LEFT, padx=(0, 8)
+        )
         self._wd_var = tk.StringVar(value=self.work_dir_value)
-        entry = ttk.Entry(row, textvariable=self._wd_var, font=('Microsoft YaHei UI', 11))
+        entry = ttk.Entry(row, textvariable=self._wd_var, font=("Microsoft YaHei UI", 11))
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
 
         def _browse():
-            d = filedialog.askdirectory(parent=self.top, title="选择工作目录",
-                                         initialdir=self._wd_var.get() or str(Path.home()))
+            d = filedialog.askdirectory(
+                parent=self.top, title="选择工作目录", initialdir=self._wd_var.get() or str(Path.home())
+            )
             if d:
                 self._wd_var.set(d)
+
         ttk.Button(row, text="浏览…", command=_browse).pack(side=tk.LEFT)
 
-        tip = tk.Label(self._body,
-                       text="💡 推荐：在「文档」下新建一个空文件夹（程序已自动尝试创建 Documents/MolManager）。",
-                       bg="#161B22", fg="#58A6FF",
-                       font=('Microsoft YaHei UI', 9), justify="left", wraplength=500)
+        tip = tk.Label(
+            self._body,
+            text="💡 推荐：在「文档」下新建一个空文件夹（程序已自动尝试创建 Documents/MolManager）。",
+            bg="#161B22",
+            fg="#58A6FF",
+            font=("Microsoft YaHei UI", 9),
+            justify="left",
+            wraplength=500,
+        )
         tip.pack(anchor="w", padx=24, pady=(0, 0))
 
     # ---------------- Step2：映射模板 ----------------
     def _render_step2(self):
-        tk.Label(self._body, text="🗂️  中英文/编号映射表",
-                 bg="#161B22", fg="#E6EDF3",
-                 font=('Microsoft YaHei UI', 15, 'bold')).pack(anchor="w", padx=24, pady=(20, 6))
-        tk.Label(self._body,
-                 text="   映射表能把「文件名 → 中文名」自动关联，列表里一眼看出每个分子是什么。\n"
-                      "   初学者建议直接生成示例模板，在它基础上添加你自己的条目即可。",
-                 bg="#161B22", fg="#9DA7B3",
-                 font=('Microsoft YaHei UI', 10), justify="left", wraplength=500).pack(anchor="w", padx=24)
+        tk.Label(
+            self._body, text="🗂️  中英文/编号映射表", bg="#161B22", fg="#E6EDF3", font=("Microsoft YaHei UI", 15, "bold")
+        ).pack(anchor="w", padx=24, pady=(20, 6))
+        tk.Label(
+            self._body,
+            text="   映射表能把「文件名 → 中文名」自动关联，列表里一眼看出每个分子是什么。\n"
+            "   初学者建议直接生成示例模板，在它基础上添加你自己的条目即可。",
+            bg="#161B22",
+            fg="#9DA7B3",
+            font=("Microsoft YaHei UI", 10),
+            justify="left",
+            wraplength=500,
+        ).pack(anchor="w", padx=24)
 
-        cb = tk.Checkbutton(self._body, text="✅ 在工作目录里生成 mapping_template.txt 并默认加载它",
-                            variable=self.load_sample_mapping, bg="#161B22",
-                            fg="#E6EDF3", font=('Microsoft YaHei UI', 11, "bold"),
-                            activebackground="#1C2330", activeforeground="#2DD4BF",
-                            selectcolor="#1C2330", bd=0, pady=6)
+        cb = tk.Checkbutton(
+            self._body,
+            text="✅ 在工作目录里生成 mapping_template.txt 并默认加载它",
+            variable=self.load_sample_mapping,
+            bg="#161B22",
+            fg="#E6EDF3",
+            font=("Microsoft YaHei UI", 11, "bold"),
+            activebackground="#1C2330",
+            activeforeground="#2DD4BF",
+            selectcolor="#1C2330",
+            bd=0,
+            pady=6,
+        )
         cb.pack(anchor="w", padx=24, pady=(24, 4))
 
-        tk.Label(self._body,
-                 text="\n".join([
-                     "示例格式（以空格/逗号分隔皆可）：",
-                     "   benzene             苯",
-                     "   toluene             甲苯",
-                     "   benzoic_acid, 苯甲酸",
-                 ]),
-                 bg="#1C2330", fg="#E6EDF3",
-                 font=('Consolas', 10), justify="left",
-                 bd=1, relief=tk.SOLID, padx=16, pady=10
-                 ).pack(anchor="w", padx=24, pady=(8, 10))
+        tk.Label(
+            self._body,
+            text="\n".join(
+                [
+                    "示例格式（以空格/逗号分隔皆可）：",
+                    "   benzene             苯",
+                    "   toluene             甲苯",
+                    "   benzoic_acid, 苯甲酸",
+                ]
+            ),
+            bg="#1C2330",
+            fg="#E6EDF3",
+            font=("Consolas", 10),
+            justify="left",
+            bd=1,
+            relief=tk.SOLID,
+            padx=16,
+            pady=10,
+        ).pack(anchor="w", padx=24, pady=(8, 10))
 
     # ---------------- Step3：默认计算预设 ----------------
     def _render_step3(self):
-        tk.Label(self._body, text="🎯  选择默认计算预设",
-                 bg="#161B22", fg="#E6EDF3",
-                 font=('Microsoft YaHei UI', 15, 'bold')).pack(anchor="w", padx=24, pady=(20, 6))
-        tk.Label(self._body,
-                 text="   以后每次打开「计算与动画」页，都会默认选中这个预设，一键即可运行。\n"
-                      "   高级用户仍可在 PSI4 完整面板里自由调整所有参数。",
-                 bg="#161B22", fg="#9DA7B3",
-                 font=('Microsoft YaHei UI', 10), justify="left", wraplength=500).pack(anchor="w", padx=24)
+        tk.Label(
+            self._body, text="🎯  选择默认计算预设", bg="#161B22", fg="#E6EDF3", font=("Microsoft YaHei UI", 15, "bold")
+        ).pack(anchor="w", padx=24, pady=(20, 6))
+        tk.Label(
+            self._body,
+            text="   以后每次打开「计算与动画」页，都会默认选中这个预设，一键即可运行。\n"
+            "   高级用户仍可在 PSI4 完整面板里自由调整所有参数。",
+            bg="#161B22",
+            fg="#9DA7B3",
+            font=("Microsoft YaHei UI", 10),
+            justify="left",
+            wraplength=500,
+        ).pack(anchor="w", padx=24)
 
         row = tk.Frame(self._body, bg="#161B22")
         row.pack(fill=tk.X, padx=24, pady=(20, 8))
-        tk.Label(row, text="预设:", bg="#161B22", fg="#E6EDF3",
-                 font=('Microsoft YaHei UI', 11, "bold")).pack(side=tk.LEFT, padx=(0, 10))
-        cb = ttk.Combobox(row, textvariable=self.preset_value,
-                          values=self.preset_names, state="readonly", width=44,
-                          font=('Microsoft YaHei UI', 11))
+        tk.Label(row, text="预设:", bg="#161B22", fg="#E6EDF3", font=("Microsoft YaHei UI", 11, "bold")).pack(
+            side=tk.LEFT, padx=(0, 10)
+        )
+        cb = ttk.Combobox(
+            row,
+            textvariable=self.preset_value,
+            values=self.preset_names,
+            state="readonly",
+            width=44,
+            font=("Microsoft YaHei UI", 11),
+        )
         cb.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 显示所选预设的参数摘要
-        self._preset_summary = tk.Label(self._body, text="", bg="#161B22", fg="#58A6FF",
-                                        font=('Microsoft YaHei UI', 10), justify="left", anchor="w",
-                                        wraplength=500)
+        self._preset_summary = tk.Label(
+            self._body,
+            text="",
+            bg="#161B22",
+            fg="#58A6FF",
+            font=("Microsoft YaHei UI", 10),
+            justify="left",
+            anchor="w",
+            wraplength=500,
+        )
         self._preset_summary.pack(fill=tk.X, padx=24, pady=(6, 0))
 
         def _update_summary(_e=None):
@@ -292,14 +352,18 @@ class FirstRunWizard:
             else:
                 lines.append("（未发现 RUN_PRESETS 配置，后续可用默认值。）")
             self._preset_summary.configure(text="\n".join(lines))
+
         cb.bind("<<ComboboxSelected>>", _update_summary)
         _update_summary()
 
-        tk.Label(self._body,
-                 text="\n完成后：工作目录会立刻切换 + 扫描文件 + 加载示例映射 + 默认预设写回配置。",
-                 bg="#161B22", fg="#3FB950",
-                 font=('Microsoft YaHei UI', 9, "bold"), justify="left"
-                 ).pack(anchor="w", padx=24, pady=(14, 10))
+        tk.Label(
+            self._body,
+            text="\n完成后：工作目录会立刻切换 + 扫描文件 + 加载示例映射 + 默认预设写回配置。",
+            bg="#161B22",
+            fg="#3FB950",
+            font=("Microsoft YaHei UI", 9, "bold"),
+            justify="left",
+        ).pack(anchor="w", padx=24, pady=(14, 10))
 
     # ---------------- 导航动作 ----------------
     def _validate_step0(self) -> bool:
@@ -323,8 +387,9 @@ class FirstRunWizard:
                 target = Path(self.work_dir_value)
                 self.sample_mapping_path = _sample_mapping_template(target)
             except Exception as e:
-                messagebox.showwarning("映射模板创建失败", f"{e}\n（可稍后手动在文件管理页点「生成缺失CSV」）",
-                                       parent=self.top)
+                messagebox.showwarning(
+                    "映射模板创建失败", f"{e}\n（可稍后手动在文件管理页点「生成缺失CSV」）", parent=self.top
+                )
         return True
 
     def _validate_step2(self) -> bool:
@@ -360,6 +425,7 @@ class FirstRunWizard:
             # 同步到 model.work_dir
             try:
                 from pathlib import Path as _P
+
                 new_wd = _P(self.work_dir_value)
                 app.controller.model.work_dir = new_wd
                 app.controller.model.exts = set(app.controller.model.exts)  # no-op
@@ -383,10 +449,9 @@ class FirstRunWizard:
                 # 也同步到主窗口，方便 dialogs.py 打开时直接读取
                 try:
                     from utils.constants import RUN_PRESETS
+
                     preset_info = RUN_PRESETS.get(self.preset_value.get(), {})
-                    for ck, ak in (("last_method", "method"),
-                                   ("last_basis", "basis"),
-                                   ("last_task", "task_type")):
+                    for ck, ak in (("last_method", "method"), ("last_basis", "basis"), ("last_task", "task_type")):
                         if preset_info.get(ak) is not None:
                             self.config_data["psi4_config"][ck] = preset_info[ak]
                 except Exception:
@@ -395,6 +460,7 @@ class FirstRunWizard:
                 app.config_data.update(self.config_data)
                 try:
                     from utils.config import save_config
+
                     save_config(app.config_data)
                 except Exception:
                     pass
@@ -423,6 +489,7 @@ class FirstRunWizard:
                 self.app.config_data["first_run"] = False
                 try:
                     from utils.config import save_config
+
                     save_config(self.app.config_data)
                 except Exception:
                     pass
@@ -465,6 +532,7 @@ def maybe_show_first_run_wizard(app: MainView) -> None:
             try:
                 app.config_data["first_run"] = False
                 from utils.config import save_config
+
                 save_config(app.config_data)
             except Exception:
                 pass

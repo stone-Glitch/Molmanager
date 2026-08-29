@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 PSI4 计算模块 - 路由
 保持原 psi4_compute 所有函数接口不变。
 """
+
 from .conformer import conformer_search_ensemble
 from .core import (
     _run_process_with_timeout,

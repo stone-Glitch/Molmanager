@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 U-05 状态列彩色圆点 Tag（纯逻辑层：状态 → 颜色映射）
 
@@ -10,14 +9,13 @@ error/muted/info），UI 据此把原来的 emoji 文本渲染成彩色圆点 Ta
 由 UI 侧最终套用（这里给暗色友好默认值）。
 """
 
-
 # 语义色名 → 默认 hex（暗色主题友好；UI 可按主题覆盖）
 COLOR_HEX: dict[str, str] = {
-    "success": "#3fb950",   # 绿
-    "warning": "#d29922",   # 橙
-    "error": "#f85149",     # 红
-    "muted": "#8b949e",     # 灰
-    "info": "#4c9aff",      # 蓝
+    "success": "#3fb950",  # 绿
+    "warning": "#d29922",  # 橙
+    "error": "#f85149",  # 红
+    "muted": "#8b949e",  # 灰
+    "info": "#4c9aff",  # 蓝
 }
 
 # 精确状态 → 色名（对齐 core/model.py scan_files 产出的状态字符串）

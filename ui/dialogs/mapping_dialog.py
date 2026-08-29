@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 映射管理对话框 - 映射表导入/导出/编辑
 """
+
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -25,8 +25,10 @@ def show_mapping_manager_dialog(app, controller):
     dialog.transient(app)
     dialog.grab_set()
 
-    info_label_var = tk.StringVar(value=f"当前映射条目：{len(model.mapping)}  |  缺失映射：{len(model.generate_missing_list())}")
-    ttk.Label(dialog, textvariable=info_label_var, font=('Arial', 10, 'bold')).pack(pady=15)
+    info_label_var = tk.StringVar(
+        value=f"当前映射条目：{len(model.mapping)}  |  缺失映射：{len(model.generate_missing_list())}"
+    )
+    ttk.Label(dialog, textvariable=info_label_var, font=("Arial", 10, "bold")).pack(pady=15)
 
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(pady=10, padx=20, fill=tk.BOTH, expand=True)
@@ -39,23 +41,23 @@ def show_mapping_manager_dialog(app, controller):
             initialdir=str(model.work_dir),
             initialfile="missing_mapping.csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-            defaultextension=".csv"
+            defaultextension=".csv",
         )
         if not csv_path:
             return
         try:
             count = model.export_missing_csv(str(Path(csv_path)))
             messagebox.showinfo("导出成功", f"已导出 {count} 条缺失映射记录到：\n{csv_path}", parent=dialog)
-            app.helpers.on_log(f"💾 导出缺失映射表: {count} 条", 'success')
+            app.helpers.on_log(f"💾 导出缺失映射表: {count} 条", "success")
         except Exception as e:
             messagebox.showerror("导出失败", f"导出失败：{e}", parent=dialog)
-            app.helpers.on_log(f"❌ 导出缺失映射表失败: {e}", 'error')
+            app.helpers.on_log(f"❌ 导出缺失映射表失败: {e}", "error")
 
     def import_missing(overwrite=False):
         csv_path = filedialog.askopenfilename(
             initialdir=str(model.work_dir),
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-            title="选择映射表 CSV 文件"
+            title="选择映射表 CSV 文件",
         )
         if not csv_path:
             return
@@ -64,17 +66,15 @@ def show_mapping_manager_dialog(app, controller):
             app.helpers.on_log(
                 f"📥 导入映射表: 新增 {result['added']} 条, 跳过 {result['skipped']} 条, "
                 f"错误 {result['errors']} 条, 总行数 {result['total_rows']}",
-                'success' if result['errors'] == 0 else 'warning'
+                "success" if result["errors"] == 0 else "warning",
             )
             # 科学红线 S-06：中文名冲突必须显式告知
             if result.get("dup_chn", 0) > 0:
-                _ex = "；".join(
-                    f"「{c[0]}」←{c[1]}/{c[2]}" for c in result["chn_conflicts"][:10]
-                )
+                _ex = "；".join(f"「{c[0]}」←{c[1]}/{c[2]}" for c in result["chn_conflicts"][:10])
                 app.helpers.on_log(
                     f"⚠️ 导入发现 {result['dup_chn']} 处中文名冲突（多英文名共用同一中文名，"
                     f"反向映射将只保留其一）：{_ex}",
-                    'warning'
+                    "warning",
                 )
             refresh_info()
             _msg = (
@@ -90,35 +90,39 @@ def show_mapping_manager_dialog(app, controller):
                 controller.scan_files()
         except Exception as e:
             messagebox.showerror("导入失败", f"导入失败：{e}", parent=dialog)
-            app.helpers.on_log(f"❌ 导入映射表失败: {e}", 'error')
+            app.helpers.on_log(f"❌ 导入映射表失败: {e}", "error")
 
     def export_mapping():
         csv_path = filedialog.asksaveasfilename(
             initialdir=str(model.work_dir),
             initialfile="mapping_full.csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-            defaultextension=".csv"
+            defaultextension=".csv",
         )
         if not csv_path:
             return
         try:
             count = model.export_mapping_csv(str(Path(csv_path)))
             messagebox.showinfo("导出成功", f"已导出 {count} 条映射记录到：\n{csv_path}", parent=dialog)
-            app.helpers.on_log(f"💾 导出完整映射表: {count} 条", 'success')
+            app.helpers.on_log(f"💾 导出完整映射表: {count} 条", "success")
         except Exception as e:
             messagebox.showerror("导出失败", f"导出失败：{e}", parent=dialog)
-            app.helpers.on_log(f"❌ 导出完整映射表失败: {e}", 'error')
+            app.helpers.on_log(f"❌ 导出完整映射表失败: {e}", "error")
 
     btn_export_missing = ttk.Button(btn_frame, text="💾 导出缺失表 (CSV)", command=export_missing, width=28)
     btn_export_missing.grid(row=0, column=0, padx=10, pady=8)
 
-    btn_import_missing = ttk.Button(btn_frame, text="📥 导入缺失表 (CSV)", command=lambda: import_missing(overwrite=False), width=28)
+    btn_import_missing = ttk.Button(
+        btn_frame, text="📥 导入缺失表 (CSV)", command=lambda: import_missing(overwrite=False), width=28
+    )
     btn_import_missing.grid(row=0, column=1, padx=10, pady=8)
 
     btn_export_mapping = ttk.Button(btn_frame, text="📤 导出当前映射表", command=export_mapping, width=28)
     btn_export_mapping.grid(row=1, column=0, padx=10, pady=8)
 
-    btn_import_overwrite = ttk.Button(btn_frame, text="🔄 覆盖式导入", command=lambda: import_missing(overwrite=True), width=28)
+    btn_import_overwrite = ttk.Button(
+        btn_frame, text="🔄 覆盖式导入", command=lambda: import_missing(overwrite=True), width=28
+    )
     btn_import_overwrite.grid(row=1, column=1, padx=10, pady=8)
 
     btn_frame.grid_columnconfigure(0, weight=1)
@@ -137,11 +141,7 @@ def show_mapping_editor_dialog(app, controller):
     dialog.transient(app)
     dialog.grab_set()
 
-    top_info = ttk.Label(
-        dialog,
-        text="提示：双击单元格即可编辑英文名 / 中文名；英文名不能为空。",
-        foreground="blue"
-    )
+    top_info = ttk.Label(dialog, text="提示：双击单元格即可编辑英文名 / 中文名；英文名不能为空。", foreground="blue")
     top_info.pack(anchor=tk.W, padx=12, pady=(10, 4))
 
     btn_top = ttk.Frame(dialog)
@@ -198,10 +198,7 @@ def show_mapping_editor_dialog(app, controller):
             current_vals.extend([""] * (col_idx + 1 - len(current_vals)))
         old_val = current_vals[col_idx]
         new_val = simpledialog.askstring(
-            "编辑单元格",
-            f"请输入新的{col_name}：",
-            initialvalue=str(old_val),
-            parent=dialog
+            "编辑单元格", f"请输入新的{col_name}：", initialvalue=str(old_val), parent=dialog
         )
         if new_val is None:
             return
@@ -260,14 +257,10 @@ def show_mapping_editor_dialog(app, controller):
         fuzzy_ex = ""
         if fuzzy:
             fuzzy_ex = "；".join(f"「{a}」≈「{b}」" for a, b, _ in fuzzy[:10])
-            warn_lines.append(
-                f"发现 {len(fuzzy)} 对近似中文名（编辑距离≤2，可能是拼写重复）：{fuzzy_ex}"
-            )
+            warn_lines.append(f"发现 {len(fuzzy)} 对近似中文名（编辑距离≤2，可能是拼写重复）：{fuzzy_ex}")
         extra = ("\n（注意：" + "；".join(warn_lines) + "）") if warn_lines else ""
         if not messagebox.askyesno(
-            "确认保存",
-            f"是否保存 {len(new_dict)} 条映射到工作目录下的「分子命名映射.json」？" + extra,
-            parent=dialog
+            "确认保存", f"是否保存 {len(new_dict)} 条映射到工作目录下的「分子命名映射.json」？" + extra, parent=dialog
         ):
             return
         # T10：保存逻辑已下沉到 model.save_mapping()。
@@ -287,7 +280,7 @@ def show_mapping_editor_dialog(app, controller):
             pass
         messagebox.showinfo("保存成功", f"已保存 {len(new_dict)} 条映射到：\n{out_path}", parent=dialog)
         if fuzzy:
-            app.helpers.on_log(f"⚠️ 映射表保存发现 {len(fuzzy)} 对近似中文名：{fuzzy_ex}", 'warning')
+            app.helpers.on_log(f"⚠️ 映射表保存发现 {len(fuzzy)} 对近似中文名：{fuzzy_ex}", "warning")
         controller.scan_files()
 
     def _gen_template():
@@ -307,14 +300,13 @@ def show_mapping_editor_dialog(app, controller):
             )
             messagebox.showinfo(
                 "模板已生成",
-                f"已生成 {n} 行空白模板：\n{out}\n"
-                f"（含现有 {len(model.mapping)} 个英文名占位 + 10 个空行）",
+                f"已生成 {n} 行空白模板：\n{out}\n（含现有 {len(model.mapping)} 个英文名占位 + 10 个空行）",
                 parent=dialog,
             )
-            app.helpers.on_log(f"📝 生成映射空白模板: {n} 行 → {Path(out).name}", 'success')
+            app.helpers.on_log(f"📝 生成映射空白模板: {n} 行 → {Path(out).name}", "success")
         except Exception as e:
             messagebox.showerror("生成失败", f"生成模板失败：{e}", parent=dialog)
-            app.helpers.on_log(f"❌ 生成映射模板失败: {e}", 'error')
+            app.helpers.on_log(f"❌ 生成映射模板失败: {e}", "error")
 
     def _suggest_from_files():
         # M-02：扫描工作目录，把尚未映射的文件名词干作为候选英文名建议给用户批量添加。
@@ -332,8 +324,7 @@ def show_mapping_editor_dialog(app, controller):
         if not sug:
             messagebox.showinfo(
                 "无新建议",
-                "工作目录下没有尚未映射的文件名候选。\n"
-                "（已映射的英文名会自动跳过；限定符如 _opt/_conf 会被剥离）",
+                "工作目录下没有尚未映射的文件名候选。\n（已映射的英文名会自动跳过；限定符如 _opt/_conf 会被剥离）",
                 parent=dialog,
             )
             return
@@ -353,8 +344,7 @@ def show_mapping_editor_dialog(app, controller):
         list_frame = ttk.Frame(pick)
         list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=4)
         lb_scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL)
-        lb = tk.Listbox(list_frame, selectmode=tk.MULTIPLE, yscrollcommand=lb_scroll.set,
-                        exportselection=False)
+        lb = tk.Listbox(list_frame, selectmode=tk.MULTIPLE, yscrollcommand=lb_scroll.set, exportselection=False)
         lb_scroll.config(command=lb.yview)
         lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         lb_scroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -385,8 +375,7 @@ def show_mapping_editor_dialog(app, controller):
                 all_iids.append(new_iid)
                 added += 1
             _commit("从文件名添加")
-            messagebox.showinfo("已添加", f"已向映射表添加 {added} 条候选（中文名留空）。",
-                                parent=pick)
+            messagebox.showinfo("已添加", f"已向映射表添加 {added} 条候选（中文名留空）。", parent=pick)
             pick.destroy()
 
         ttk.Button(btn_row, text="全选", command=_sel_all).pack(side=tk.LEFT, padx=5)
@@ -431,7 +420,7 @@ def show_mapping_editor_dialog(app, controller):
         show="headings",
         selectmode=tk.EXTENDED,
         yscrollcommand=v_scroll.set,
-        xscrollcommand=h_scroll.set
+        xscrollcommand=h_scroll.set,
     )
     v_scroll.config(command=tv.yview)
     h_scroll.config(command=tv.xview)
@@ -439,6 +428,7 @@ def show_mapping_editor_dialog(app, controller):
     h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
     tv.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     import ui.ui_theme as _ut
+
     _ut.bind_treeview_hover(tv)
     tv.heading("英文名", text="英文名", command=lambda: _tv_sort_column(tv, "英文名", False))
     tv.heading("中文名", text="中文名", command=lambda: _tv_sort_column(tv, "中文名", False))
@@ -456,6 +446,7 @@ def show_mapping_editor_dialog(app, controller):
 
     try:
         from utils.undo_stack import UndoStack
+
         undo_stack = UndoStack(maxlen=100)
 
         def _snapshot_rows():
@@ -495,8 +486,10 @@ def show_mapping_editor_dialog(app, controller):
         # 以初始映射为基线（不计入可撤销步骤）
         undo_stack.reset(_snapshot_rows())
     except Exception:
+
         def _undo():
             messagebox.showinfo("撤销", _undo_available_hint(), parent=dialog)
+
         def _redo():
             messagebox.showinfo("重做", _undo_available_hint(), parent=dialog)
 
@@ -532,10 +525,10 @@ def show_mapping_diff_preview(app, old: dict, new: dict, diff: dict) -> bool:
             f"将载入 {len(new)} 条映射   ·   新增 {c.get('added', 0)} ／ "
             f"修改 {c.get('changed', 0)} ／ 删除 {c.get('removed', 0)} ／ 不变 {c.get('unchanged', 0)}"
         ),
-        font=('Arial', 10, 'bold'),
+        font=("Arial", 10, "bold"),
     ).pack(pady=(10, 4))
 
-    txt = tk.Text(top, wrap=tk.WORD, font=('Consolas', 9))
+    txt = tk.Text(top, wrap=tk.WORD, font=("Consolas", 9))
     sb = ttk.Scrollbar(top, orient=tk.VERTICAL, command=txt.yview)
     txt.configure(yscrollcommand=sb.set)
     txt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(10, 0), pady=4)

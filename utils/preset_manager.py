@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 预设管理器 - 保存/加载用户自定义配置预设
 用于反应动画、PSI4计算等模块的参数模板管理
@@ -27,18 +26,18 @@ class PresetManager:
 
     def _get_preset_dir(self) -> Path:
         """获取预设存储目录（跨平台）"""
-        if sys.platform == 'win32':
-            base = Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming'))
+        if sys.platform == "win32":
+            base = Path(os.environ.get("APPDATA", Path.home() / "AppData/Roaming"))
         else:
-            base = Path.home() / '.config'
-        return base / self.app_name / 'presets'
+            base = Path.home() / ".config"
+        return base / self.app_name / "presets"
 
     def _load_all(self) -> None:
         """加载所有预设到内存缓存"""
         self._cache.clear()
         for f in self.preset_dir.glob("*.json"):
             try:
-                with open(f, encoding='utf-8') as fp:
+                with open(f, encoding="utf-8") as fp:
                     data = json.load(fp)
                     self._cache[f.stem] = data
             except Exception as e:
@@ -61,14 +60,14 @@ class PresetManager:
             return False
         # 添加元数据
         to_save = data.copy()
-        to_save['_meta'] = {
-            'name': name,
-            'saved_at': datetime.now().isoformat(),
-            'version': '1.0',
+        to_save["_meta"] = {
+            "name": name,
+            "saved_at": datetime.now().isoformat(),
+            "version": "1.0",
         }
         try:
             path = self.preset_dir / f"{name}.json"
-            with open(path, 'w', encoding='utf-8') as f:
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(to_save, f, ensure_ascii=False, indent=2)
             self._cache[name] = to_save
             logger.info("预设 '%s' 已保存", name)
@@ -96,7 +95,7 @@ class PresetManager:
         if not data:
             return False
         try:
-            with open(export_path, 'w', encoding='utf-8') as f:
+            with open(export_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
@@ -110,13 +109,13 @@ class PresetManager:
         返回 (预设名, 数据字典)，失败抛出 ValueError。
         """
         try:
-            with open(import_path, encoding='utf-8') as f:
+            with open(import_path, encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as e:
-            raise ValueError(f"读取文件失败: {e}")
+            raise ValueError(f"读取文件失败: {e}") from e
 
         # 如果导入的数据包含 _meta.name，优先使用，否则用文件名
-        meta_name = data.get('_meta', {}).get('name')
+        meta_name = data.get("_meta", {}).get("name")
         if meta_name:
             name = new_name or meta_name
         else:
@@ -135,7 +134,7 @@ class PresetManager:
     def get_preset_meta(self, name: str) -> dict[str, Any]:
         """获取预设的元数据（保存时间等）"""
         data = self.get_preset(name)
-        return data.get('_meta', {})
+        return data.get("_meta", {})
 
     def clear_all(self) -> int:
         """删除所有预设，返回删除数量"""
@@ -147,6 +146,7 @@ class PresetManager:
 
 # 全局单例（延迟初始化）
 _preset_manager: PresetManager | None = None
+
 
 def get_preset_manager() -> PresetManager:
     global _preset_manager

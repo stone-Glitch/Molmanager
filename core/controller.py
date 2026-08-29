@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Controller - 协调 Model 和 View
 修复：所有任务函数正确传递进度回调
 """
+
 import logging
 from pathlib import Path
 from tkinter import (
@@ -52,7 +52,7 @@ class Controller:
         if path in recent:
             recent.remove(path)
         recent.insert(0, path)
-        self.app.config_data["recent_work_dirs"] = recent[:config.MAX_RECENT_DIRS]
+        self.app.config_data["recent_work_dirs"] = recent[: config.MAX_RECENT_DIRS]
         save_config(self.app.config_data)
 
     def get_recent_work_dirs(self) -> list[str]:
@@ -89,35 +89,35 @@ class Controller:
     def load_mapping_file(self):
         raw = self.app.mapping_file_var.get().strip()
         if not raw:
-            self.helpers.on_log("❌ 请先选择映射文件", 'error')
+            self.helpers.on_log("❌ 请先选择映射文件", "error")
             return
         path = Path(raw)
         # 🔴 校验必须是真实存在的「文件」：空串 / '.' / 目录都会让 Path(...).exists()
         # 为 True（当前目录必然存在），从而绕过上面的守卫去 open() 一个目录 →
         # Windows 上 PermissionError: [Errno 13] Permission denied: '.'。
         if not path.is_file():
-            self.helpers.on_log(f"❌ 映射文件无效或不存在: {path}", 'error')
+            self.helpers.on_log(f"❌ 映射文件无效或不存在: {path}", "error")
             return
         # ---- M-05：加载前先算 Diff 预览，让用户确认变更后再 apply ----
         try:
             from utils.mapping_utils import diff_mappings
+
             new_dict, _parse_info = self.model.parse_mapping_file(path)
             diff = diff_mappings(self.model.mapping, new_dict)
             c = diff["counts"]
             if c["added"] or c["changed"] or c["removed"]:
                 try:
                     from ui.dialogs.mapping_dialog import show_mapping_diff_preview
-                    ok = show_mapping_diff_preview(
-                        self.app, self.model.mapping, new_dict, diff
-                    )
+
+                    ok = show_mapping_diff_preview(self.app, self.model.mapping, new_dict, diff)
                 except Exception as _pe:  # 弹窗异常 → 回退为直接加载，按钮绝不死
                     logger.warning("Diff 预览弹窗异常，回退直接加载: %s", _pe)
                     ok = True
                 if not ok:
-                    self.helpers.on_log("ℹ️ 已取消加载（用户在 Diff 预览中拒绝）", 'info')
+                    self.helpers.on_log("ℹ️ 已取消加载（用户在 Diff 预览中拒绝）", "info")
                     return
             else:
-                self.helpers.on_log("ℹ️ 新映射表与当前内容一致，无需变更", 'info')
+                self.helpers.on_log("ℹ️ 新映射表与当前内容一致，无需变更", "info")
         except Exception as _de:  # Diff 计算异常 → 回退为直接加载
             logger.warning("Diff 预览计算异常，回退直接加载: %s", _de)
         # ---- 原有加载逻辑（保持不变）----
@@ -127,15 +127,14 @@ class Controller:
             self.app.mapping_count.set(str(count))
             if info["dup_eng"] > 0:
                 self.helpers.on_log(
-                    f"✅ 映射加载成功：{count} 个有效条目，自动跳过 {info['dup_eng']} 个重复英文名", 'success'
+                    f"✅ 映射加载成功：{count} 个有效条目，自动跳过 {info['dup_eng']} 个重复英文名", "success"
                 )
             else:
-                self.helpers.on_log(f"✅ 映射加载成功，共 {count} 个条目", 'success')
+                self.helpers.on_log(f"✅ 映射加载成功，共 {count} 个条目", "success")
             # 科学红线 S-06：中文名冲突必须显式告知，绝不能静默塌缩导致丢数据
             if info["dup_chn"] > 0:
                 _examples = "\n".join(
-                    f"  · 「{c[0]}」← 已属 {c[1]}，又被 {c[2]} 占用"
-                    for c in info["chn_conflicts"][:10]
+                    f"  · 「{c[0]}」← 已属 {c[1]}，又被 {c[2]} 占用" for c in info["chn_conflicts"][:10]
                 )
                 _more = "\n  …（更多冲突见日志）" if info["dup_chn"] > 10 else ""
                 self.helpers.on_log(
@@ -143,7 +142,7 @@ class Controller:
                     f"反向映射将只保留其一，其余悄悄丢失）："
                     + "；".join(f"「{c[0]}」←{c[1]}/{c[2]}" for c in info["chn_conflicts"][:10])
                     + (_more if info["dup_chn"] > 10 else ""),
-                    'warning'
+                    "warning",
                 )
                 messagebox.showwarning(
                     "中文名冲突（映射将丢数据）",
@@ -151,11 +150,11 @@ class Controller:
                     "反向映射（中文→英文）只会保留最后载入的一条，其余会悄悄丢失。\n\n"
                     "冲突示例：\n" + _examples + _more + "\n\n"
                     "建议：把冲突的中文名改为互不相同，或用「映射表编辑器」手动拆分后再加载。",
-                    parent=self.app
+                    parent=self.app,
                 )
             self.scan_files()
         except Exception as e:
-            self.helpers.on_log(f"❌ 加载映射失败: {e}", 'error')
+            self.helpers.on_log(f"❌ 加载映射失败: {e}", "error")
 
     # ----- 扫描 -----
     @performance_timer(name="Controller.scan_files", level=logging.DEBUG, min_ms=5.0)
@@ -164,24 +163,27 @@ class Controller:
             try:
                 ext_str = self.app.ext_filter_var.get().strip()
                 if ext_str:
-                    ext_list = [e.strip().lower() for e in ext_str.split(',') if e.strip()]
-                    ext_list = [e if e.startswith('.') else '.' + e for e in ext_list]
+                    ext_list = [e.strip().lower() for e in ext_str.split(",") if e.strip()]
+                    ext_list = [e if e.startswith(".") else "." + e for e in ext_list]
                 else:
                     ext_list = list(SUPPORTED_EXTS)
                 files = self.model.scan_files(ext_filter=ext_list)
+
                 def _after():
                     self.app.last_scan_result = list(files)
                     self.helpers.apply_filter()
-                    self.helpers.on_log(f"📁 扫描完成，发现 {len(files)} 个文件", 'info')
+                    self.helpers.on_log(f"📁 扫描完成，发现 {len(files)} 个文件", "info")
                     # 工作台统计卡刷新（若工作台页已构建）
                     try:
                         if hasattr(self.app, "refresh_dashboard"):
                             self.app.refresh_dashboard()
                     except Exception:
                         pass
+
                 self.app.after(0, _after)
             except Exception as e:
                 import traceback
+
                 # 提前获取异常对象和堆栈字符串，避免 lambda 延迟绑定取到已被清理的 e
                 err_obj = e
                 err_tb = traceback.format_exc()
@@ -191,17 +193,20 @@ class Controller:
                 # 会把"扫描失败"这种普通错误升级成 worker 线程未捕获异常并刷屏。
                 # 这里兜底：回调派发不了就直接写日志文件，不再向上抛。
                 try:
-                    self.app.after(0, lambda _e=err_obj, _tb=err_tb:
-                                   self.helpers.on_log(f"❌ 扫描失败: {_e}\n{_tb}", 'error'))
+                    self.app.after(
+                        0, lambda _e=err_obj, _tb=err_tb: self.helpers.on_log(f"❌ 扫描失败: {_e}\n{_tb}", "error")
+                    )
                 except Exception:
                     logger.error("扫描失败（且无法回调到 UI）: %s\n%s", err_obj, err_tb)
+
         self.helpers.run_task(_scan)
 
     # ----- 修复 -----
     def _collect_rename_preview_changes(self, dry_run_callable) -> list[dict]:
         changes = []
-        orig_cb = getattr(self.model, 'log_callback', None)
-        def _cap(msg, level='info'):
+        orig_cb = getattr(self.model, "log_callback", None)
+
+        def _cap(msg, level="info"):
             if isinstance(msg, str) and ("->" in msg) and ("预览" in msg or "[预览]" in msg):
                 try:
                     right = msg.split("]: ", 1)[-1] if "]:" in msg else msg
@@ -214,6 +219,7 @@ class Controller:
                     pass
             if orig_cb:
                 orig_cb(msg, level)
+
         self.model.set_log_callback(_cap)
         try:
             dry_run_callable()
@@ -224,57 +230,72 @@ class Controller:
     def fix_all(self):
         def _dryrun():
             return self._collect_rename_preview_changes(lambda: self.model.fix_all(dry_run=True))
+
         def _run(_filtered_changes=None):
             def _task(**kwargs):
                 results = self.model.fix_all(_filtered_changes=_filtered_changes)
                 total = sum(r[0] for r in results.values())
-                self.helpers.on_log(f"🎉 一键修复完成！共修复 {total} 个文件", 'success')
+                self.helpers.on_log(f"🎉 一键修复完成！共修复 {total} 个文件", "success")
                 self.scan_files()
+
             self.helpers.run_task(_task)
+
         self.helpers.preview_or_run("一键修复", _dryrun, _run)
 
     def rename_by_mapping(self):
         def _dryrun():
             return self._collect_rename_preview_changes(lambda: self.model.rename_by_mapping(dry_run=True))
+
         def _run(_filtered_changes=None):
             def _task(**kwargs):
                 s, f, sk = self.model.rename_by_mapping(_filtered_changes=_filtered_changes)
-                self.helpers.on_log(f"🎉 映射重命名完成: 成功 {s}, 失败 {f}, 跳过 {sk}", 'success')
+                self.helpers.on_log(f"🎉 映射重命名完成: 成功 {s}, 失败 {f}, 跳过 {sk}", "success")
                 self.scan_files()
+
             self.helpers.run_task(_task)
+
         self.helpers.preview_or_run("映射重命名", _dryrun, _run)
 
     def fix_chinese(self):
         def _dryrun():
             return self._collect_rename_preview_changes(lambda: self.model.fix_chinese_names(dry_run=True))
+
         def _run(_filtered_changes=None):
             def _task(**kwargs):
                 s, f, sk = self.model.fix_chinese_names(_filtered_changes=_filtered_changes)
-                self.helpers.on_log(f"🎉 修复中文名完成: 成功 {s}, 失败 {f}, 跳过 {sk}", 'success')
+                self.helpers.on_log(f"🎉 修复中文名完成: 成功 {s}, 失败 {f}, 跳过 {sk}", "success")
                 self.scan_files()
+
             self.helpers.run_task(_task)
+
         self.helpers.preview_or_run("修复中文名", _dryrun, _run)
 
     def fix_all_names(self):
         def _dryrun():
             return self._collect_rename_preview_changes(lambda: self.model.fix_all_names(dry_run=True))
+
         def _run(_filtered_changes=None):
             def _task(**kwargs):
                 s, f, sk = self.model.fix_all_names(_filtered_changes=_filtered_changes)
-                self.helpers.on_log(f"🎉 修复命名错误完成: 成功 {s}, 失败 {f}, 跳过 {sk}", 'success')
+                self.helpers.on_log(f"🎉 修复命名错误完成: 成功 {s}, 失败 {f}, 跳过 {sk}", "success")
                 self.scan_files()
+
             self.helpers.run_task(_task)
+
         self.helpers.preview_or_run("修复命名错误", _dryrun, _run)
 
     def fix_incorrect_chinese(self):
         def _dryrun():
             return self._collect_rename_preview_changes(lambda: self.model.fix_incorrect_chinese(dry_run=True))
+
         def _run(_filtered_changes=None):
             def _task(**kwargs):
                 s, f, sk = self.model.fix_incorrect_chinese(_filtered_changes=_filtered_changes)
-                self.helpers.on_log(f"🎉 修正中文内容完成: 成功 {s}, 失败 {f}, 跳过 {sk}", 'success')
+                self.helpers.on_log(f"🎉 修正中文内容完成: 成功 {s}, 失败 {f}, 跳过 {sk}", "success")
                 self.scan_files()
+
             self.helpers.run_task(_task)
+
         self.helpers.preview_or_run("修正中文内容", _dryrun, _run)
 
     # ----- 其他文件操作 -----
@@ -282,35 +303,48 @@ class Controller:
         def _task(**kwargs):
             missing = self.model.generate_missing_list()
             if missing:
-                self.helpers.on_log(f"📋 缺失列表已生成，共 {len(missing)} 个", 'info')
+                self.helpers.on_log(f"📋 缺失列表已生成，共 {len(missing)} 个", "info")
             else:
-                self.helpers.on_log("🎉 所有 .mol/.xyz 文件均有映射", 'success')
+                self.helpers.on_log("🎉 所有 .mol/.xyz 文件均有映射", "success")
+
         self.helpers.run_task(_task)
 
     def supplement_mol(self):
         def _dryrun() -> list[dict]:
             changes = []
             for entry in self.model.work_dir.iterdir():
-                if entry.is_file() and entry.suffix.lower() == '.xyz':
+                if entry.is_file() and entry.suffix.lower() == ".xyz":
                     dst = self.model.work_dir / f"{entry.stem}.mol"
                     if not dst.exists():
                         changes.append({"action": "convert", "from": entry.name, "to": dst.name})
             return changes
+
         def _run(_filtered_changes=None):
             def _task(**kwargs):
-                progress_cb = kwargs.get('_progress_callback')
+                progress_cb = kwargs.get("_progress_callback")
                 count = self.model.supplement_mol(progress_callback=progress_cb)
-                self.helpers.on_log(f"🎉 补全 .mol 完成，共 {count} 个", 'success')
+                self.helpers.on_log(f"🎉 补全 .mol 完成，共 {count} 个", "success")
                 self.scan_files()
+
             self.helpers.run_task(_task)
+
         self.helpers.preview_or_run("补全 mol 文件", _dryrun, _run)
 
     def organize_by_type(self):
         def _dryrun() -> list[dict]:
-            ext_map = {'.mol': 'mol_files', '.xyz': 'xyz_files', '.sdf': 'sdf_files',
-                       '.pdb': 'pdb_files', '.mol2': 'mol2_files', '.cif': 'cif_files',
-                       '.pdbqt': 'pdbqt_files', '.cml': 'cml_files',
-                       '.fchk': 'fchk_files', '.out': 'out_files', '.inp': 'inp_files'}
+            ext_map = {
+                ".mol": "mol_files",
+                ".xyz": "xyz_files",
+                ".sdf": "sdf_files",
+                ".pdb": "pdb_files",
+                ".mol2": "mol2_files",
+                ".cif": "cif_files",
+                ".pdbqt": "pdbqt_files",
+                ".cml": "cml_files",
+                ".fchk": "fchk_files",
+                ".out": "out_files",
+                ".inp": "inp_files",
+            }
             changes = []
             for entry in self.model.work_dir.iterdir():
                 if not entry.is_file():
@@ -320,15 +354,16 @@ class Controller:
                     continue
                 changes.append({"action": "move", "from": entry.name, "to": f"{ext_map[ext]}/{entry.name}"})
             return changes
+
         def _run(_filtered_changes=None):
             def _task(**kwargs):
-                progress_cb = kwargs.get('_progress_callback')
-                count = self.model.organize_by_type(
-                    progress_callback=progress_cb, _filtered_changes=_filtered_changes
-                )
-                self.helpers.on_log(f"🎉 按类型整理完成，移动 {count} 个文件", 'success')
+                progress_cb = kwargs.get("_progress_callback")
+                count = self.model.organize_by_type(progress_callback=progress_cb, _filtered_changes=_filtered_changes)
+                self.helpers.on_log(f"🎉 按类型整理完成，移动 {count} 个文件", "success")
                 self.scan_files()
+
             self.helpers.run_task(_task)
+
         self.helpers.preview_or_run("按类型整理", _dryrun, _run)
 
     def organize_by_basename(self):
@@ -339,22 +374,24 @@ class Controller:
                     continue
                 changes.append({"action": "move", "from": entry.name, "to": f"{entry.stem}/{entry.name}"})
             return changes
+
         def _run(_filtered_changes=None):
             def _task(**kwargs):
-                progress_cb = kwargs.get('_progress_callback')
+                progress_cb = kwargs.get("_progress_callback")
                 count = self.model.organize_by_basename(
                     progress_callback=progress_cb, _filtered_changes=_filtered_changes
                 )
-                self.helpers.on_log(f"🎉 按文件名分组完成，移动 {count} 个文件", 'success')
+                self.helpers.on_log(f"🎉 按文件名分组完成，移动 {count} 个文件", "success")
                 self.scan_files()
-            self.helpers.run_task(_task)
-        self.helpers.preview_or_run("按文件名分组", _dryrun, _run)
 
+            self.helpers.run_task(_task)
+
+        self.helpers.preview_or_run("按文件名分组", _dryrun, _run)
 
     def prefix_rename_dialog(self):
         file_info = self.helpers.get_selected_file_info()
         if not file_info:
-            self.helpers.on_log("⚠️ 没有选中任何文件，请先在列表中勾选", 'warning')
+            self.helpers.on_log("⚠️ 没有选中任何文件，请先在列表中勾选", "warning")
             return
 
         dialog = Toplevel(self.app)
@@ -364,7 +401,9 @@ class Controller:
         dialog.resizable(False, False)
 
         placeholder_text = "可用占位符：{stem} {ext} {mw} {logP} {tpsa} {hbd} {hba} {rotors} {rings} {atoms} {date}"
-        Label(dialog, text=placeholder_text, fg="blue", wraplength=520, justify="left").pack(padx=12, pady=(12, 4), anchor="w")
+        Label(dialog, text=placeholder_text, fg="blue", wraplength=520, justify="left").pack(
+            padx=12, pady=(12, 4), anchor="w"
+        )
 
         prefix_var = StringVar()
         entry_frame = Frame(dialog)
@@ -385,12 +424,12 @@ class Controller:
             if not prefix:
                 messagebox.showwarning("提示", "请先输入前缀模板", parent=dialog)
                 return
-            first = sorted(file_info, key=lambda x: x['name'])[0]
+            first = sorted(file_info, key=lambda x: x["name"])[0]
             try:
                 preview_captured.clear()
                 orig_cb = self.model.log_callback
 
-                def capture_log(msg, level='info'):
+                def capture_log(msg, level="info"):
                     preview_captured.append(msg)
                     if orig_cb:
                         orig_cb(msg, level)
@@ -424,8 +463,8 @@ class Controller:
         Button(btn_frame, text="OK", width=8, command=on_ok).pack(side=LEFT, padx=4)
         Button(btn_frame, text="取消", width=8, command=on_cancel).pack(side=LEFT, padx=4)
 
-        dialog.bind('<Return>', lambda e: on_ok())
-        dialog.bind('<Escape>', lambda e: on_cancel())
+        dialog.bind("<Return>", lambda e: on_ok())
+        dialog.bind("<Escape>", lambda e: on_cancel())
         self.app.wait_window(dialog)
 
         prefix = result["prefix"]
@@ -434,21 +473,25 @@ class Controller:
 
         def _task(**kwargs):
             count = self.model.prefix_rename(prefix, file_info)
-            self.helpers.on_log(f"🎉 前缀重命名完成，共 {count} 个", 'success')
+            self.helpers.on_log(f"🎉 前缀重命名完成，共 {count} 个", "success")
             self.scan_files()
+
         self.helpers.run_task(_task)
 
     def remove_duplicate_files(self):
-        if not messagebox.askyesno("确认删除", "将扫描工作目录中的所有文件，删除内容完全相同的重复副本。\n\n是否继续？"):
+        if not messagebox.askyesno(
+            "确认删除", "将扫描工作目录中的所有文件，删除内容完全相同的重复副本。\n\n是否继续？"
+        ):
             return
 
         def _task(**kwargs):
-            progress_cb = kwargs.get('_progress_callback')
+            progress_cb = kwargs.get("_progress_callback")
             deleted, errors = self.model.remove_duplicate_files(progress_callback=progress_cb)
-            self.helpers.on_log(f"🗑️ 删除重复文件完成：共删除 {deleted} 个文件", 'success')
+            self.helpers.on_log(f"🗑️ 删除重复文件完成：共删除 {deleted} 个文件", "success")
             if errors:
-                self.helpers.on_log(f"⚠️ 出现 {len(errors)} 个错误: " + "; ".join(errors[:3]), 'warning')
+                self.helpers.on_log(f"⚠️ 出现 {len(errors)} 个错误: " + "; ".join(errors[:3]), "warning")
             self.scan_files()
+
         self.helpers.run_task(_task)
 
     def undo_last(self):
@@ -456,19 +499,23 @@ class Controller:
             success = self.model.undo_last()
             self.scan_files()
             if not success:
-                self.helpers.on_log("⚠️ 没有可撤销的操作或撤销失败", 'warning')
+                self.helpers.on_log("⚠️ 没有可撤销的操作或撤销失败", "warning")
+
         self.helpers.run_task(_task)
 
     def redo_last(self):
         def _task(**kwargs):
             result = self.model.redo_last()
-            self.helpers.on_log(f"重做完成: 成功 {result['success_count']}, 失败 {result['error_count']}",
-                                'info' if result['error_count'] == 0 else 'warning')
+            self.helpers.on_log(
+                f"重做完成: 成功 {result['success_count']}, 失败 {result['error_count']}",
+                "info" if result["error_count"] == 0 else "warning",
+            )
             self.scan_files()
+
         self.helpers.run_task(_task)
 
     def get_undo_redo_state(self) -> dict:
-        return {'undo_count': len(self.model.history), 'redo_count': len(self.model.redo_stack)}
+        return {"undo_count": len(self.model.history), "redo_count": len(self.model.redo_stack)}
 
     # ================ F06：拖放导入 / 菜单兜底导入（T18） ================
     def handle_dropped_paths(self, paths, *, source: str = "drop") -> None:
@@ -490,12 +537,12 @@ class Controller:
         try:
             from core.drop_handler import DropHandler
         except Exception as exc:  # noqa: BLE001
-            self.helpers.on_log(f"⚠️ 拖放模块不可用（已忽略本次导入）: {exc}", 'warning')
+            self.helpers.on_log(f"⚠️ 拖放模块不可用（已忽略本次导入）: {exc}", "warning")
             return
 
         cfg = getattr(self.app, "config_data", {}) or {}
         if not DropHandler.is_enabled(cfg):
-            self.helpers.on_log("⚠️ 拖放导入已在配置中关闭（dnd.enabled = false）", 'warning')
+            self.helpers.on_log("⚠️ 拖放导入已在配置中关闭（dnd.enabled = false）", "warning")
             return
 
         # ---- 1) 分类：白名单 / 目录展开 / 去重 / 受保护目录拒绝 ----
@@ -507,18 +554,17 @@ class Controller:
                 result = handler.process(paths)
         except Exception as exc:  # noqa: BLE001
             logger.warning("解析拖入路径失败: %s", exc)
-            self.helpers.on_log(f"❌ 解析拖入内容失败: {exc}", 'error')
+            self.helpers.on_log(f"❌ 解析拖入内容失败: {exc}", "error")
             return
 
         tag = "拖入" if source == "drop" else "选择"
-        self.helpers.on_log(f"📥 {tag}内容分析：{result.summary()}", 'info')
+        self.helpers.on_log(f"📥 {tag}内容分析：{result.summary()}", "info")
         for line in result.rejection_lines():
-            self.helpers.on_log(f"　└ 已忽略 · {line}", 'warning')
+            self.helpers.on_log(f"　└ 已忽略 · {line}", "warning")
 
         # ---- 2) 一个都不能导 → 说清楚为什么，然后收工 ----
         if not result.has_accepted():
-            detail = "\n".join(f"· {line}" for line in result.rejection_lines()) or \
-                     "· 没有识别到任何文件"
+            detail = "\n".join(f"· {line}" for line in result.rejection_lines()) or "· 没有识别到任何文件"
             try:
                 messagebox.showinfo(
                     "没有可导入的文件",
@@ -549,7 +595,7 @@ class Controller:
         lines += ["", "原文件保留在原位置不动，导入后可用 Ctrl+Z 撤销。", "", "是否继续？"]
         try:
             if not messagebox.askyesno("确认导入", "\n".join(lines), parent=self.app):
-                self.helpers.on_log("已取消导入", 'info')
+                self.helpers.on_log("已取消导入", "info")
                 return
         except Exception:
             pass  # 无法弹确认框（极端环境）时按「继续」处理，避免功能完全不可用
@@ -558,23 +604,21 @@ class Controller:
         accepted = list(result.accepted)
 
         def _task(**kwargs):
-            progress_cb = kwargs.get('_progress_callback')
-            info = self.model.import_external_files(
-                accepted, mode="copy", progress_callback=progress_cb
-            )
-            for msg in info['skipped'][:5]:
-                self.helpers.on_log(f"⏭️ 跳过 {msg}", 'warning')
-            for msg in info['errors'][:5]:
-                self.helpers.on_log(f"❌ {msg}", 'error')
+            progress_cb = kwargs.get("_progress_callback")
+            info = self.model.import_external_files(accepted, mode="copy", progress_callback=progress_cb)
+            for msg in info["skipped"][:5]:
+                self.helpers.on_log(f"⏭️ 跳过 {msg}", "warning")
+            for msg in info["errors"][:5]:
+                self.helpers.on_log(f"❌ {msg}", "error")
             self.helpers.on_log(
                 f"🎉 导入完成：{info['count']} 个文件已进入工作目录（Ctrl+Z 可撤销）",
-                'success' if not info['errors'] else 'warning',
+                "success" if not info["errors"] else "warning",
             )
             # F06 即时反馈：导入结果不只写日志，还要给一个汇总弹窗。
             # _task 在后台线程运行，弹窗必须经 after(0) 调回主线程（Tk 非线程安全）。
-            count = info.get('count', 0)
-            skipped = len(info.get('skipped', []))
-            errors = len(info.get('errors', []))
+            count = info.get("count", 0)
+            skipped = len(info.get("skipped", []))
+            errors = len(info.get("errors", []))
             _summary = [f"✅ 成功导入 {count} 个文件"]
             if skipped:
                 _summary.append(f"⏭️ 跳过 {skipped} 个（重名/已存在等）")
@@ -583,11 +627,10 @@ class Controller:
             _summary.append("")
             _summary.append("原文件保留在原位置，可用 Ctrl+Z 撤销本次导入。")
             try:
+                _summary_text = "\n".join(_summary)
                 self.app.after(
                     0,
-                    lambda _t="\n".join(_summary): messagebox.showinfo(
-                        "导入完成", _t, parent=self.app
-                    ),
+                    lambda _t=_summary_text: messagebox.showinfo("导入完成", _t, parent=self.app),
                 )
             except Exception:
                 pass
@@ -603,9 +646,8 @@ class Controller:
         """
         try:
             from core.drop_handler import normalize_extensions
-            exts = normalize_extensions(
-                (getattr(self.app, "config_data", {}) or {}).get("dnd", {}).get("extensions")
-            )
+
+            exts = normalize_extensions((getattr(self.app, "config_data", {}) or {}).get("dnd", {}).get("extensions"))
         except Exception:
             exts = ()
         if exts:
@@ -619,7 +661,7 @@ class Controller:
                 filetypes=filetypes,
             )
         except Exception as exc:  # noqa: BLE001
-            self.helpers.on_log(f"❌ 打开文件选择框失败: {exc}", 'error')
+            self.helpers.on_log(f"❌ 打开文件选择框失败: {exc}", "error")
             return
         if not files:
             return
@@ -628,17 +670,21 @@ class Controller:
     def delete_selected(self):
         selected = self.helpers.get_selected_filenames()
         if not selected:
-            self.helpers.on_log("⚠️ 没有选中文件", 'warning')
+            self.helpers.on_log("⚠️ 没有选中文件", "warning")
             return
-        if not messagebox.askyesno("确认删除", f"确定要删除选中的 {len(selected)} 个文件吗？\n注意：文件会被移到工作目录的 .trash_backup 文件夹，可通过「撤销」恢复。"):
+        if not messagebox.askyesno(
+            "确认删除",
+            f"确定要删除选中的 {len(selected)} 个文件吗？\n注意：文件会被移到工作目录的 .trash_backup 文件夹，可通过「撤销」恢复。",
+        ):
             return
 
         def _task(**kwargs):
             deleted, errors = self.model.delete_files(selected)
             for err in errors:
-                self.helpers.on_log(f"❌ {err}", 'error')
-            self.helpers.on_log(f"删除完成，共删除 {deleted} 个（可撤销）", 'success')
+                self.helpers.on_log(f"❌ {err}", "error")
+            self.helpers.on_log(f"删除完成，共删除 {deleted} 个（可撤销）", "success")
             self.scan_files()
+
         self.helpers.run_task(_task)
 
     @performance_timer(name="Controller.run_fix_by_mode", level=logging.DEBUG, min_ms=5.0)
@@ -671,11 +717,13 @@ class Controller:
         if not paths:
             return
         from core.task_manager import TaskManager
+
         tm = TaskManager(self.app, self)
 
         # 并发度：默认 1（顺序，零回归）；config.descriptor_workers 或
         # 环境变量 MM_DESCRIPTOR_WORKERS 可覆盖。>1 才真正分片并行。
         import os as _os
+
         _cfg_workers = int((self.app.config_data or {}).get("descriptor_workers", 1) or 1)
         try:
             _env_workers = int(_os.environ.get("MM_DESCRIPTOR_WORKERS", "0") or "0")
@@ -687,6 +735,7 @@ class Controller:
             from pathlib import Path
 
             import chem.openbabel_utils as obu
+
             iid, fpath = item
             name = Path(fpath).name
             res = obu.calculate_descriptors(fpath)
@@ -694,8 +743,10 @@ class Controller:
 
         def _task(_progress=None, _log=None, **_kw):
             from utils.concurrency import run_sharded
+
             total = len(paths)
             ok, fail = 0, 0
+
             # 取消信号：task_manager 的取消会令 _progress 停止，但为稳妥这里用计数器感知
             def _is_cancelled():
                 return False  # 批量描述符目前整体可取消由 task_manager 层处理
@@ -707,7 +758,7 @@ class Controller:
                 on_progress=(lambda d, t: _progress(d, t, f"描述符计算中 {d}/{t}") if _progress else None),
                 is_cancelled=_is_cancelled,
             )
-            for (iid, fpath, name, res) in results:
+            for iid, _fpath, name, res in results:
                 if isinstance(res, dict) and "_exc" in res:
                     fail += 1
                     msg = f"描述符异常 {name}: {res['_exc']}"
@@ -760,17 +811,20 @@ class Controller:
 
         def _on_done(r):
             def _do():
-                total = r.get('count', 0)
-                ok = r.get('ok', 0)
-                fail = r.get('fail', 0)
+                total = r.get("count", 0)
+                ok = r.get("ok", 0)
+                fail = r.get("fail", 0)
                 if fail == 0:
                     self.app.helpers.on_log(
                         f"✅ 批量描述符完成：共 {total} 个文件，成功 {ok} 个（MW/LogP/TPSA 已写入表格对应列）",
-                        "success")
+                        "success",
+                    )
                 else:
                     self.app.helpers.on_log(
                         f"⚠️ 批量描述符完成：共 {total} 个文件，成功 {ok} / 失败 {fail}（详情见 WARNING 日志）",
-                        "warning")
+                        "warning",
+                    )
+
             self.app.after(0, _do)
 
         tm.run_async(_task, on_done=_on_done)
@@ -778,14 +832,14 @@ class Controller:
     def _get_paths_for_descriptor(self, only_selected: bool = False) -> list[tuple[str, str]]:
         """返回 [(iid, absolute_path)] 列表用于批量算描述符"""
         from pathlib import Path
+
         work = Path(self.app.work_dir_var.get()).resolve() if self.app.work_dir_var.get() else None
         if work is None:
             return []
         if only_selected:
             # 复选框多选模型：以勾选集合（文件名）为准，映射回当前可见行的 iid
             names = set(self.app.helpers.get_selected_filenames())
-            items = [iid for iid in self.app.tree.get_children()
-                     if str(self.app.tree.item(iid, "values")[1]) in names]
+            items = [iid for iid in self.app.tree.get_children() if str(self.app.tree.item(iid, "values")[1]) in names]
         else:
             items = list(self.app.tree.get_children())
         ret: list[tuple[str, str]] = []
@@ -797,7 +851,7 @@ class Controller:
             fp = work / fname
             if not fp.is_file():
                 continue
-            if fp.suffix.lower() not in ('.mol', '.sdf', '.xyz', '.cml', '.inchi', '.smiles', '.smi'):
+            if fp.suffix.lower() not in (".mol", ".sdf", ".xyz", ".cml", ".inchi", ".smiles", ".smi"):
                 continue
             ret.append((iid, str(fp)))
         return ret

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 pKa 预测模块 - SMD 热力学循环
 """
+
 import logging
 import os
 from typing import Any
@@ -64,20 +64,27 @@ def run_pka_prediction(
 
         # 4 个任务：HA gas、A⁻ gas、HA aq、A⁻ aq
         sub: dict[str, tuple[str, str, int, int]] = {
-            "HA_gas":   (ha_file,      None,    0, 1),
-            "Am_gas":   (a_minus_file, None,   -1, 1),
-            "HA_aq":    (ha_file,      solvent_name, 0, 1),
-            "Am_aq":    (a_minus_file, solvent_name, -1, 1),
+            "HA_gas": (ha_file, None, 0, 1),
+            "Am_gas": (a_minus_file, None, -1, 1),
+            "HA_aq": (ha_file, solvent_name, 0, 1),
+            "Am_aq": (a_minus_file, solvent_name, -1, 1),
         }
         sub_r: dict[str, dict] = {}
 
         for i, (key, (fp, sol, ch, mul)) in enumerate(sub.items(), 1):
-            _report(int(85 * (i - 1) / 4), f"跑单点 {key}  {method}/{basis}{' '+sol if sol else ''}")
+            _report(int(85 * (i - 1) / 4), f"跑单点 {key}  {method}/{basis}{' ' + sol if sol else ''}")
             r = run_psi4_task(
-                fp, "energy", method, basis,
+                fp,
+                "energy",
+                method,
+                basis,
                 output_dir=os.path.dirname(output_prefix),
                 preset_name=None,
-                solvent=sol, d3=d3, charge=ch, multiplicity=mul, memory=memory
+                solvent=sol,
+                d3=d3,
+                charge=ch,
+                multiplicity=mul,
+                memory=memory,
             )
             if not r.get("success"):
                 result["error"] = f"{key} 失败：{r.get('error')}"
@@ -99,19 +106,23 @@ def run_pka_prediction(
         RT = R_cal * T_K
         pka = dE_aq_cycle / (2.302585093 * RT)
 
-        result.update({
-            "energies_kcal_mol": {
-                "HA_gas": E_HA_g, "Am_gas": E_Am_g,
-                "HA_aq": E_HA_aq, "Am_aq": E_Am_aq,
-            },
-            "solvation_kcal_mol": {"HA": dG_sol_HA, "A_minus": dG_sol_Am},
-            "deltaE_gas_kcal_mol": dE_gas,
-            "deltaG_cycle_kcal_mol": dE_aq_cycle,
-            "Hplus_aq_empirical_kcal": Hplus_aq_freeEnergy_kcal,
-            "T_K": T_K,
-            "pKa_estimate": float(pka),
-            "note": "经验估计 ±2 左右；更准建议加 explicit waters 或 COSMO-RS",
-        })
+        result.update(
+            {
+                "energies_kcal_mol": {
+                    "HA_gas": E_HA_g,
+                    "Am_gas": E_Am_g,
+                    "HA_aq": E_HA_aq,
+                    "Am_aq": E_Am_aq,
+                },
+                "solvation_kcal_mol": {"HA": dG_sol_HA, "A_minus": dG_sol_Am},
+                "deltaE_gas_kcal_mol": dE_gas,
+                "deltaG_cycle_kcal_mol": dE_aq_cycle,
+                "Hplus_aq_empirical_kcal": Hplus_aq_freeEnergy_kcal,
+                "T_K": T_K,
+                "pKa_estimate": float(pka),
+                "note": "经验估计 ±2 左右；更准建议加 explicit waters 或 COSMO-RS",
+            }
+        )
         result["success"] = True
         _report(100, f"Done: pKa ≈ {pka:.2f}")
         return result

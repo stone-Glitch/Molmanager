@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 在线更新检查（T14 / F18 · Phase 1 批次二）
 ──────────────────────────────────────────
@@ -25,6 +24,7 @@
   - 本模块**不 import requests**，所有网络请求经 utils/net.py（§6.3 网络唯一入口）；
   - 版本比较统一走 utils/version.py（packaging 缺失时自动降级为元组比较）。
 """
+
 from __future__ import annotations
 
 import re
@@ -44,8 +44,10 @@ GITHUB_LATEST_TEMPLATE: str = "https://api.github.com/repos/{owner}/{repo}/relea
 GITHUB_ACCEPT: str = "application/vnd.github+json"
 
 #: "owner/repo" 简写形式的合法字符集。
-_REPO_SHORTHAND_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?/"
-                                r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
+_REPO_SHORTHAND_RE = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?/"
+    r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$"
+)
 
 #: changelog 展示上限（字符）。超长的 release note 截断，避免撑爆对话框。
 MAX_CHANGELOG_CHARS: int = 8000
@@ -56,19 +58,20 @@ CHECK_TIMEOUT = (net.CONNECT_TIMEOUT, net.READ_TIMEOUT)
 
 # ---------------------------------------------------------------- 数据结构
 
+
 @dataclass
 class UpdateInfo:
     """一次成功的更新检查结果。所有字段都保证是 str/bool，不会是 None。"""
 
-    version: str = ""                 # 远端版本号（已规范化，如 "1.2.0"）
-    current_version: str = ""         # 本地版本号
-    raw_tag: str = ""                 # 远端原始 tag（如 "v1.2.0"）
-    title: str = ""                   # release 标题
-    changelog: str = ""               # 更新说明正文
-    download_url: str = ""            # 下载 / release 页面 URL
-    published_at: str = ""            # 发布时间（原样字符串）
-    prerelease: bool = False          # 是否预发布版本
-    source_url: str = ""              # 本次请求的 API 地址（排查问题用）
+    version: str = ""  # 远端版本号（已规范化，如 "1.2.0"）
+    current_version: str = ""  # 本地版本号
+    raw_tag: str = ""  # 远端原始 tag（如 "v1.2.0"）
+    title: str = ""  # release 标题
+    changelog: str = ""  # 更新说明正文
+    download_url: str = ""  # 下载 / release 页面 URL
+    published_at: str = ""  # 发布时间（原样字符串）
+    prerelease: bool = False  # 是否预发布版本
+    source_url: str = ""  # 本次请求的 API 地址（排查问题用）
     assets: list[dict[str, str]] = field(default_factory=list)  # 可选的资产列表
 
     def summary_line(self) -> str:
@@ -94,6 +97,7 @@ class UpdateInfo:
 
 # ---------------------------------------------------------------- 配置读写
 
+
 def get_update_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     从整份 config 中取出 "update" 子字典（永远返回 dict，绝不返回 None）。
@@ -106,6 +110,7 @@ def get_update_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
     else:
         try:
             from utils.config import load_config
+
             cfg = load_config()
         except Exception as exc:  # noqa: BLE001
             logger.debug("更新检查读取配置失败（使用默认值）: %s", exc)
@@ -133,6 +138,7 @@ def _persist(config: dict[str, Any] | None, key: str, value: Any) -> bool:
     """
     try:
         from utils.config import load_config, save_config
+
         cfg = config if isinstance(config, dict) else load_config()
         node = cfg.get("update")
         if not isinstance(node, dict):
@@ -174,6 +180,7 @@ def is_version_skipped(config: dict[str, Any] | None, version: Any) -> bool:
 
 # ---------------------------------------------------------------- 更新源解析
 
+
 def normalize_repo(raw: Any) -> str:
     """
     规范化 repo 配置值。
@@ -198,11 +205,11 @@ def normalize_repo(raw: Any) -> str:
 
     # 完整 URL：github.com 的网页地址转成简写，其余原样保留
     lowered = text.lower()
-    if lowered.startswith("http://") or lowered.startswith("https://"):
+    if lowered.startswith(("http://", "https://")):
         marker = "github.com/"
         idx = lowered.find(marker)
         if idx >= 0 and "api.github.com" not in lowered:
-            tail = text[idx + len(marker):].strip("/")
+            tail = text[idx + len(marker) :].strip("/")
             segs = [s for s in tail.split("/") if s]
             if len(segs) >= 2:
                 candidate = f"{segs[0]}/{segs[1]}"
@@ -234,7 +241,7 @@ def build_release_url(repo: Any) -> str:
     if not normalized:
         return ""
     lowered = normalized.lower()
-    if lowered.startswith("http://") or lowered.startswith("https://"):
+    if lowered.startswith(("http://", "https://")):
         return normalized
     try:
         owner, name = normalized.split("/", 1)
@@ -246,6 +253,7 @@ def build_release_url(repo: Any) -> str:
 
 
 # ---------------------------------------------------------------- 响应解析
+
 
 def _first_str(data: dict[str, Any], *keys: str) -> str:
     """按顺序取第一个非空字符串字段，全空则返回 ""。"""
@@ -336,6 +344,7 @@ def parse_release_payload(data: Any, *, source_url: str = "") -> UpdateInfo | No
 
 
 # ---------------------------------------------------------------- 主入口
+
 
 def check_update(
     config: dict[str, Any] | None = None,
@@ -429,10 +438,8 @@ def describe_unavailable_reason(config: dict[str, Any] | None = None) -> str:
             )
         if not net.is_available():
             reason = net.unavailable_reason()
-            return (
-                "缺少网络组件 requests，无法联网检查更新。\n\n"
-                "安装方式：pip install requests\n"
-                + (f"\n详细原因：{reason}" if reason else "")
+            return "缺少网络组件 requests，无法联网检查更新。\n\n安装方式：pip install requests\n" + (
+                f"\n详细原因：{reason}" if reason else ""
             )
     except Exception as exc:  # noqa: BLE001
         logger.debug("生成更新诊断说明失败: %s", exc)

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """api/ —— FastAPI 接口层。
 
 需要 ``pip install -e ".[api]"``（fastapi + httpx），缺失时整文件跳过。
@@ -46,13 +45,16 @@ def test_openapi_schema_is_generated(client: TestClient) -> None:
 
 # ---------------------------------------------------------------- 纯 Python 端点
 def test_query_filters_by_conditions(client: TestClient) -> None:
-    r = client.post("/query", json={
-        "entries": [
-            {"name": "aspirin", "MW": 180.16, "formula": "C9H8O4"},
-            {"name": "ethanol", "MW": 46.07, "formula": "C2H6O"},
-        ],
-        "query": "mw:>100",
-    })
+    r = client.post(
+        "/query",
+        json={
+            "entries": [
+                {"name": "aspirin", "MW": 180.16, "formula": "C9H8O4"},
+                {"name": "ethanol", "MW": 46.07, "formula": "C2H6O"},
+            ],
+            "query": "mw:>100",
+        },
+    )
     assert r.status_code == 200
     data = r.json()
     assert data["matched_count"] == 1
@@ -90,9 +92,14 @@ def test_substructure_rejects_empty_smarts(client: TestClient) -> None:
 
 
 def test_similarity_rejects_out_of_range_threshold(client: TestClient) -> None:
-    r = client.post("/similarity", json={
-        "query": "CCO", "molecules": ["CCO"], "threshold": 5.0,
-    })
+    r = client.post(
+        "/similarity",
+        json={
+            "query": "CCO",
+            "molecules": ["CCO"],
+            "threshold": 5.0,
+        },
+    )
     assert r.status_code == 422  # pydantic 校验拦截
 
 
@@ -125,10 +132,13 @@ def test_descriptors_endpoint_missing_file(client: TestClient, requires_pybel: N
 
 
 def test_substructure_endpoint(client: TestClient, requires_openbabel: None) -> None:
-    r = client.post("/substructure", json={
-        "smarts": "C(=O)O",
-        "molecules": ["CCO", "CC(=O)O"],
-    })
+    r = client.post(
+        "/substructure",
+        json={
+            "smarts": "C(=O)O",
+            "molecules": ["CCO", "CC(=O)O"],
+        },
+    )
     assert r.status_code == 200
     data = r.json()
     assert data["matched"] == ["CC(=O)O"]
@@ -136,11 +146,14 @@ def test_substructure_endpoint(client: TestClient, requires_openbabel: None) -> 
 
 
 def test_similarity_endpoint(client: TestClient, requires_openbabel: None) -> None:
-    r = client.post("/similarity", json={
-        "query": "c1ccccc1",
-        "molecules": ["c1ccccc1C", "CCO"],
-        "threshold": 0.0,
-    })
+    r = client.post(
+        "/similarity",
+        json={
+            "query": "c1ccccc1",
+            "molecules": ["c1ccccc1C", "CCO"],
+            "threshold": 0.0,
+        },
+    )
     assert r.status_code == 200
     data = r.json()
     assert data["hits"][0]["molecule"] == "c1ccccc1C"
@@ -148,16 +161,22 @@ def test_similarity_endpoint(client: TestClient, requires_openbabel: None) -> No
 
 
 # ---------------------------------------------------------------- 降级行为
-def test_chem_endpoints_return_503_without_openbabel(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_chem_endpoints_return_503_without_openbabel(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """模拟后端缺失：必须返回 503 + 安装指引，而不是 500 或崩溃。"""
     from api import capabilities
 
-    monkeypatch.setattr(capabilities, "detect", lambda refresh=False: {
-        "openbabel": False, "pybel": False, "obabel_cli": None,
-        "psi4": False, "psi4_version": None, "openbabel_version": None,
-    })
+    monkeypatch.setattr(
+        capabilities,
+        "detect",
+        lambda refresh=False: {
+            "openbabel": False,
+            "pybel": False,
+            "obabel_cli": None,
+            "psi4": False,
+            "psi4_version": None,
+            "openbabel_version": None,
+        },
+    )
     r = client.post("/inchikey", json={"smiles": "CCO"})
     assert r.status_code == 503
     assert "OpenBabel" in r.json()["detail"]

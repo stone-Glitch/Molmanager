@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 统一网络层（T13 / F18 · Phase 1 批次二）
 ────────────────────────────────────────
@@ -22,6 +21,7 @@
   - 本模块**无 Tk 依赖**，可脱离 GUI 单测；
   - 本模块**不 import chem.psi4**（PSI4 命名陷阱，架构 §6.2）。
 """
+
 from __future__ import annotations
 
 import json as _json
@@ -53,6 +53,7 @@ _RETRYABLE_STATUS: frozenset[int] = frozenset({500, 502, 503, 504, 408, 429})
 
 # ---------------------------------------------------------------- 异常
 
+
 class NetError(Exception):
     """网络层基类异常。调用方一律可捕获，不会逃逸到 Tk 事件循环。"""
 
@@ -81,6 +82,7 @@ def _load_requests() -> Any:
     _probe_done = True
     try:
         import requests as _r  # noqa: PLC0415 - 唯一允许的 requests 入口
+
         _requests_mod = _r
         _probe_error = ""
     except Exception as exc:  # pragma: no cover - 取决于运行环境
@@ -127,6 +129,7 @@ def reset_probe_cache() -> None:
 
 # ---------------------------------------------------------------- 请求头
 
+
 def build_headers(extra: dict[str, str] | None = None) -> dict[str, str]:
     """
     构造统一请求头：UA + Accept + 不缓存。
@@ -170,6 +173,7 @@ def _normalize_timeout(timeout: Any) -> tuple[float, float]:
 
 
 # ---------------------------------------------------------------- GET
+
 
 def get_text(
     url: str,
@@ -254,7 +258,7 @@ def _get_raw_text(
         logger.debug("网络请求被跳过：URL 为空")
         return None
     url = url.strip()
-    if not (url.startswith("http://") or url.startswith("https://")):
+    if not (url.startswith(("http://", "https://"))):
         logger.debug("网络请求被跳过：仅支持 http/https，收到 %r", url[:120])
         return None
 

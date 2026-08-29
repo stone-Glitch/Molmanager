@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """回归测试：chem/openbabel_utils 子包的「公共命名空间」必须完整。
 
 背景（重要）
@@ -23,22 +22,27 @@ import pytest
 
 # (子模块, 该模块必须能从 _common 拿到的名字)
 EXPECTED_NAMES: dict[str, tuple[str, ...]] = {
-    "chem.openbabel_utils._common": ("ob", "pybel", "PYBEL_AVAILABLE",
-                                     "desc_cache", "mol_read_cache", "OB_INSTALL_GUIDE"),
+    "chem.openbabel_utils._common": (
+        "ob",
+        "pybel",
+        "PYBEL_AVAILABLE",
+        "desc_cache",
+        "mol_read_cache",
+        "OB_INSTALL_GUIDE",
+    ),
     "chem.openbabel_utils._io": ("ob", "pybel", "PYBEL_AVAILABLE", "mol_read_cache"),
     "chem.openbabel_utils._descriptors": ("ob", "pybel", "PYBEL_AVAILABLE", "desc_cache"),
     "chem.openbabel_utils._advanced": ("ob", "pybel", "PYBEL_AVAILABLE"),
     # 下划线开头的名字不会被 `import *` 带进来，必须显式导入 —— 单独盯住
-    "chem.openbabel_utils._cli": ("ob", "pybel", "PYBEL_AVAILABLE", "OB_INSTALL_GUIDE",
-                                  "_MANUAL_OBABEL_PATH"),
+    "chem.openbabel_utils._cli": ("ob", "pybel", "PYBEL_AVAILABLE", "OB_INSTALL_GUIDE", "_MANUAL_OBABEL_PATH"),
     "chem.openbabel_utils._check": ("ob", "pybel", "PYBEL_AVAILABLE", "OB_INSTALL_GUIDE"),
     "chem.openbabel_utils._cache": ("desc_cache", "mol_read_cache"),
 }
 
 
 @pytest.mark.parametrize(
-    "module_name,names",
-    [(m, n) for m, n in EXPECTED_NAMES.items()],
+    ("module_name", "names"),
+    list(EXPECTED_NAMES.items()),
     ids=list(EXPECTED_NAMES),
 )
 def test_submodule_has_common_namespace(module_name: str, names: tuple[str, ...]) -> None:
@@ -68,14 +72,29 @@ def test_public_api_is_importable_without_openbabel() -> None:
     import chem.openbabel_utils as ob_utils
 
     for fn in (
-        "convert_file", "generate_from_smiles", "optimize_geometry",
-        "calculate_descriptors", "analyze_formula", "smiles_to_inchikey",
-        "batch_inchikey", "substructure_search", "similarity_search",
-        "tanimoto", "compute_fingerprint", "render_png_2d",
-        "analyze_chirality", "invert_enantiomer", "protonate_ph",
-        "split_multi_sdf", "merge_to_sdf", "align_molecules",
-        "check_openbabel", "check_openbabel_simple", "get_supported_formats",
-        "clear_caches", "cache_stats",
+        "convert_file",
+        "generate_from_smiles",
+        "optimize_geometry",
+        "calculate_descriptors",
+        "analyze_formula",
+        "smiles_to_inchikey",
+        "batch_inchikey",
+        "substructure_search",
+        "similarity_search",
+        "tanimoto",
+        "compute_fingerprint",
+        "render_png_2d",
+        "analyze_chirality",
+        "invert_enantiomer",
+        "protonate_ph",
+        "split_multi_sdf",
+        "merge_to_sdf",
+        "align_molecules",
+        "check_openbabel",
+        "check_openbabel_simple",
+        "get_supported_formats",
+        "clear_caches",
+        "cache_stats",
     ):
         assert callable(getattr(ob_utils, fn)), f"chem.openbabel_utils.{fn} 不可调用"
 
@@ -85,10 +104,12 @@ def test_clear_caches_returns_counts() -> None:
     from chem.openbabel_utils import cache_stats, clear_caches
 
     evicted = clear_caches()
-    assert isinstance(evicted, tuple) and len(evicted) == 2
+    assert isinstance(evicted, tuple)
+    assert len(evicted) == 2
     assert all(isinstance(n, int) for n in evicted)
     stats = cache_stats()
-    assert stats["descriptors"] == 0 and stats["mol_read"] == 0
+    assert stats["descriptors"] == 0
+    assert stats["mol_read"] == 0
 
 
 def test_manual_obabel_path_roundtrip() -> None:
@@ -112,7 +133,8 @@ def test_check_openbabel_never_raises() -> None:
     from chem.openbabel_utils import check_openbabel, check_openbabel_simple
 
     simple = check_openbabel_simple()
-    assert isinstance(simple, tuple) and len(simple) >= 2
+    assert isinstance(simple, tuple)
+    assert len(simple) >= 2
     assert check_openbabel() is not None  # 缺 OpenBabel 也要返回结果而不是抛异常
 
 

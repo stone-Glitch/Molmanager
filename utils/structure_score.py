@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 U-16 结构美观度评分 + 课本对照 · 纯逻辑层
 
@@ -14,6 +13,7 @@ U-16 结构美观度评分 + 课本对照 · 纯逻辑层
 molecular_weight / logP / tpsa / heavy_atoms / bonds / hbd / hba /
 rotors / rings / formula / num_atoms）。
 """
+
 from typing import Any
 
 

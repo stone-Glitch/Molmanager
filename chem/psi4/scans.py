@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 PSI4 扫描模块 - 线性插值扫描和刚性二面角扫描
 """
+
 import csv
 import logging  # ← 添加这一行！
 from pathlib import Path
@@ -23,9 +23,21 @@ from .utils import _lerp_coords, _parse_xyz, _set_dihedral_and_get, _write_xyz
 
 
 @performance_timer(name="psi4.run_linear_scan", level=logging.DEBUG, min_ms=200.0)
-def run_linear_scan(reactant_files, product_files, steps=20, method='b3lyp', basis='6-31g*',
-                    output_dir=None, preset_name=None, solvent=None, d3=False,
-                    charge=0, multiplicity=1, memory='4 GB', _progress_callback=None):
+def run_linear_scan(
+    reactant_files,
+    product_files,
+    steps=20,
+    method="b3lyp",
+    basis="6-31g*",
+    output_dir=None,
+    preset_name=None,
+    solvent=None,
+    d3=False,
+    charge=0,
+    multiplicity=1,
+    memory="4 GB",
+    _progress_callback=None,
+):
     """真实的线性扫描：反应物/产物各取第一个文件，XYZ 坐标线性插值 N 帧，每帧跑 PSI4 单点能"""
     result: dict[str, Any] = {
         "success": False,
@@ -59,8 +71,9 @@ def run_linear_scan(reactant_files, product_files, steps=20, method='b3lyp', bas
 
     steps = max(2, int(steps))
     try:
-        _base_dir = default_base_dir_from_input(reactant_files[0] if reactant_files else None,
-                                                fallback=product_files[0] if product_files else None)
+        _base_dir = default_base_dir_from_input(
+            reactant_files[0] if reactant_files else None, fallback=product_files[0] if product_files else None
+        )
         _raw_out = output_dir if output_dir is not None else str(Path(reactant_files[0]).parent / "scan_output")
         out_root = secure_output_path(
             _raw_out,
@@ -107,7 +120,7 @@ def run_linear_scan(reactant_files, product_files, steps=20, method='b3lyp', bas
                 input_file=str(frames_dir / f"frame_{i:03d}_t{t:.3f}.xyz"),  # 占位路径（内存模式不使用）
                 xyz_content=xyz_str,
                 base_name=f"frame_{i:03d}_t{t:.3f}",
-                task_type='energy',
+                task_type="energy",
                 method=method,
                 basis=basis,
                 preset_name=preset_name,
@@ -135,10 +148,10 @@ def run_linear_scan(reactant_files, product_files, steps=20, method='b3lyp', bas
         energies.append(float(sub.get("energy") or 0.0))
     if rolled_back_count:
         result["pcm_rollback_frames"] = rolled_back_count
-        result["warning"] = (f"PCM 溶剂模型有 {rolled_back_count}/{steps} 帧自动回退为气相")
+        result["warning"] = f"PCM 溶剂模型有 {rolled_back_count}/{steps} 帧自动回退为气相"
 
     try:
-        with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+        with open(csv_path, "w", encoding="utf-8", newline="") as f:
             wr = csv.writer(f)
             ha2kj = 2625.4996394799
             e0 = energies[0]
@@ -162,9 +175,21 @@ def run_linear_scan(reactant_files, product_files, steps=20, method='b3lyp', bas
 
 
 @performance_timer(name="psi4.run_rigid_scan", level=logging.DEBUG, min_ms=200.0)
-def run_rigid_scan(input_file, scan_atoms, distance_range, method='b3lyp', basis='6-31g*',
-                   output_dir=None, preset_name=None, solvent=None, d3=False,
-                   charge=0, multiplicity=1, memory='4 GB', _progress_callback=None):
+def run_rigid_scan(
+    input_file,
+    scan_atoms,
+    distance_range,
+    method="b3lyp",
+    basis="6-31g*",
+    output_dir=None,
+    preset_name=None,
+    solvent=None,
+    d3=False,
+    charge=0,
+    multiplicity=1,
+    memory="4 GB",
+    _progress_callback=None,
+):
     """二面角刚性扫描：固定 (i,j,k,l) 四个原子的二面角，在 [start_deg,end_deg] 线性扫 N 个角度，逐帧 PSI4 单点能"""
     result: dict[str, Any] = {
         "success": False,
@@ -196,11 +221,12 @@ def run_rigid_scan(input_file, scan_atoms, distance_range, method='b3lyp', basis
     try:
         import subprocess as _sp_check
         import sys as _sys
+
         exe = ob_utils._resolve_obabel_cli()
         if _sys.platform == "win32":
             si = _sp_check.STARTUPINFO()
             si.dwFlags |= _sp_check.STARTF_USESHOWWINDOW
-            kw = {'startupinfo': si, 'creationflags': _sp_check.CREATE_NO_WINDOW}
+            kw = {"startupinfo": si, "creationflags": _sp_check.CREATE_NO_WINDOW}
         else:
             kw = {}
         r = _sp_check.run([exe, "-V"], capture_output=True, text=True, timeout=15, **kw)
@@ -264,7 +290,7 @@ def run_rigid_scan(input_file, scan_atoms, distance_range, method='b3lyp', basis
                 input_file=str(frames_dir / f"frame_{s:03d}_d{ang:.2f}.xyz"),  # 占位路径（内存模式不使用）
                 xyz_content=xyz_str,
                 base_name=f"frame_{s:03d}_d{ang:.2f}",
-                task_type='energy',
+                task_type="energy",
                 method=method,
                 basis=basis,
                 preset_name=preset_name,
@@ -291,15 +317,15 @@ def run_rigid_scan(input_file, scan_atoms, distance_range, method='b3lyp', basis
         energies.append(float(sub.get("energy") or 0.0))
     if rolled_back_count:
         result["pcm_rollback_frames"] = rolled_back_count
-        result["warning"] = (f"PCM 溶剂模型有 {rolled_back_count}/{steps} 帧自动回退为气相")
+        result["warning"] = f"PCM 溶剂模型有 {rolled_back_count}/{steps} 帧自动回退为气相"
 
     try:
-        with open(csv_path, 'w', encoding='utf-8', newline='') as f:
+        with open(csv_path, "w", encoding="utf-8", newline="") as f:
             wr = csv.writer(f)
             ha2kj = 2625.4996394799
             e0 = min(energies)
             rows = [["frame", "angle_deg", "energy_Hartree", "relative_kJmol"]]
-            for s, (ang, e) in enumerate(zip(angles, energies)):
+            for s, (ang, e) in enumerate(zip(angles, energies, strict=False)):
                 rows.append([s, f"{ang:.4f}", f"{e:.10f}", f"{(e - e0) * ha2kj:.4f}"])
             wr.writerows(rows)
         result["scan_csv"] = str(csv_path)

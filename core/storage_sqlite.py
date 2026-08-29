@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 SQLite 持久化层（Phase B · 可维护性）。
 
@@ -17,11 +16,14 @@ SQLite 持久化层（Phase B · 可维护性）。
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 from typing import Any
 
 from core.domain import CalcResult, MappingEntry, MoleculeRecord
+
+_logger = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS molecule (
@@ -78,7 +80,7 @@ class Storage:
             self._conn.executescript(_SCHEMA)
             self._conn.commit()
         except sqlite3.Error as _e:  # pragma: no cover - 极端环境
-            print(f"[storage] schema init failed: {_e}")
+            _logger.error("schema init failed: %s", _e)
 
     # ---------------- molecule ----------------
     def upsert_molecule(self, rec: MoleculeRecord) -> bool:
@@ -107,7 +109,7 @@ class Storage:
             self._conn.commit()
             return True
         except sqlite3.Error as _e:
-            print(f"[storage] upsert_molecule failed: {_e}")
+            _logger.error("upsert_molecule failed: %s", _e)
             return False
 
     def get_molecule(self, name: str) -> MoleculeRecord | None:
@@ -115,7 +117,7 @@ class Storage:
             row = self._conn.execute("SELECT * FROM molecule WHERE name=?", (name,)).fetchone()
             return self._row_to_molecule(row) if row else None
         except sqlite3.Error as _e:
-            print(f"[storage] get_molecule failed: {_e}")
+            _logger.error("get_molecule failed: %s", _e)
             return None
 
     def list_molecules(self, tag: str | None = None) -> list[MoleculeRecord]:
@@ -129,7 +131,7 @@ class Storage:
                 rows = self._conn.execute("SELECT * FROM molecule ORDER BY name").fetchall()
             return [self._row_to_molecule(r) for r in rows]
         except sqlite3.Error as _e:
-            print(f"[storage] list_molecules failed: {_e}")
+            _logger.error("list_molecules failed: %s", _e)
             return []
 
     def delete_molecule(self, name: str) -> bool:
@@ -138,7 +140,7 @@ class Storage:
             self._conn.commit()
             return True
         except sqlite3.Error as _e:
-            print(f"[storage] delete_molecule failed: {_e}")
+            _logger.error("delete_molecule failed: %s", _e)
             return False
 
     @staticmethod
@@ -174,7 +176,7 @@ class Storage:
             self._conn.commit()
             return True
         except sqlite3.Error as _e:
-            print(f"[storage] upsert_mapping failed: {_e}")
+            _logger.error("upsert_mapping failed: %s", _e)
             return False
 
     def get_mapping(self, eng: str) -> MappingEntry | None:
@@ -182,7 +184,7 @@ class Storage:
             row = self._conn.execute("SELECT * FROM mapping WHERE eng=?", (eng,)).fetchone()
             return MappingEntry(eng=row["eng"], chn=row["chn"], note=row["note"]) if row else None
         except sqlite3.Error as _e:
-            print(f"[storage] get_mapping failed: {_e}")
+            _logger.error("get_mapping failed: %s", _e)
             return None
 
     def list_mappings(self) -> list[MappingEntry]:
@@ -190,7 +192,7 @@ class Storage:
             rows = self._conn.execute("SELECT eng, chn, note FROM mapping ORDER BY eng").fetchall()
             return [MappingEntry(eng=r["eng"], chn=r["chn"], note=r["note"]) for r in rows]
         except sqlite3.Error as _e:
-            print(f"[storage] list_mappings failed: {_e}")
+            _logger.error("list_mappings failed: %s", _e)
             return []
 
     def delete_mapping(self, eng: str) -> bool:
@@ -199,7 +201,7 @@ class Storage:
             self._conn.commit()
             return True
         except sqlite3.Error as _e:
-            print(f"[storage] delete_mapping failed: {_e}")
+            _logger.error("delete_mapping failed: %s", _e)
             return False
 
     # ---------------- calc result ----------------
@@ -225,12 +227,10 @@ class Storage:
             rid = cur.lastrowid
             return int(rid) if rid is not None else None
         except sqlite3.Error as _e:
-            print(f"[storage] add_calc_result failed: {_e}")
+            _logger.error("add_calc_result failed: %s", _e)
             return None
 
-    def list_calc_results(
-        self, molecule: str | None = None, calc_type: str | None = None
-    ) -> list[CalcResult]:
+    def list_calc_results(self, molecule: str | None = None, calc_type: str | None = None) -> list[CalcResult]:
         try:
             sql = "SELECT * FROM calc_result WHERE 1=1"
             params: list[Any] = []
@@ -244,7 +244,7 @@ class Storage:
             rows = self._conn.execute(sql, params).fetchall()
             return [self._row_to_calc(r) for r in rows]
         except sqlite3.Error as _e:
-            print(f"[storage] list_calc_results failed: {_e}")
+            _logger.error("list_calc_results failed: %s", _e)
             return []
 
     @staticmethod

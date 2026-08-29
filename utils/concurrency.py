@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 分片并发工具 —— 把「对一批独立条目逐一执行同一函数」安全地并行化。
 
@@ -14,6 +13,7 @@
 - 通过 ``is_cancelled`` 支持中途取消（取消后不再派发新任务，已派发的会跑完）。
 - 单个条目抛错不会中断整体，错误被收集到返回结果中（``_exc`` 字段）。
 """
+
 from __future__ import annotations
 
 import threading

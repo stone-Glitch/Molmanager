@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 深色护眼主题系统（UI 重构核心）。
 
@@ -12,6 +11,7 @@
 ext_display_var / mapping_count / set_cancel_visible / task_manager /
 helpers / on_task_*）一律不变。
 """
+
 from __future__ import annotations
 
 import tkinter as tk
@@ -21,77 +21,77 @@ from tkinter import ttk
 # ---------- 双调色板（深色护眼 + 浅色，与 UI_DESIGN.md / 原型一致） ----------
 # 两个调色板键名完全一致，确保 COLORS 代理与 ttk 样式在切换时无 KeyError。
 DARK = {
-    "bg":             "#0F1419",  # 应用主背景
-    "surface":        "#161B22",  # 侧边栏 / 卡片 / 状态栏
-    "card_bg":        "#161B22",  # 卡片底
-    "card_border":    "#232B3A",  # 卡片描边（比 border 略亮以定义边界）
-    "elevated":       "#1C2330",  # 悬停 / 抬升 / 输入框底
-    "input":          "#0D1117",  # 输入框 / 文本框底
-    "border":         "#232B3A",  # 分隔线 / 卡片描边
-    "border_strong":  "#2D3645",  # 强描边（滚动条/分隔）
-    "accent":         "#2DD4BF",  # 主强调（青绿）
-    "accent_hover":   "#5EEAD4",
-    "accent_soft":    "#0B3B36",  # 强调弱底（选中行/批量条）
-    "primary":        "#2DD4BF",
-    "link":           "#58A6FF",  # 链接 / 信息
-    "text":           "#E6EDF3",  # 正文
+    "bg": "#0F1419",  # 应用主背景
+    "surface": "#161B22",  # 侧边栏 / 卡片 / 状态栏
+    "card_bg": "#161B22",  # 卡片底
+    "card_border": "#232B3A",  # 卡片描边（比 border 略亮以定义边界）
+    "elevated": "#1C2330",  # 悬停 / 抬升 / 输入框底
+    "input": "#0D1117",  # 输入框 / 文本框底
+    "border": "#232B3A",  # 分隔线 / 卡片描边
+    "border_strong": "#2D3645",  # 强描边（滚动条/分隔）
+    "accent": "#2DD4BF",  # 主强调（青绿）
+    "accent_hover": "#5EEAD4",
+    "accent_soft": "#0B3B36",  # 强调弱底（选中行/批量条）
+    "primary": "#2DD4BF",
+    "link": "#58A6FF",  # 链接 / 信息
+    "text": "#E6EDF3",  # 正文
     "text_secondary": "#A6B0BC",  # 次要说明（已提亮至 AA）
-    "text_muted":     "#A6B0BC",
-    "text_light":     "#8B97AC",  # 小标签 / 占位
-    "text_hint":      "#8B97AC",  # 占位 / 禁用
-    "success":        "#3FB950",
-    "warning":        "#D29922",
-    "danger":         "#F85149",
-    "error":          "#F85149",
-    "error_hover":    "#FF7B72",
-    "muted":          "#8B97AC",  # 中性（计算文件/禁用）· 语义令牌
-    "info":           "#58A6FF",  # 信息 · 语义令牌（同 link）
-    "btn_text":       "#0F1419",  # 强调色按钮上的深字
+    "text_muted": "#A6B0BC",
+    "text_light": "#8B97AC",  # 小标签 / 占位
+    "text_hint": "#8B97AC",  # 占位 / 禁用
+    "success": "#3FB950",
+    "warning": "#D29922",
+    "danger": "#F85149",
+    "error": "#F85149",
+    "error_hover": "#FF7B72",
+    "muted": "#8B97AC",  # 中性（计算文件/禁用）· 语义令牌
+    "info": "#58A6FF",  # 信息 · 语义令牌（同 link）
+    "btn_text": "#0F1419",  # 强调色按钮上的深字
     "btn_recommend_bg": "#3FB950",
-    "btn_info_bg":    "#2DD4BF",
-    "btn_warn_bg":    "#D29922",
-    "btn_danger_bg":  "#F85149",
-    "menu_bar_bg":    "#161B22",
-    "menu_hover_bg":  "#1C2330",
-    "tree_hover":     "#20283A",  # Treeview 悬停行
-    "tree_sel_fg":    "#0F1419",  # 选中行文字（深字配青绿底）
+    "btn_info_bg": "#2DD4BF",
+    "btn_warn_bg": "#D29922",
+    "btn_danger_bg": "#F85149",
+    "menu_bar_bg": "#161B22",
+    "menu_hover_bg": "#1C2330",
+    "tree_hover": "#20283A",  # Treeview 悬停行
+    "tree_sel_fg": "#0F1419",  # 选中行文字（深字配青绿底）
 }
 
 LIGHT = {
-    "bg":             "#EEF2F7",  # 应用主背景（实验室白天/截图清晰）
-    "surface":        "#FFFFFF",  # 侧边栏 / 卡片 / 状态栏
-    "card_bg":        "#FFFFFF",
-    "card_border":    "#E2E8F0",
-    "elevated":       "#F1F5F9",  # 悬停 / 抬升 / 输入框底
-    "input":          "#FFFFFF",  # 输入框 / 文本框底
-    "border":         "#E2E8F0",
-    "border_strong":  "#CBD5E1",
-    "accent":         "#0D948B",  # teal-600，白底对比度达标
-    "accent_hover":   "#0F766E",
-    "accent_soft":    "#CCFBF1",
-    "primary":        "#0D948B",
-    "link":           "#2563EB",
-    "text":           "#0F172A",  # 正文
+    "bg": "#EEF2F7",  # 应用主背景（实验室白天/截图清晰）
+    "surface": "#FFFFFF",  # 侧边栏 / 卡片 / 状态栏
+    "card_bg": "#FFFFFF",
+    "card_border": "#E2E8F0",
+    "elevated": "#F1F5F9",  # 悬停 / 抬升 / 输入框底
+    "input": "#FFFFFF",  # 输入框 / 文本框底
+    "border": "#E2E8F0",
+    "border_strong": "#CBD5E1",
+    "accent": "#0D948B",  # teal-600，白底对比度达标
+    "accent_hover": "#0F766E",
+    "accent_soft": "#CCFBF1",
+    "primary": "#0D948B",
+    "link": "#2563EB",
+    "text": "#0F172A",  # 正文
     "text_secondary": "#51607A",  # 次要说明（AA）
-    "text_muted":     "#51607A",
-    "text_light":     "#64748B",
-    "text_hint":      "#8A97AB",
-    "success":        "#16A34A",
-    "warning":        "#B45309",
-    "danger":         "#DC2626",
-    "error":          "#DC2626",
-    "error_hover":    "#EF4444",
-    "muted":          "#64748B",  # 中性（计算文件/禁用）· 语义令牌
-    "info":           "#2563EB",  # 信息 · 语义令牌（同 link）
-    "btn_text":       "#FFFFFF",  # 强调色按钮上的白字
+    "text_muted": "#51607A",
+    "text_light": "#64748B",
+    "text_hint": "#8A97AB",
+    "success": "#16A34A",
+    "warning": "#B45309",
+    "danger": "#DC2626",
+    "error": "#DC2626",
+    "error_hover": "#EF4444",
+    "muted": "#64748B",  # 中性（计算文件/禁用）· 语义令牌
+    "info": "#2563EB",  # 信息 · 语义令牌（同 link）
+    "btn_text": "#FFFFFF",  # 强调色按钮上的白字
     "btn_recommend_bg": "#16A34A",
-    "btn_info_bg":    "#0D948B",
-    "btn_warn_bg":    "#B45309",
-    "btn_danger_bg":  "#DC2626",
-    "menu_bar_bg":    "#FFFFFF",
-    "menu_hover_bg":  "#E2E8F0",
-    "tree_hover":     "#E2E8F0",
-    "tree_sel_fg":    "#FFFFFF",  # 选中行白字配青绿底
+    "btn_info_bg": "#0D948B",
+    "btn_warn_bg": "#B45309",
+    "btn_danger_bg": "#DC2626",
+    "menu_bar_bg": "#FFFFFF",
+    "menu_hover_bg": "#E2E8F0",
+    "tree_hover": "#E2E8F0",
+    "tree_sel_fg": "#FFFFFF",  # 选中行白字配青绿底
 }
 
 PALETTES = {"dark": DARK, "light": LIGHT}
@@ -100,8 +100,8 @@ PALETTES = {"dark": DARK, "light": LIGHT}
 # 用于文件 Treeview 的多选列：未选 / 已选 / 半选（表头）。
 # 与 HTML 原型复选框列一致：点击行任意处切换、表头全选、部分选中显示半选。
 CHECK_GLYPH = {
-    "off": "☐",      # ☐  ballot box（空）
-    "on": "☑",       # ☑  ballot box with check
+    "off": "☐",  # ☐  ballot box（空）
+    "on": "☑",  # ☑  ballot box with check
     "partial": "▣",  # ▣  半选（表头：部分行被勾选）
 }
 
@@ -265,12 +265,12 @@ def apply_theme(root: tk.Tk | tk.Toplevel, theme: str = "dark") -> None:
     _CURRENT = theme
     DARK = PALETTES[theme]  # 局部遮蔽：下方 DARK[...] 指向所选主题调色板
     F = getattr(root, "_fonts", None) or {}
-    BASE  = F.get("BASE",      ("Microsoft YaHei", 12))
-    BOLD  = F.get("BOLD",      ("Microsoft YaHei", 12, "bold"))
-    BTN   = F.get("BTN",       ("Microsoft YaHei", 12, "bold"))
-    ENTRY = F.get("ENTRY",     ("Microsoft YaHei", 12))
-    TREE  = F.get("TREE",      ("Microsoft YaHei", 11))
-    THEAD = F.get("TREEHEAD",  ("Microsoft YaHei", 11, "bold"))
+    BASE = F.get("BASE", ("Microsoft YaHei", 12))
+    BOLD = F.get("BOLD", ("Microsoft YaHei", 12, "bold"))
+    BTN = F.get("BTN", ("Microsoft YaHei", 12, "bold"))
+    ENTRY = F.get("ENTRY", ("Microsoft YaHei", 12))
+    TREE = F.get("TREE", ("Microsoft YaHei", 11))
+    THEAD = F.get("TREEHEAD", ("Microsoft YaHei", 11, "bold"))
 
     # ---------- 1) tk 控件全局默认（覆盖显式 bg 之外的默认外观） ----------
     root.configure(bg=DARK["bg"])
@@ -324,88 +324,158 @@ def apply_theme(root: tk.Tk | tk.Toplevel, theme: str = "dark") -> None:
     except tk.TclError:
         pass
 
-    style.configure(".", background=DARK["bg"], foreground=DARK["text"],
-                   font=BASE, borderwidth=0)
+    style.configure(".", background=DARK["bg"], foreground=DARK["text"], font=BASE, borderwidth=0)
     style.configure("TFrame", background=DARK["bg"])
     style.configure("TLabel", background=DARK["bg"], foreground=DARK["text"], font=BASE)
 
     # 次按钮（默认）
-    style.configure("TButton", background=DARK["elevated"], foreground=DARK["text"],
-                    bordercolor=DARK["border"], lightcolor=DARK["elevated"],
-                    darkcolor=DARK["elevated"], padding=(12, 6), font=BTN,
-                    relief="solid", borderwidth=1)
-    style.map("TButton",
-              background=[("active", DARK["border"]), ("pressed", DARK["input"])],
-              foreground=[("active", DARK["accent"]), ("pressed", DARK["text"])],
-              bordercolor=[("active", DARK["accent"]), ("!active", DARK["border"])])
+    style.configure(
+        "TButton",
+        background=DARK["elevated"],
+        foreground=DARK["text"],
+        bordercolor=DARK["border"],
+        lightcolor=DARK["elevated"],
+        darkcolor=DARK["elevated"],
+        padding=(12, 6),
+        font=BTN,
+        relief="solid",
+        borderwidth=1,
+    )
+    style.map(
+        "TButton",
+        background=[("active", DARK["border"]), ("pressed", DARK["input"])],
+        foreground=[("active", DARK["accent"]), ("pressed", DARK["text"])],
+        bordercolor=[("active", DARK["accent"]), ("!active", DARK["border"])],
+    )
 
     # 主强调按钮
-    style.configure("Accent.TButton", background=DARK["accent"], foreground=DARK["bg"],
-                    borderwidth=0, padding=(14, 7), font=BTN, relief="flat")
-    style.map("Accent.TButton",
-              background=[("active", DARK["accent_hover"]), ("pressed", DARK["accent"])])
+    style.configure(
+        "Accent.TButton",
+        background=DARK["accent"],
+        foreground=DARK["bg"],
+        borderwidth=0,
+        padding=(14, 7),
+        font=BTN,
+        relief="flat",
+    )
+    style.map("Accent.TButton", background=[("active", DARK["accent_hover"]), ("pressed", DARK["accent"])])
 
     # 危险按钮
-    style.configure("Danger.TButton", background=DARK["error"], foreground=DARK["bg"],
-                    borderwidth=0, padding=(12, 6), font=BTN, relief="flat")
-    style.map("Danger.TButton",
-              background=[("active", DARK["error_hover"]), ("pressed", DARK["error"])])
+    style.configure(
+        "Danger.TButton",
+        background=DARK["error"],
+        foreground=DARK["bg"],
+        borderwidth=0,
+        padding=(12, 6),
+        font=BTN,
+        relief="flat",
+    )
+    style.map("Danger.TButton", background=[("active", DARK["error_hover"]), ("pressed", DARK["error"])])
 
     # 覆盖 aurora 主题（确保深色为权威）
     for _name in ("Aurora.TButton", "Aurora.Purple.TButton"):
-        style.configure(_name, background=DARK["elevated"], foreground=DARK["text"],
-                        bordercolor=DARK["border"], lightcolor=DARK["elevated"],
-                        darkcolor=DARK["elevated"], padding=(12, 6), font=BTN,
-                        relief="solid", borderwidth=1)
-        style.map(_name,
-                  background=[("active", DARK["border"]), ("pressed", DARK["input"])],
-                  foreground=[("active", DARK["accent"]), ("pressed", DARK["text"])])
-    style.configure("Aurora.Primary.TButton", background=DARK["accent"],
-                    foreground=DARK["bg"], borderwidth=0, relief="flat",
-                    padding=(14, 7), font=BTN)
-    style.map("Aurora.Primary.TButton",
-              background=[("active", DARK["accent_hover"]), ("pressed", DARK["accent"])])
-    style.configure("Aurora.BigAccent.TButton", background=DARK["accent"],
-                    foreground=DARK["bg"], borderwidth=0, relief="flat",
-                    padding=(16, 9), font=BTN)
-    style.map("Aurora.BigAccent.TButton",
-              background=[("active", DARK["accent_hover"]), ("pressed", DARK["accent"])])
+        style.configure(
+            _name,
+            background=DARK["elevated"],
+            foreground=DARK["text"],
+            bordercolor=DARK["border"],
+            lightcolor=DARK["elevated"],
+            darkcolor=DARK["elevated"],
+            padding=(12, 6),
+            font=BTN,
+            relief="solid",
+            borderwidth=1,
+        )
+        style.map(
+            _name,
+            background=[("active", DARK["border"]), ("pressed", DARK["input"])],
+            foreground=[("active", DARK["accent"]), ("pressed", DARK["text"])],
+        )
+    style.configure(
+        "Aurora.Primary.TButton",
+        background=DARK["accent"],
+        foreground=DARK["bg"],
+        borderwidth=0,
+        relief="flat",
+        padding=(14, 7),
+        font=BTN,
+    )
+    style.map("Aurora.Primary.TButton", background=[("active", DARK["accent_hover"]), ("pressed", DARK["accent"])])
+    style.configure(
+        "Aurora.BigAccent.TButton",
+        background=DARK["accent"],
+        foreground=DARK["bg"],
+        borderwidth=0,
+        relief="flat",
+        padding=(16, 9),
+        font=BTN,
+    )
+    style.map("Aurora.BigAccent.TButton", background=[("active", DARK["accent_hover"]), ("pressed", DARK["accent"])])
 
     # 输入框 / 下拉
-    style.configure("TEntry", fieldbackground=DARK["input"], foreground=DARK["text"],
-                    bordercolor=DARK["border"], lightcolor=DARK["input"],
-                    darkcolor=DARK["input"], padding=4, insertcolor=DARK["text"], font=ENTRY)
-    style.configure("TCombobox", fieldbackground=DARK["input"], foreground=DARK["text"],
-                    background=DARK["elevated"], bordercolor=DARK["border"],
-                    arrowcolor=DARK["text"], padding=4, font=ENTRY)
-    style.map("TCombobox", fieldbackground=[("readonly", DARK["input"])],
-              foreground=[("readonly", DARK["text"])])
+    style.configure(
+        "TEntry",
+        fieldbackground=DARK["input"],
+        foreground=DARK["text"],
+        bordercolor=DARK["border"],
+        lightcolor=DARK["input"],
+        darkcolor=DARK["input"],
+        padding=4,
+        insertcolor=DARK["text"],
+        font=ENTRY,
+    )
+    style.configure(
+        "TCombobox",
+        fieldbackground=DARK["input"],
+        foreground=DARK["text"],
+        background=DARK["elevated"],
+        bordercolor=DARK["border"],
+        arrowcolor=DARK["text"],
+        padding=4,
+        font=ENTRY,
+    )
+    style.map("TCombobox", fieldbackground=[("readonly", DARK["input"])], foreground=[("readonly", DARK["text"])])
 
     # Notebook（兼容残留使用）
     style.configure("TNotebook", background=DARK["bg"], bordercolor=DARK["border"])
-    style.configure("TNotebook.Tab", background=DARK["surface"],
-                    foreground=DARK["text_secondary"], padding=(12, 6), font=BOLD)
-    style.map("TNotebook.Tab", background=[("selected", DARK["accent"])],
-              foreground=[("selected", DARK["bg"])])
+    style.configure(
+        "TNotebook.Tab", background=DARK["surface"], foreground=DARK["text_secondary"], padding=(12, 6), font=BOLD
+    )
+    style.map("TNotebook.Tab", background=[("selected", DARK["accent"])], foreground=[("selected", DARK["bg"])])
 
     # 进度条
-    style.configure("TProgressbar", troughcolor=DARK["elevated"], background=DARK["accent"],
-                    borderwidth=0, thickness=8)
+    style.configure("TProgressbar", troughcolor=DARK["elevated"], background=DARK["accent"], borderwidth=0, thickness=8)
 
     # Treeview（文件列表 / 结果表）
-    style.configure("Treeview", background=DARK["input"], foreground=DARK["text"],
-                    fieldbackground=DARK["input"], bordercolor=DARK["border"],
-                    rowheight=26, font=TREE)
-    style.map("Treeview", background=[("selected", DARK["accent"])],
-              foreground=[("selected", DARK["bg"])])
-    style.configure("Treeview.Heading", background=DARK["surface"], foreground=DARK["text"],
-                    bordercolor=DARK["border"], font=THEAD, relief="flat")
+    style.configure(
+        "Treeview",
+        background=DARK["input"],
+        foreground=DARK["text"],
+        fieldbackground=DARK["input"],
+        bordercolor=DARK["border"],
+        rowheight=26,
+        font=TREE,
+    )
+    style.map("Treeview", background=[("selected", DARK["accent"])], foreground=[("selected", DARK["bg"])])
+    style.configure(
+        "Treeview.Heading",
+        background=DARK["surface"],
+        foreground=DARK["text"],
+        bordercolor=DARK["border"],
+        font=THEAD,
+        relief="flat",
+    )
     style.map("Treeview.Heading", background=[("active", DARK["elevated"])])
 
     # 滚动条
-    style.configure("TScrollbar", background=DARK["surface"], troughcolor=DARK["bg"],
-                    bordercolor=DARK["border"], arrowcolor=DARK["text_secondary"],
-                    relief="flat")
+    style.configure(
+        "TScrollbar",
+        background=DARK["surface"],
+        troughcolor=DARK["bg"],
+        bordercolor=DARK["border"],
+        arrowcolor=DARK["text_secondary"],
+        relief="flat",
+    )
     style.map("TScrollbar", background=[("active", DARK["elevated"])])
 
     # 其他 ttk 控件
@@ -414,10 +484,10 @@ def apply_theme(root: tk.Tk | tk.Toplevel, theme: str = "dark") -> None:
     style.configure("TCheckbutton", background=DARK["bg"], foreground=DARK["text"], font=BASE)
     style.map("TCheckbutton", background=[("active", DARK["bg"])])
     style.configure("TRadiobutton", background=DARK["bg"], foreground=DARK["text"], font=BASE)
-    style.configure("TScale", background=DARK["bg"], troughcolor=DARK["elevated"],
-                    bordercolor=DARK["border"])
-    style.configure("Horizontal.TScale", background=DARK["bg"],
-                    troughcolor=DARK["elevated"], bordercolor=DARK["border"])
+    style.configure("TScale", background=DARK["bg"], troughcolor=DARK["elevated"], bordercolor=DARK["border"])
+    style.configure(
+        "Horizontal.TScale", background=DARK["bg"], troughcolor=DARK["elevated"], bordercolor=DARK["border"]
+    )
     style.configure("TSeparator", background=DARK["border"])
 
 
@@ -446,6 +516,7 @@ def toggle_density(root: tk.Tk | tk.Toplevel) -> int:
     """
     try:
         from utils.config import load_config, save_config
+
         cfg = load_config()
         cur = int(cfg.get("font_size", 14) or 14)
         new_pt = 12 if cur >= 14 else 14
@@ -455,6 +526,7 @@ def toggle_density(root: tk.Tk | tk.Toplevel) -> int:
         new_pt = 12
     try:
         from ui.ui_builder import resolve_font_specs
+
         resolve_font_specs(root, force_pt=new_pt)
     except Exception:
         pass
@@ -533,14 +605,19 @@ def primary_button(parent, text, command, **kw):
     if tip_text:
         try:
             from ui.ui_builder import add_tooltip
+
             add_tooltip(w, tip_text)
         except Exception:
             pass
 
     def _r(wd, pal):
         try:
-            wd.configure(bg=pal["accent"], fg=pal["btn_text"],
-                         activebackground=pal["accent_hover"], activeforeground=pal["btn_text"])
+            wd.configure(
+                bg=pal["accent"],
+                fg=pal["btn_text"],
+                activebackground=pal["accent_hover"],
+                activeforeground=pal["btn_text"],
+            )
         except Exception:
             pass
 
@@ -569,15 +646,20 @@ def secondary_button(parent, text, command, **kw):
     if tip_text:
         try:
             from ui.ui_builder import add_tooltip
+
             add_tooltip(w, tip_text)
         except Exception:
             pass
 
     def _r(wd, pal):
         try:
-            wd.configure(bg=pal["elevated"], fg=pal["text"],
-                         activebackground=pal["border"], activeforeground=pal["accent"],
-                         highlightbackground=pal["border"])
+            wd.configure(
+                bg=pal["elevated"],
+                fg=pal["text"],
+                activebackground=pal["border"],
+                activeforeground=pal["accent"],
+                highlightbackground=pal["border"],
+            )
         except Exception:
             pass
 
@@ -602,8 +684,12 @@ def danger_button(parent, text, command, **kw):
 
     def _r(wd, pal):
         try:
-            wd.configure(bg=pal["error"], fg=pal["btn_text"],
-                         activebackground=pal["error_hover"], activeforeground=pal["btn_text"])
+            wd.configure(
+                bg=pal["error"],
+                fg=pal["btn_text"],
+                activebackground=pal["error_hover"],
+                activeforeground=pal["btn_text"],
+            )
         except Exception:
             pass
 
@@ -629,9 +715,12 @@ def success_button(parent, text, command, **kw):
 
     def _r(wd, pal):
         try:
-            wd.configure(bg=pal["success"], fg=pal["btn_text"],
-                         activebackground=("#56D364" if get_current_theme() == "dark" else "#15803D"),
-                         activeforeground=pal["btn_text"])
+            wd.configure(
+                bg=pal["success"],
+                fg=pal["btn_text"],
+                activebackground=("#56D364" if get_current_theme() == "dark" else "#15803D"),
+                activeforeground=pal["btn_text"],
+            )
         except Exception:
             pass
 
@@ -657,9 +746,12 @@ def warning_button(parent, text, command, **kw):
 
     def _r(wd, pal):
         try:
-            wd.configure(bg=pal["warning"], fg=pal["btn_text"],
-                         activebackground=("#E3B341" if get_current_theme() == "dark" else "#D97706"),
-                         activeforeground=pal["btn_text"])
+            wd.configure(
+                bg=pal["warning"],
+                fg=pal["btn_text"],
+                activebackground=("#E3B341" if get_current_theme() == "dark" else "#D97706"),
+                activeforeground=pal["btn_text"],
+            )
         except Exception:
             pass
 
@@ -676,6 +768,7 @@ def _apply_tip(widget, tip):
         return
     try:
         from ui.ui_builder import add_tooltip
+
         add_tooltip(widget, tip)
     except Exception:
         pass

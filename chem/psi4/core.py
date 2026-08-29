@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 PSI4 核心模块 - run_psi4_task, check_psi4_installed, 基础辅助函数
 """
+
 import atexit
 import csv
 import json
@@ -32,10 +32,12 @@ from .utils import _plot_ir  # 频率任务绘制 IR 光谱图用
 # ---------- NumPy 兼容性补丁 ----------
 try:
     import numpy as _np
+
     _HAS_NUMPY = True
 except ImportError:
     _np = None
     _HAS_NUMPY = False
+
 
 def _apply_numpy_cumproduct_compat_patch() -> None:
     if not _HAS_NUMPY:
@@ -43,6 +45,7 @@ def _apply_numpy_cumproduct_compat_patch() -> None:
     if hasattr(_np, "cumproduct"):
         return
     from utils.logger import default_logger as _log
+
     try:
         _np.cumproduct = _np.cumprod
         _log.warning(
@@ -54,7 +57,9 @@ def _apply_numpy_cumproduct_compat_patch() -> None:
             _log.debug("应用 numpy cumproduct 兼容性补丁时发生非致命错误: %s", _e)
         except Exception:
             import sys as _sys
-            print(f"[compat] numpy cumproduct 补丁非致命错误: {_e}", file=_sys.stderr)
+
+            print(f"[compat] numpy cumproduct 补丁非致命错误: {_e}", file=_sys.stderr)  # noqa: T201
+
 
 # ---------- PSI4 库的延迟导入 ----------
 # 这里一并修复两个问题：
@@ -84,8 +89,7 @@ def _load_psi4() -> Any:
         try:
             import psi4 as _real
         except Exception as _first_err:
-            logger.warning(
-                "PSI4 首次导入失败（可能是 numpy/pint 不兼容），应用兼容补丁后重试: %s", _first_err)
+            logger.warning("PSI4 首次导入失败（可能是 numpy/pint 不兼容），应用兼容补丁后重试: %s", _first_err)
             _apply_numpy_cumproduct_compat_patch()
             try:
                 import psi4 as _real  # type: ignore[no-redef]
@@ -108,6 +112,7 @@ class _Psi4Lazy:
     未安装时抛 AttributeError，与「模块无此属性」语义一致，
     因此 `getattr(psi4, 'energy', None)` 这类带默认值的探测仍能正确返回 None。
     """
+
     __slots__ = ()
 
     def __getattr__(self, name: str) -> Any:
@@ -173,9 +178,9 @@ def normalize_psi4_memory(value: Any, default: str = _DEFAULT_MEMORY) -> str:
         return f"{num.rstrip('.') or '0'} GB"
     unit_norm = unit.upper()
     if not unit_norm.endswith("I"):
-        unit_norm += "B"          # G  -> GB
+        unit_norm += "B"  # G  -> GB
     else:
-        unit_norm += "B"          # GI -> GIB
+        unit_norm += "B"  # GI -> GIB
     return f"{num} {unit_norm}"
 
 
@@ -210,14 +215,13 @@ def check_psi4_installed() -> tuple[bool, str, dict[str, Any]]:
         return False, "PSI4 未安装或导入失败", details
 
     try:
-        details["version"] = str(getattr(psi4, "__version__", None) or
-                                  getattr(psi4.core, "version", lambda: "unknown")())
+        details["version"] = str(
+            getattr(psi4, "__version__", None) or getattr(psi4.core, "version", lambda: "unknown")()
+        )
     except Exception as _ve:
         logger.debug("PSI4 版本探测失败: %s", _ve)
 
-    for attr, key in (("energy", "has_energy"),
-                      ("optimize", "has_optimize"),
-                      ("frequency", "has_frequency")):
+    for attr, key in (("energy", "has_energy"), ("optimize", "has_optimize"), ("frequency", "has_frequency")):
         details[key] = callable(getattr(psi4, attr, None))
 
     details["has_cphf_nmr"] = callable(getattr(psi4, "cphf", None))
@@ -231,13 +235,20 @@ def check_psi4_installed() -> tuple[bool, str, dict[str, Any]]:
 
     msg_parts = [f"PSI4 已安装（版本={details['version'] or '未知'}）"]
     caps = []
-    if details["has_energy"]: caps.append("单点能")
-    if details["has_optimize"]: caps.append("几何优化")
-    if details["has_frequency"]: caps.append("频率分析")
-    if details["has_cphf_nmr"]: caps.append("CPHF NMR")
-    if details["has_pcm"]: caps.append("PCM 溶剂")
-    if caps: msg_parts.append(f"支持功能：{'/'.join(caps)}")
-    if wl: msg_parts.append(f"警告 {len(wl)} 条")
+    if details["has_energy"]:
+        caps.append("单点能")
+    if details["has_optimize"]:
+        caps.append("几何优化")
+    if details["has_frequency"]:
+        caps.append("频率分析")
+    if details["has_cphf_nmr"]:
+        caps.append("CPHF NMR")
+    if details["has_pcm"]:
+        caps.append("PCM 溶剂")
+    if caps:
+        msg_parts.append(f"支持功能：{'/'.join(caps)}")
+    if wl:
+        msg_parts.append(f"警告 {len(wl)} 条")
 
     return True, "，".join(msg_parts), details
 
@@ -253,7 +264,7 @@ def get_preset_info(preset_name: str) -> dict:
 
 def sanitize_filename(name: str) -> str:
     illegal_chars = r'[\\/:*?"<>|]'
-    return re.sub(illegal_chars, '_', name)
+    return re.sub(illegal_chars, "_", name)
 
 
 # ---------- 子进程运行 ----------
@@ -278,6 +289,7 @@ def _run_process_with_timeout(
                 return None
             rp = p.resolve(strict=True)
             import tempfile as _tempfile
+
             unsafe_roots = []
             for _cand in (_tempfile.gettempdir(), os.getcwd()):
                 try:
@@ -347,7 +359,7 @@ def _run_process_with_timeout(
 # ---------- OpenBabel 转换 ----------
 def convert_with_obabel(input_file: str, output_file: str) -> bool:
     try:
-        res = ob_utils.convert_file(input_file, output_file, os.path.splitext(output_file)[1][1:] or 'xyz')
+        res = ob_utils.convert_file(input_file, output_file, os.path.splitext(output_file)[1][1:] or "xyz")
         success = res.get("success", False)
         output_path = res.get("output_path")
         ok = success and output_path and os.path.exists(output_path) and os.path.getsize(output_path) > 0
@@ -367,7 +379,7 @@ def read_xyz_content(file_path: str) -> str | None:
         cached = xyz_read_cache.get(key, _XYZ_CACHE_MISS)
         if cached is not _XYZ_CACHE_MISS:
             return cached
-    encodings = ('utf-8', 'gbk', 'gb2312', 'latin-1')
+    encodings = ("utf-8", "gbk", "gb2312", "latin-1")
     content: str | None = None
     for enc in encodings:
         try:
@@ -380,9 +392,9 @@ def read_xyz_content(file_path: str) -> str | None:
             break
     if content is None:
         try:
-            with open(win_longpath(file_path), 'rb') as f:
+            with open(win_longpath(file_path), "rb") as f:
                 raw = f.read()
-                content = raw.decode('utf-8', errors='replace')
+                content = raw.decode("utf-8", errors="replace")
         except OSError:
             content = None
     # 解析在锁外进行，避免文件 IO 阻塞其他并发读取（GIL 保证 dict 单操作原子，
@@ -402,7 +414,7 @@ def read_xyz_content(file_path: str) -> str | None:
                 result = None
             else:
                 coord_lines = []
-                _atom_re = re.compile(r'^[A-Za-z][a-z]?$')
+                _atom_re = re.compile(r"^[A-Za-z][a-z]?$")
                 for line in lines[2:]:
                     if not line.strip():
                         continue
@@ -429,41 +441,52 @@ def read_xyz_content(file_path: str) -> str | None:
 
 
 # ---------- 解析 PSI4 输出 ----------
-def parse_psi4_output(log_file: str, task_type: str = 'energy') -> dict:
+def parse_psi4_output(log_file: str, task_type: str = "energy") -> dict:
     result = {"energy": None, "optimized_xyz": None}
     try:
-        with open(log_file, encoding='utf-8') as f:
+        with open(log_file, encoding="utf-8") as f:
             content = f.read()
         en_patterns = [
-            r'@.*?Final\s+energy\s+([-\d.]+)',
-            r'Total energy\s+=\s+([-\d.]+)',
-            r'SCF\s+Done:\s+E\s*=\s*([-\d.]+)',
+            r"@.*?Final\s+energy\s+([-\d.]+)",
+            r"Total energy\s+=\s+([-\d.]+)",
+            r"SCF\s+Done:\s+E\s*=\s*([-\d.]+)",
         ]
         for pattern in en_patterns:
             matches = re.findall(pattern, content, re.IGNORECASE)
             if matches:
                 result["energy"] = float(matches[-1])
                 break
-        if task_type == 'optimize':
+        if task_type == "optimize":
             coords = []
             in_coords = False
             coord_started = False
             for line in content.splitlines():
-                if 'Standard nuclear orientation' in line or 'Current geometry' in line:
+                if "Standard nuclear orientation" in line or "Current geometry" in line:
                     in_coords = True
                     coord_started = False
                     coords = []
                     continue
-                if in_coords and '-----' in line:
+                if in_coords and "-----" in line:
                     if coord_started and coords:
                         break
                     coord_started = True
                     continue
-                if in_coords and coord_started and re.match(r'\s*\d+\s+', line):
+                if in_coords and coord_started and re.match(r"\s*\d+\s+", line):
                     parts = line.split()
                     if len(parts) >= 5:
                         atom_num = int(parts[1])
-                        element_map = {1: 'H', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 15: 'P', 16: 'S', 17: 'Cl', 35: 'Br', 53: 'I'}
+                        element_map = {
+                            1: "H",
+                            6: "C",
+                            7: "N",
+                            8: "O",
+                            9: "F",
+                            15: "P",
+                            16: "S",
+                            17: "Cl",
+                            35: "Br",
+                            53: "I",
+                        }
                         atom_symbol = element_map.get(atom_num, f"X{atom_num}")
                         x, y, z = parts[2:5]
                         coords.append(f"{atom_symbol}  {x}  {y}  {z}")
@@ -479,19 +502,19 @@ def parse_psi4_output(log_file: str, task_type: str = 'energy') -> dict:
 @performance_timer(name="psi4.run_psi4_task", level=logging.DEBUG, min_ms=50.0)
 def run_psi4_task(
     input_file: str,
-    task_type: str = 'energy',
-    method: str = 'b3lyp',
-    basis: str = '6-31g*',
+    task_type: str = "energy",
+    method: str = "b3lyp",
+    basis: str = "6-31g*",
     output_dir: str | None = None,
     preset_name: str | None = None,
     solvent: str | None = None,
     d3: bool = False,
     charge: int = 0,
     multiplicity: int = 1,
-    memory: str = '4 GB',
+    memory: str = "4 GB",
     xyz_content: str | None = None,
     base_name: str | None = None,
-    **kwargs
+    **kwargs,
 ) -> dict:
     """运行单个 PSI4 任务。
 
@@ -509,9 +532,9 @@ def run_psi4_task(
     if xyz_content is None and not os.path.exists(input_file):
         return {"success": False, "error": f"文件不存在: {input_file}"}
 
-    progress_callback: Callable | None = kwargs.get('_progress_callback')
-    extra_options: dict[str, Any] = kwargs.get('extra_options') or {}
-    extra_post_hook = kwargs.get('_extra_post_hook')
+    progress_callback: Callable | None = kwargs.get("_progress_callback")
+    extra_options: dict[str, Any] = kwargs.get("extra_options") or {}
+    extra_post_hook = kwargs.get("_extra_post_hook")
 
     def report(percent: float, msg: str) -> None:
         if progress_callback:
@@ -522,6 +545,7 @@ def run_psi4_task(
     def _rmtree_with_retry(p: str, attempts: int = 3) -> None:
         """清理临时目录，失败指数退避重试；最终仍失败记 warning（而非静默忽略）。"""
         import time as _time
+
         last_err: Exception | None = None
         for i in range(attempts):
             try:
@@ -530,7 +554,7 @@ def run_psi4_task(
             except Exception as _e:
                 last_err = _e
                 logger.debug("TempDirGuard 清理临时目录失败(第%d次) %s: %s", i + 1, p, _e)
-                _time.sleep(0.5 * (2 ** i))  # 0.5s / 1.0s / 2.0s 指数退避
+                _time.sleep(0.5 * (2**i))  # 0.5s / 1.0s / 2.0s 指数退避
         if os.path.exists(p):
             logger.warning("TempDirGuard 多次尝试仍无法清理临时目录 %s: %s", p, last_err)
 
@@ -583,7 +607,6 @@ def run_psi4_task(
         in_memory = xyz_content is not None
         input_path = Path(input_file)
         has_non_ascii = any(ord(c) > 127 for c in str(input_path.resolve()))
-        print(f"路径检测: has_non_ascii = {has_non_ascii}, 路径 = {input_file}")
 
         _base_dir = default_base_dir_from_input(input_file)
         try:
@@ -615,7 +638,7 @@ def run_psi4_task(
                 os.makedirs(output_dir, exist_ok=True)
             except OSError as m_err:
                 raise RuntimeError(f"无法创建 PSI4 临时目录: {output_dir}") from m_err
-            print(f"ℹ️  使用 PSI4 临时目录：{output_dir}")
+            logger.info("使用 PSI4 临时目录：%s", output_dir)
             return output_dir
 
         if (not in_memory) and has_non_ascii:
@@ -644,8 +667,7 @@ def run_psi4_task(
             except OSError as exc:
                 return {"success": False, "error": f"分子文件无法解析为真实路径: {exc}"}
             if not real_input_path.is_file() or real_input_path.is_symlink():
-                return {"success": False,
-                        "error": f"分子文件必须是真实文件（禁止符号链接）: {input_file}"}
+                return {"success": False, "error": f"分子文件必须是真实文件（禁止符号链接）: {input_file}"}
 
             def _load_from_realpath(full_temp_dir: str | None) -> tuple:
                 work = Path(full_temp_dir) if full_temp_dir else real_input_path.parent
@@ -756,12 +778,14 @@ def run_psi4_task(
 
             # 统一归一化：UI 传进来的可能是裸 "4"，直接给 set_memory 会抛 ValidationError
             psi4.set_memory(normalize_psi4_memory(memory))
-            psi4.set_options({
-                'basis': basis,
-                'scf_type': 'pk',
-                'e_convergence': 1e-8,
-                'd_convergence': 1e-8,
-            })
+            psi4.set_options(
+                {
+                    "basis": basis,
+                    "scf_type": "pk",
+                    "e_convergence": 1e-8,
+                    "d_convergence": 1e-8,
+                }
+            )
             if extra_options:
                 try:
                     psi4.set_options(dict(extra_options))
@@ -769,7 +793,7 @@ def run_psi4_task(
                     logger.warning("应用 extra_options 失败：%s", _eo_err)
             if d3:
                 try:
-                    psi4.set_options({'dft_dispersion': 'd3'})
+                    psi4.set_options({"dft_dispersion": "d3"})
                 except Exception as _d3_err:
                     logger.warning("D3 色散校正启用失败，回退为不加 D3: %s", _d3_err)
 
@@ -780,7 +804,7 @@ def run_psi4_task(
                 _pcm_try_tasks = {"energy", "optimize", "frequency", "thermo"}
                 if task_type in _pcm_try_tasks:
                     try:
-                        psi4.set_options({'pcm': True, 'solvent': solvent})
+                        psi4.set_options({"pcm": True, "solvent": solvent})
                         try:
                             psi4.core.set_local_option("PCM", "Solver", "IEFPCM")
                             psi4.core.set_local_option("PCM", "Medium", "UniformDielectric")
@@ -795,12 +819,12 @@ def run_psi4_task(
                     except Exception as _pcm_err:
                         logger.warning("启用 PCM 隐式溶剂失败: %s", _pcm_err)
                         try:
-                            psi4.set_options({'pcm': False, 'solvent': solvent})
+                            psi4.set_options({"pcm": False, "solvent": solvent})
                         except Exception:
                             pass
                 else:
                     try:
-                        psi4.set_options({'solvent': solvent})
+                        psi4.set_options({"solvent": solvent})
                     except Exception as _solv_meta_err:
                         logger.warning("写入溶剂元数据选项失败: %s", _solv_meta_err)
 
@@ -817,8 +841,10 @@ def run_psi4_task(
                 psi4.core.set_output_file(_progress_out)
             except Exception:
                 _progress_out = None
+
             def _poll_progress():
                 import re as _re
+
                 _last = ("", 0)
                 while not _progress_stop.is_set():
                     if _progress_out and os.path.exists(_progress_out):
@@ -838,6 +864,7 @@ def run_psi4_task(
                         except Exception:
                             pass
                     _progress_stop.wait(1.5)
+
             _progress_thread = threading.Thread(target=_poll_progress, daemon=True)
             _progress_thread.start()
             report(10, "开始计算...")
@@ -849,14 +876,14 @@ def run_psi4_task(
                     return False
                 _pcm_safe_rollback_done = True
                 try:
-                    psi4.set_options({'pcm': False})
+                    psi4.set_options({"pcm": False})
                 except Exception:
                     pass
                 logger.warning("PCM 求解失败，已自动回退为气相 energy 重新计算")
                 return True
 
             # 执行任务
-            if task_type == 'energy':
+            if task_type == "energy":
                 report(30, "计算单点能...")
                 try:
                     energy, wfn = psi4.energy(method, molecule=mol, return_wfn=True)
@@ -870,7 +897,7 @@ def run_psi4_task(
                 results["energy"] = energy
                 results["success"] = True
 
-            elif task_type == 'optimize':
+            elif task_type == "optimize":
                 report(30, "开始几何优化...")
                 try:
                     energy, wfn = psi4.optimize(method, molecule=mol, return_wfn=True)
@@ -886,7 +913,7 @@ def run_psi4_task(
                 results["optimized_xyz"] = opt_mol.save_string_xyz()
                 results["success"] = True
 
-            elif task_type == 'frequency':
+            elif task_type == "frequency":
                 report(30, "计算频率...")
                 try:
                     energy, wfn = psi4.frequency(method, molecule=mol, return_wfn=True)
@@ -903,22 +930,22 @@ def run_psi4_task(
                     results["frequencies"] = freqs.to_array().tolist()
                 results["success"] = True
 
-            elif task_type == 'ts':
+            elif task_type == "ts":
                 report(30, "搜索过渡态...")
-                energy, wfn = psi4.optimize('ts', molecule=mol, return_wfn=True)
+                energy, wfn = psi4.optimize("ts", molecule=mol, return_wfn=True)
                 results["energy"] = energy
                 results["success"] = True
 
-            elif task_type == 'excited':
+            elif task_type == "excited":
                 report(30, "计算激发态...")
-                psi4.set_options({'tdscf_excitations': 5})
+                psi4.set_options({"tdscf_excitations": 5})
                 energy, wfn = psi4.energy(method, molecule=mol, return_wfn=True)
                 results["energy"] = energy
                 results["success"] = True
 
-            elif task_type == 'sapt':
+            elif task_type == "sapt":
                 report(30, "计算 SAPT...")
-                psi4.set_options({'sapt_symmetry': 'c1'})
+                psi4.set_options({"sapt_symmetry": "c1"})
                 energy = psi4.sapt_energy(method, molecule=mol)
                 results["energy"] = energy
                 results["success"] = True
@@ -927,7 +954,7 @@ def run_psi4_task(
                 except Exception:
                     wfn = None
 
-            elif task_type == 'thermo':
+            elif task_type == "thermo":
                 report(30, "进行几何优化...")
                 try:
                     opt_energy, opt_wfn = psi4.optimize(method, molecule=mol, return_wfn=True)
@@ -1006,7 +1033,7 @@ def run_psi4_task(
                             mu_x = float(psi4.core.variable("DIPOLE X"))
                             mu_y = float(psi4.core.variable("DIPOLE Y"))
                             mu_z = float(psi4.core.variable("DIPOLE Z"))
-                            mu_tot = (mu_x ** 2 + mu_y ** 2 + mu_z ** 2) ** 0.5
+                            mu_tot = (mu_x**2 + mu_y**2 + mu_z**2) ** 0.5
                             props["dipole"] = {"x_D": mu_x, "y_D": mu_y, "z_D": mu_z, "total_D": mu_tot}
                         except Exception as _e_d:
                             logger.debug("取偶极矩失败: %s", _e_d)
@@ -1039,7 +1066,7 @@ def run_psi4_task(
                     with open(ir_csv, "w", encoding="utf-8", newline="") as _f:
                         _wr = csv.writer(_f)
                         _wr.writerow(["wavenumber_cm-1", "intensity_km/mol"])
-                        for fv, iv in zip(freqs, intensities):
+                        for fv, iv in zip(freqs, intensities, strict=False):
                             _wr.writerow([fv, iv])
                     _plot_ir(freqs, intensities, ir_png)
                     results["ir_csv"] = ir_csv
@@ -1060,10 +1087,12 @@ def run_psi4_task(
                     except OSError:
                         old_cwd = None
                     try:
-                        psi4.set_options({
-                            'CUBEPROP_TASKS': ['DENSITY', 'FRONTIER_ORBITALS'],
-                            'CUBIC_GRID_SPACING': 0.25,
-                        })
+                        psi4.set_options(
+                            {
+                                "CUBEPROP_TASKS": ["DENSITY", "FRONTIER_ORBITALS"],
+                                "CUBIC_GRID_SPACING": 0.25,
+                            }
+                        )
                         psi4.cubeprop(wfn)
                     finally:
                         if old_cwd is not None:
@@ -1097,7 +1126,7 @@ def run_psi4_task(
 
                 if results.get("optimized_xyz"):
                     xyz_file = output_prefix + "_opt.xyz"
-                    with open(xyz_file, 'w') as f:
+                    with open(xyz_file, "w") as f:
                         f.write(results["optimized_xyz"])
                     results["output_files"].append(xyz_file)
 
@@ -1111,7 +1140,7 @@ def run_psi4_task(
                     "energy": results["energy"],
                     "success": results["success"],
                 }
-                with open(summary_file, 'w', encoding='utf-8') as f:
+                with open(summary_file, "w", encoding="utf-8") as f:
                     json.dump(summary_data, f, indent=2)
                 results["output_files"].append(summary_file)
 
@@ -1137,6 +1166,7 @@ def run_psi4_task(
         except Exception as e:
             results["error"] = str(e)
             import traceback
+
             logger.error("PSI4 任务执行异常: %s", e, exc_info=True)
             traceback.print_exc()
 
@@ -1149,13 +1179,13 @@ def run_psi4_task(
                 pass
             # 审计 UX2：停止进度嗅探线程并恢复 PSI4 输出目标（避免污染 worker 复用）
             try:
-                if '_progress_stop' in locals() and _progress_stop is not None:
+                if "_progress_stop" in locals() and _progress_stop is not None:
                     _progress_stop.set()
                     _progress_thread.join(timeout=2)
             except Exception:
                 pass
             try:
-                if '_progress_out' in locals() and _progress_out:
+                if "_progress_out" in locals() and _progress_out:
                     psi4.core.set_output_file("")
             except Exception:
                 pass
@@ -1191,7 +1221,8 @@ def _terminate_process_tree(proc: "subprocess.Popen", grace_period: float = 2.0)
         if sys.platform.startswith("win"):
             subprocess.run(
                 ["taskkill", "/PID", str(pid), "/T"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 timeout=5,
             )
         else:
@@ -1209,7 +1240,8 @@ def _terminate_process_tree(proc: "subprocess.Popen", grace_period: float = 2.0)
         if sys.platform.startswith("win"):
             subprocess.run(
                 ["taskkill", "/PID", str(pid), "/T", "/F"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 timeout=5,
             )
         else:
@@ -1221,6 +1253,7 @@ def _terminate_process_tree(proc: "subprocess.Popen", grace_period: float = 2.0)
             # 覆盖 PSI4 自行 setsid 导致其后代不在同一进程组、killpg 杀不到的场景。
             try:
                 import psutil
+
                 parent = psutil.Process(pid)
                 for child in parent.children(recursive=True):
                     try:
@@ -1272,10 +1305,23 @@ def _read_new_progress(progress_path: str, state: dict, progress_callback) -> No
 
 
 def _run_psi4_subprocess(
-    input_file, task_type, method, basis, output_dir, preset_name,
-    solvent, d3, charge, multiplicity, memory, *,
-    progress_callback=None, cancel_check=None, timeout=None, poll_interval=0.2,
-    **kwargs
+    input_file,
+    task_type,
+    method,
+    basis,
+    output_dir,
+    preset_name,
+    solvent,
+    d3,
+    charge,
+    multiplicity,
+    memory,
+    *,
+    progress_callback=None,
+    cancel_check=None,
+    timeout=None,
+    poll_interval=0.2,
+    **kwargs,
 ) -> dict:
     """
     在独立子进程里运行 run_psi4_task，主进程轮询 cancel_check / timeout，
@@ -1292,19 +1338,19 @@ def _run_psi4_subprocess(
     progress_path = os.path.join(tmp, "progress.jsonl")
 
     # 拼出要传给子进程的关键字参数（剔除不可序列化的回调）
-    cmd = dict(
-        input_file=input_file,
-        task_type=task_type,
-        method=method,
-        basis=basis,
-        output_dir=output_dir,
-        preset_name=preset_name,
-        solvent=solvent,
-        d3=d3,
-        charge=charge,
-        multiplicity=multiplicity,
-        memory=memory,
-    )
+    cmd = {
+        "input_file": input_file,
+        "task_type": task_type,
+        "method": method,
+        "basis": basis,
+        "output_dir": output_dir,
+        "preset_name": preset_name,
+        "solvent": solvent,
+        "d3": d3,
+        "charge": charge,
+        "multiplicity": multiplicity,
+        "memory": memory,
+    }
     for k, v in kwargs.items():
         if k in ("_progress_callback", "_extra_post_hook"):
             continue
@@ -1319,15 +1365,18 @@ def _run_psi4_subprocess(
 
     # 用 `-m` 方式启动，避免把脚本所在目录（chem/psi4，里面有个 utils.py）
     # 塞进 sys.path[0] 而遮蔽顶层的 utils 包。cwd 设为工作区根保证包可导入。
-    args = [sys.executable, "-m", "chem.psi4._subprocess_runner",
-            cmd_path, result_path, progress_path]
+    args = [sys.executable, "-m", "chem.psi4._subprocess_runner", cmd_path, result_path, progress_path]
     creationflags = 0
     if sys.platform.startswith("win"):
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
     proc = subprocess.Popen(
-        args, cwd=str(work_root), env=env, creationflags=creationflags,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        args,
+        cwd=str(work_root),
+        env=env,
+        creationflags=creationflags,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
 
     progress_state = {"last_n": 0}
@@ -1391,9 +1440,14 @@ def _ensure_worker() -> "subprocess.Popen":
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if sys.platform.startswith("win") else 0
     _worker_proc = subprocess.Popen(
         [sys.executable, "-m", "chem.psi4._worker"],
-        cwd=str(work_root), env=env, creationflags=creationflags,
-        stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        text=True, bufsize=1,
+        cwd=str(work_root),
+        env=env,
+        creationflags=creationflags,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
     )
     return _worker_proc
 
@@ -1432,22 +1486,44 @@ def _shutdown_worker() -> None:
 
 
 def _run_psi4_worker(
-    input_file, task_type, method, basis, output_dir, preset_name,
-    solvent, d3, charge, multiplicity, memory, *,
-    progress_callback=None, cancel_check=None, timeout=None, poll_interval=0.2,
-    **kwargs
+    input_file,
+    task_type,
+    method,
+    basis,
+    output_dir,
+    preset_name,
+    solvent,
+    d3,
+    charge,
+    multiplicity,
+    memory,
+    *,
+    progress_callback=None,
+    cancel_check=None,
+    timeout=None,
+    poll_interval=0.2,
+    **kwargs,
 ) -> dict:
-    work_root = Path(__file__).resolve().parents[2]
+    Path(__file__).resolve().parents[2]
     tmp = tempfile.mkdtemp(prefix="psi4_wk_")
     result_path = os.path.join(tmp, "result.json")
     progress_path = os.path.join(tmp, "progress.jsonl")
 
-    cmd = dict(
-        input_file=input_file, task_type=task_type, method=method, basis=basis,
-        output_dir=output_dir, preset_name=preset_name, solvent=solvent, d3=d3,
-        charge=charge, multiplicity=multiplicity, memory=memory,
-        result_path=result_path, progress_path=progress_path,
-    )
+    cmd = {
+        "input_file": input_file,
+        "task_type": task_type,
+        "method": method,
+        "basis": basis,
+        "output_dir": output_dir,
+        "preset_name": preset_name,
+        "solvent": solvent,
+        "d3": d3,
+        "charge": charge,
+        "multiplicity": multiplicity,
+        "memory": memory,
+        "result_path": result_path,
+        "progress_path": progress_path,
+    }
     for k, v in kwargs.items():
         if k in ("_progress_callback", "_extra_post_hook"):
             continue
@@ -1461,7 +1537,7 @@ def _run_psi4_worker(
                 proc.stdin.flush()
             except Exception as _w_err:
                 _kill_worker()
-                raise RuntimeError(f"向 worker 写命令失败: {_w_err}")
+                raise RuntimeError(f"向 worker 写命令失败: {_w_err}") from _w_err
 
             started = time.time()
             progress_state = {"last_n": 0}
@@ -1496,7 +1572,7 @@ def _run_psi4_worker(
         with open(result_path, encoding="utf-8") as rf:
             result = json.load(rf)
     except Exception as e:
-        raise RuntimeError(f"读取 worker 结果失败: {e}")
+        raise RuntimeError(f"读取 worker 结果失败: {e}") from e
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return result
@@ -1504,21 +1580,21 @@ def _run_psi4_worker(
 
 def run_psi4_task_cancellable(
     input_file: str,
-    task_type: str = 'energy',
-    method: str = 'b3lyp',
-    basis: str = '6-31g*',
+    task_type: str = "energy",
+    method: str = "b3lyp",
+    basis: str = "6-31g*",
     output_dir: str | None = None,
     preset_name: str | None = None,
     solvent: str | None = None,
     d3: bool = False,
     charge: int = 0,
     multiplicity: int = 1,
-    memory: str = '4 GB',
+    memory: str = "4 GB",
     *,
     cancel_check: Callable[[], bool] | None = None,
     timeout: float | None = None,
     poll_interval: float = 0.2,
-    **kwargs
+    **kwargs,
 ) -> dict:
     """
     可取消版本的 run_psi4_task。三级回退保证健壮：
@@ -1534,25 +1610,60 @@ def run_psi4_task_cancellable(
     progress_callback = kwargs.get("_progress_callback")
     try:
         return _run_psi4_worker(
-            input_file, task_type, method, basis, output_dir, preset_name,
-            solvent, d3, charge, multiplicity, memory,
+            input_file,
+            task_type,
+            method,
+            basis,
+            output_dir,
+            preset_name,
+            solvent,
+            d3,
+            charge,
+            multiplicity,
+            memory,
             progress_callback=progress_callback,
-            cancel_check=cancel_check, timeout=timeout,
-            poll_interval=poll_interval, **kwargs)
+            cancel_check=cancel_check,
+            timeout=timeout,
+            poll_interval=poll_interval,
+            **kwargs,
+        )
     except Exception as _w_err:
         logger.warning("PSI4 热 worker 失败，回退到子进程模式：%s", _w_err)
         try:
             return _run_psi4_subprocess(
-                input_file, task_type, method, basis, output_dir, preset_name,
-                solvent, d3, charge, multiplicity, memory,
+                input_file,
+                task_type,
+                method,
+                basis,
+                output_dir,
+                preset_name,
+                solvent,
+                d3,
+                charge,
+                multiplicity,
+                memory,
                 progress_callback=progress_callback,
-                cancel_check=cancel_check, timeout=timeout,
-                poll_interval=poll_interval, **kwargs)
+                cancel_check=cancel_check,
+                timeout=timeout,
+                poll_interval=poll_interval,
+                **kwargs,
+            )
         except Exception as _sp_err:
             logger.warning("PSI4 子进程模式也失败，回退到同步执行：%s", _sp_err)
             return run_psi4_task(
-                input_file, task_type, method, basis, output_dir, preset_name,
-                solvent, d3, charge, multiplicity, memory, **kwargs)
+                input_file,
+                task_type,
+                method,
+                basis,
+                output_dir,
+                preset_name,
+                solvent,
+                d3,
+                charge,
+                multiplicity,
+                memory,
+                **kwargs,
+            )
 
 
 # 解释器退出时优雅关闭常驻 worker（失败回退强杀），避免残留进程

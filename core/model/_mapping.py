@@ -1,12 +1,12 @@
 """mapping 子系统 mixin（由原 core/model.py 拆分而来）。"""
+
 from typing import Dict, List, Optional, Tuple
 
 from ._common import *  # noqa: F401,F403
 
 
 class MappingMixin:
-    def save_mapping(self, mapping_dict: Dict[str, str], *,
-                     path=None, backup: bool = True) -> Path:
+    def save_mapping(self, mapping_dict: Dict[str, str], *, path=None, backup: bool = True) -> Path:
         """
         保存映射表到磁盘（T10：从 ui/dialogs/mapping_dialog.py 下沉而来）。
 
@@ -38,7 +38,8 @@ class MappingMixin:
                 if str(out_path) not in {str(a) for a in artifacts}:
                     artifacts.append(out_path)
                 self.create_backup_snapshot(
-                    "mapping", artifacts,
+                    "mapping",
+                    artifacts,
                     f"保存映射表前的自动快照（{len(mapping_dict)} 条）",
                 )
             except Exception as exc:  # noqa: BLE001
@@ -66,7 +67,7 @@ class MappingMixin:
         # ---- 3) 同步内存状态 ----
         self.set_mapping(dict(mapping_dict))
         self.invalidate_scan_cache()
-        self._log(f"💾 映射表已保存：{len(mapping_dict)} 条 → {out_path.name}", 'success')
+        self._log(f"💾 映射表已保存：{len(mapping_dict)} 条 → {out_path.name}", "success")
         return out_path
 
     def parse_mapping_file(self, path: Path) -> Tuple[Dict[str, str], Dict[str, "object"]]:
@@ -81,10 +82,10 @@ class MappingMixin:
             raise FileNotFoundError(f"文件不存在: {path}")
         mapping: Dict[str, str] = {}
         duplicate_count = 0
-        eng_conflicts: List[str] = []   # 重复的英文名（后者被静默丢弃）
-        chn_conflicts: List[Tuple[str, str, str]] = []   # 科学红线 S-06
+        eng_conflicts: List[str] = []  # 重复的英文名（后者被静默丢弃）
+        chn_conflicts: List[Tuple[str, str, str]] = []  # 科学红线 S-06
         seen_chn: Dict[str, str] = {}
-        with open(win_longpath(path), encoding='utf-8-sig') as f:
+        with open(win_longpath(path), encoding="utf-8-sig") as f:
             lines = f.readlines()
         if len(lines) < 2:
             raise ValueError("映射文件为空或格式错误")
@@ -92,7 +93,7 @@ class MappingMixin:
             line = line.strip()
             if not line:
                 continue
-            parts = line.split('\t')
+            parts = line.split("\t")
             if len(parts) >= 2:
                 eng = parts[0].strip()
                 chn = parts[1].strip()

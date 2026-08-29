@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 配置管理模块
 
@@ -10,6 +9,7 @@
     加载时用 ``model_validate`` 自动补默认值 + 校验类型，再 ``model_dump()`` 回 dict，
     因此对外的 dict 契约完全不变，仅新增「非法类型 → 回退默认并告警」的保护。
 """
+
 import json
 import os
 from pathlib import Path
@@ -45,6 +45,7 @@ DEFAULT_UPDATE_REPO: str = ""
 class _MolManagerConfigBase(BaseModel):
     """所有配置模型的公共基类：允许并保留未知字段（extra="allow"），
     与旧 _deep_merge 的「target 键优先、额外键原样保留」行为对齐，避免丢键。"""
+
     model_config = ConfigDict(extra="allow")
 
 
@@ -78,13 +79,12 @@ class UpdateModel(_MolManagerConfigBase):
 class DndModel(_MolManagerConfigBase):
     # enabled: 拖放导入总开关；extensions: 扩展名白名单（留空 = 不限）
     enabled: bool = True
-    extensions: list[str] = Field(
-        default_factory=lambda: [".xyz", ".mol", ".sdf", ".pdb", ".cif", ".log", ".out"]
-    )
+    extensions: list[str] = Field(default_factory=lambda: [".xyz", ".mol", ".sdf", ".pdb", ".cif", ".log", ".out"])
 
 
 class MolManagerConfigModel(_MolManagerConfigBase):
     """根配置模型：字段与旧 DEFAULT_CONFIG 一一对应，带类型 + 默认值。"""
+
     work_dir: str = "output"
     mapping_file: str = ""
     ext_filter: str = ".mol,.xyz,.fchk,.out,.inp"
@@ -98,12 +98,12 @@ class MolManagerConfigModel(_MolManagerConfigBase):
     font_follow_dpi: bool = True
     # OpenBabel 可执行文件路径（空=自动查找）
     obabel_path: str = ""
-    ui_mode: str = "simple"          # simple / advanced
-    recent_files: list[str] = Field(default_factory=list)   # 最近文件（最多10个）
-    preset_auto_load: str = ""       # 自动加载的预设名（空=不自动加载）
-    first_run: bool = True           # 由 wizard.py 管理
-    queue_concurrency: int = 2       # 任务队列并发度（常驻 worker 池并行线程数）
-    descriptor_workers: int = 1      # 批量描述符并发 worker 数（默认1=顺序，零回归）
+    ui_mode: str = "simple"  # simple / advanced
+    recent_files: list[str] = Field(default_factory=list)  # 最近文件（最多10个）
+    preset_auto_load: str = ""  # 自动加载的预设名（空=不自动加载）
+    first_run: bool = True  # 由 wizard.py 管理
+    queue_concurrency: int = 2  # 任务队列并发度（常驻 worker 池并行线程数）
+    descriptor_workers: int = 1  # 批量描述符并发 worker 数（默认1=顺序，零回归）
     log_filter: LogFilterModel = Field(default_factory=LogFilterModel)
     backup: BackupModel = Field(default_factory=BackupModel)
     update: UpdateModel = Field(default_factory=UpdateModel)
@@ -127,7 +127,7 @@ def load_config():
         if CONFIG_FILE.exists():
             # 先补一次权限（兼容旧版本创建的 0o644 文件）
             chmod_quiet(CONFIG_FILE, 0o600)
-            with open(CONFIG_FILE, encoding='utf-8') as f:
+            with open(CONFIG_FILE, encoding="utf-8") as f:
                 raw = json.load(f)
             if not isinstance(raw, dict):
                 logger.warning("配置文件格式不是字典，使用默认配置")
@@ -149,11 +149,11 @@ def save_config(config):
         # 同时避免 (a) 写一半崩溃导致配置损坏 (b) 创建后未立即 chmod 被其他用户读取
         data = config.model_dump() if isinstance(config, BaseModel) else config
         tmp_path = CONFIG_FILE.with_suffix(CONFIG_FILE.suffix + ".tmp")
-        with open(tmp_path, 'w', encoding='utf-8') as f:
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         # 先 chmod 再原子替换，防止竞态
         chmod_quiet(tmp_path, 0o600)
-        if hasattr(os, 'replace'):
+        if hasattr(os, "replace"):
             os.replace(tmp_path, CONFIG_FILE)
         else:
             tmp_path.rename(CONFIG_FILE)

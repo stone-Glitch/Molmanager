@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 映射增强工具（M-03 / M-04 / M-06 / M-02 的纯逻辑层）。
 
@@ -7,6 +6,7 @@
 UI 中剥离到这里，UI 层只负责调用；这样无需 GUI 即可在 managed python 下验证正确性
 （遵循本项目「验证 > 承诺」：先确认逻辑再接线）。
 """
+
 import csv
 import os
 import re
@@ -47,8 +47,7 @@ def _dedupe(names: Iterable[str]) -> list[str]:
     return out
 
 
-def fuzzy_suggestions(name: str, candidates: Iterable[str],
-                      max_dist: int = 2, limit: int = 8) -> list[str]:
+def fuzzy_suggestions(name: str, candidates: Iterable[str], max_dist: int = 2, limit: int = 8) -> list[str]:
     """
     返回与 name 编辑距离 ≤ max_dist 的候选（去重、按距离升序、截断到 limit）。
     用于编辑中文名时主动「建议」已有近似写法，避免拼写重复（如 乙醇/乙醚）。
@@ -108,16 +107,12 @@ def filter_mapping_rows(rows: list[tuple[str, str]], keyword: str) -> list[tuple
     kw = (keyword or "").strip().lower()
     if not kw:
         return list(rows)
-    return [
-        (eng, chn) for eng, chn in rows
-        if kw in str(eng).lower() or kw in str(chn).lower()
-    ]
+    return [(eng, chn) for eng, chn in rows if kw in str(eng).lower() or kw in str(chn).lower()]
 
 
-def generate_blank_template(path: str,
-                            existing_english: Iterable[str] | None = None,
-                            blank_rows: int = 10,
-                            delimiter: str = "\t") -> int:
+def generate_blank_template(
+    path: str, existing_english: Iterable[str] | None = None, blank_rows: int = 10, delimiter: str = "\t"
+) -> int:
     """
     M-06：生成空白映射模板。
       - 表头：english<delimiter>chinese
@@ -195,11 +190,13 @@ def clean_filename_stem(stem: str) -> str:
     return "_".join(tokens)
 
 
-def suggest_mapping_from_dir(dir_path: str | os.PathLike,
-                             existing_english: Iterable[str] | None = None,
-                             extensions: Iterable[str] | None = None,
-                             recursive: bool = False,
-                             max_items: int = 500) -> list[tuple[str, str]]:
+def suggest_mapping_from_dir(
+    dir_path: str | os.PathLike,
+    existing_english: Iterable[str] | None = None,
+    extensions: Iterable[str] | None = None,
+    recursive: bool = False,
+    max_items: int = 500,
+) -> list[tuple[str, str]]:
     """
     M-02：扫描目录，返回「尚未映射」的候选 (english, "") 列表，供用户在编辑器中批量建议。
 
@@ -286,7 +283,7 @@ def diff_mappings(old: dict[str, str], new: dict[str, str]) -> dict[str, "object
     added = {k: new[k] for k in (new_keys - old_keys)}
     removed = {k: old[k] for k in (old_keys - new_keys)}
     changed = {}
-    for k in (new_keys & old_keys):
+    for k in new_keys & old_keys:
         if old[k] != new[k]:
             changed[k] = (old[k], new[k])
     unchanged = len(new_keys & old_keys) - len(changed)

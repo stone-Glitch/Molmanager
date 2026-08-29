@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """utils/cache.py —— LRU / TTL 缓存与文件缓存键。
 
 这一层被 chem 的描述符缓存、分子读取缓存、反应动画逐帧缓存共用，
@@ -29,8 +28,8 @@ def test_lru_evicts_least_recently_used() -> None:
     c: LRUCache = LRUCache(maxsize=2)
     c.put("a", 1)
     c.put("b", 2)
-    c.get("a")          # a 变为最近使用
-    c.put("c", 3)       # 应淘汰 b 而不是 a
+    c.get("a")  # a 变为最近使用
+    c.put("c", 3)  # 应淘汰 b 而不是 a
     assert c.get("a") == 1
     assert c.get("b") is None
     assert c.get("c") == 3
@@ -53,9 +52,9 @@ def test_lru_unlimited_maxsize() -> None:
 
 
 def test_lru_rejects_non_positive_maxsize() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="maxsize"):
         LRUCache(maxsize=0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="maxsize"):
         LRUCache(maxsize=-1)
 
 
@@ -133,9 +132,9 @@ def test_timed_lru_sweep_removes_expired() -> None:
 
 
 def test_timed_lru_rejects_bad_params() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="maxsize"):
         TimedLRUCache(maxsize=0)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="ttl"):
         TimedLRUCache(ttl=0)
 
 

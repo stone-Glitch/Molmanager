@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 E-02 分层目录树构造器（纯逻辑层）
 
@@ -11,6 +10,7 @@ E-02 分层目录树构造器（纯逻辑层）
   - 纯函数：相同输入永远得到相同结构（确定性、可重放）。
   - 不触碰任何文件系统；入参只接受字符串路径。
 """
+
 from collections.abc import Iterable
 
 
@@ -90,7 +90,7 @@ def count_nodes(tree: dict) -> tuple[int, int]:
     """返回 (目录节点数, 文件节点数)。"""
     dirs = 0
     files = 0
-    for name, node in tree.items():
+    for node in tree.values():
         children = node.get("_children", {})
         if children:
             dirs += 1

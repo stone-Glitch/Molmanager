@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 E-01 深度元数据索引（.log/.out/.fchk 动态列）· 纯逻辑层
 
@@ -8,6 +7,7 @@ E-01 深度元数据索引（.log/.out/.fchk 动态列）· 纯逻辑层
 
 纯正则/文本解析，无外部依赖，可在沙箱用合成文本单测。
 """
+
 import re
 from typing import Any
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """pytest 公共 fixture。
 
 设计目标：**同一套测试既能跑在完整 conda 环境，也能跑在纯 pip 环境**。
@@ -62,7 +61,7 @@ def work_dir(tmp_path: Path) -> Iterator[str]:
     """一个干净的工作目录（尚未创建任何子结构）。"""
     d = tmp_path / "work"
     d.mkdir(parents=True, exist_ok=True)
-    yield str(d)
+    return str(d)
 
 
 @pytest.fixture

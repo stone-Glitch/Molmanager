@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 应用辅助函数 - 日志、进度、树更新、任务提交、浏览等
 线程安全版本
@@ -39,11 +38,11 @@ _PROGRESS_THROTTLE_MS = 10
 _APP_HELPERS_LOCK = threading.Lock()
 
 _LEVEL_MAP = {
-    "info":    logging.INFO,
+    "info": logging.INFO,
     "success": LEVEL_SUCCESS,
     "warning": logging.WARNING,
-    "error":   logging.ERROR,
-    "debug":   logging.DEBUG,
+    "error": logging.ERROR,
+    "debug": logging.DEBUG,
 }
 
 
@@ -57,7 +56,7 @@ class AppHelpers:
         self._prog_flush_scheduled = False
 
     # ---------- 日志：现在统一走 logging + GuiLogHandler ----------
-    def on_log(self, msg, level='info'):
+    def on_log(self, msg, level="info"):
         """记录日志（线程安全）：统一走 logger，GUI 显示由 GuiLogHandler 负责"""
         msg_str = str(msg)
         level_name = str(level).lower()
@@ -79,8 +78,11 @@ class AppHelpers:
             if handler is None:
                 return
             level_names = {
-                "debug": "DEBUG", "info": "INFO", "success": "SUCCESS",
-                "warning": "WARNING", "error": "ERROR",
+                "debug": "DEBUG",
+                "info": "INFO",
+                "success": "SUCCESS",
+                "warning": "WARNING",
+                "error": "ERROR",
             }
             lv = level_names.get(key, key.upper())
             handler.set_active(lv, bool(var.get()))
@@ -174,18 +176,35 @@ class AppHelpers:
             frm = tk.Frame(win, bg="#161B22", padx=16, pady=16)
             frm.pack(fill=tk.BOTH, expand=True)
             from tkinter import scrolledtext as _st
+
             tv = _st.ScrolledText(
-                frm, font=("Consolas", 11), bg="#0D1117", fg="#E6EDF3",
-                relief="flat", bd=0, padx=14, pady=12, wrap="none",
+                frm,
+                font=("Consolas", 11),
+                bg="#0D1117",
+                fg="#E6EDF3",
+                relief="flat",
+                bd=0,
+                padx=14,
+                pady=12,
+                wrap="none",
             )
             tv.pack(fill=tk.BOTH, expand=True)
             tv.insert("1.0", txt)
             tv.configure(state="disabled")
             tk.Button(
-                frm, text="关闭", command=win.destroy,
-                bg="#2DD4BF", fg="#0F1419", font=("Microsoft YaHei UI", 10, "bold"),
-                bd=0, relief="flat", padx=18, pady=6, cursor="hand2",
-                activebackground="#5EEAD4", activeforeground="#0F1419",
+                frm,
+                text="关闭",
+                command=win.destroy,
+                bg="#2DD4BF",
+                fg="#0F1419",
+                font=("Microsoft YaHei UI", 10, "bold"),
+                bd=0,
+                relief="flat",
+                padx=18,
+                pady=6,
+                cursor="hand2",
+                activebackground="#5EEAD4",
+                activeforeground="#0F1419",
             ).pack(pady=(12, 0))
         except Exception as e:
             logger.error("显示性能 Top10 失败: %s", e)
@@ -254,7 +273,6 @@ class AppHelpers:
             # 1 秒后把进度条归 0：用默认参数把 progress_var 绑定住，避免后续回调里 self/app 指向变化
             self.app.after(1000, lambda pv=self.app.progress_var: pv.set(0))
 
-
     # ---------- 提交任务 ----------
     def run_task(self, func, *args, **kwargs):
         self.app.status_var.set("处理中...")
@@ -316,16 +334,17 @@ class AppHelpers:
         # 复选框状态以文件名为键（跨筛选/重渲染保持），渲染时回显字形
         checked = getattr(self.app, "checked_names", None) or set()
         # P-04：可见行「已勾选」计数 O(1) 维护（供 _tree_update_check_state 表头半选态使用）
-        self.app._vis_checked = sum(1 for f in entries if f['name'] in checked)
+        self.app._vis_checked = sum(1 for f in entries if f["name"] in checked)
 
         def _vals(f):
-            glyph = CHECK_GLYPH["on"] if f['name'] in checked else CHECK_GLYPH["off"]
-            return (glyph, f['name'], f['status'], f['eng'], f['chn'])
+            glyph = CHECK_GLYPH["on"] if f["name"] in checked else CHECK_GLYPH["off"]
+            return (glyph, f["name"], f["status"], f["eng"], f["chn"])
 
         # U-05：状态列彩色圆点 Tag。惰性导入 + 幂等 tag_configure；失败则退回无 tag（不崩溃）。
         # 颜色从主题调色板取（令牌统一），浅/深主题自动跟随，不再硬编码暗色 hex。
         try:
             from ui.ui_theme import get_palette
+
             _P = get_palette()
             _tag_hex = {
                 "success": _P.get("success", "#3FB950"),
@@ -345,6 +364,7 @@ class AppHelpers:
                 return ()
             try:
                 from utils.status_colors import status_color
+
                 return (f"st_{status_color(status)}",)
             except Exception:
                 return ()
@@ -356,7 +376,7 @@ class AppHelpers:
         # 条目很少（<= 一批）：直接插入，省掉 after 调度开销
         if len(entries) <= self._RENDER_BATCH_SIZE:
             for f in entries:
-                tree.insert("", tk.END, values=_vals(f), tags=_status_tag(f['status']))
+                tree.insert("", tk.END, values=_vals(f), tags=_status_tag(f["status"]))
             if _refresh:
                 _refresh()
             return
@@ -366,7 +386,7 @@ class AppHelpers:
         def _insert_batch(start_i: int):
             end_i = min(start_i + self._RENDER_BATCH_SIZE, len(entries))
             for idx in range(start_i, end_i):
-                tree.insert("", END, values=_vals(entries[idx]), tags=_status_tag(entries[idx]['status']))
+                tree.insert("", END, values=_vals(entries[idx]), tags=_status_tag(entries[idx]["status"]))
             if end_i < len(entries):
                 self.app.after_idle(_insert_batch, end_i)
             elif _refresh:
@@ -378,9 +398,7 @@ class AppHelpers:
         keyword = self.app.filter_keyword_var.get()
         status = self.app.filter_status_var.get()
         ext = self.app.filter_ext_var.get()
-        filtered = self.app.controller.model.filter_files(
-            self.app.last_scan_result, keyword, status, ext
-        )
+        filtered = self.app.controller.model.filter_files(self.app.last_scan_result, keyword, status, ext)
         self.render_files(filtered)
 
     def update_tree(self, files):
@@ -391,11 +409,11 @@ class AppHelpers:
         if not current:
             self.app.ext_display_var.set("无")
         else:
-            exts = [e.strip() for e in current.split(',') if e.strip()]
+            exts = [e.strip() for e in current.split(",") if e.strip()]
             if len(exts) <= 3:
                 self.app.ext_display_var.set(", ".join(exts))
             else:
-                self.app.ext_display_var.set(", ".join(exts[:2]) + f" ... (+{len(exts)-2})")
+                self.app.ext_display_var.set(", ".join(exts[:2]) + f" ... (+{len(exts) - 2})")
 
     # ---------- 获取选中文件 ----------
     def get_selected_filenames(self):
@@ -427,7 +445,7 @@ class AppHelpers:
         info = []
         for name in selected:
             base, ext = os.path.splitext(name)
-            info.append({'name': name, 'base': base, 'ext': ext})
+            info.append({"name": name, "base": base, "ext": ext})
         return info
 
     # ---------- 预览 + 执行（Dry-run Diff） ----------
@@ -443,12 +461,11 @@ class AppHelpers:
             on_confirm()
             return
         try:
-            from tkinter import messagebox as mb
             from tkinter import ttk
         except Exception:
-            mb = None
             ttk = None
         import tkinter as _tk
+
         top = _tk.Toplevel(self.app)
         top.title(f"⚠️ 操作预览 - {operation_label}")
         top.geometry(fit_dialog_geometry(top, 820, 520))
@@ -462,24 +479,25 @@ class AppHelpers:
         header = ttk.Label(
             top,
             text=f"以下 {len(changes)} 项变更将被应用。点击行首方框可取消某一项（取消项会灰显，表示将被跳过）：",
-            font=('Microsoft YaHei', 10, 'bold'),
-            foreground='#1f6feb',
+            font=("Microsoft YaHei", 10, "bold"),
+            foreground="#1f6feb",
         )
-        header.pack(padx=12, pady=(12, 6), anchor='w')
+        header.pack(padx=12, pady=(12, 6), anchor="w")
 
         frame = ttk.Frame(top)
-        frame.pack(fill='both', expand=True, padx=12, pady=6)
+        frame.pack(fill="both", expand=True, padx=12, pady=6)
         # "sel" 列就是勾选框：Treeview 没有原生 checkbox，用 ☑/☐ 字符 + 点击切换实现
         cols = ("sel", "idx", "action", "from", "to")
         tree = ttk.Treeview(frame, columns=cols, show="headings", selectmode="none")
         import ui.ui_theme as _ut
+
         _ut.bind_treeview_hover(tree)
         widths = {"sel": 46, "idx": 50, "action": 96, "from": 280, "to": 280}
         titles = {"sel": "选", "idx": "#", "action": "操作", "from": "从（原）", "to": "到（新）"}
         for c in cols:
-            anchor = 'center' if c in ('sel', 'idx') else 'w'
+            anchor = "center" if c in ("sel", "idx") else "w"
             tree.heading(c, text=titles[c])
-            tree.column(c, width=widths[c], anchor=anchor, stretch=(c in ('from', 'to')))
+            tree.column(c, width=widths[c], anchor=anchor, stretch=(c in ("from", "to")))
         vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
         hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
         tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -490,8 +508,12 @@ class AppHelpers:
         frame.columnconfigure(0, weight=1)
 
         action_color = {
-            "rename": "darkblue", "move": "#6f42c1", "delete": "#cb2431",
-            "copy": "#22863a", "convert": "#005cc5", "修复": "darkgreen",
+            "rename": "darkblue",
+            "move": "#6f42c1",
+            "delete": "#cb2431",
+            "copy": "#22863a",
+            "convert": "#005cc5",
+            "修复": "darkgreen",
             "恢复": "#6f42c1",
         }
         CHECKED, UNCHECKED = "☑", "☐"
@@ -506,9 +528,9 @@ class AppHelpers:
             # 每种 action 用**独立的 tag 名**，否则同名 tag 会被后一行的配色覆盖，
             # 导致所有行都变成最后一项的颜色（原实现就是这个 bug）。
             tag = f"act_{action}"
-            tree.insert("", _tk.END, iid=iid, values=(
-                CHECKED, i, action, c.get("from", ""), c.get("to", "")
-            ), tags=(tag,))
+            tree.insert(
+                "", _tk.END, iid=iid, values=(CHECKED, i, action, c.get("from", ""), c.get("to", "")), tags=(tag,)
+            )
             tree.tag_configure(tag, foreground=action_color.get(action, "black"))
             # 每项一个独立的灰色 tag（取消时整行变灰，勾选时切回原 action 配色）
             tree.tag_configure(f"grey_{iid}", foreground=PREVIEW_SKIP_GREY)
@@ -520,8 +542,7 @@ class AppHelpers:
             n = sum(1 for v in checked_map.values() if v)
             count_var.set(f"已选 {n} / 共 {len(changes)} 项")
             try:
-                apply_btn.config(text=f"✅ 应用选中的 {n} 项",
-                                 state=("normal" if n else "disabled"))
+                apply_btn.config(text=f"✅ 应用选中的 {n} 项", state=("normal" if n else "disabled"))
             except Exception:
                 pass
 
@@ -545,7 +566,7 @@ class AppHelpers:
                 _toggle(row)
 
         def _on_space(event):
-            row = tree.focus() or (tree.identify_row(event.y) if hasattr(event, 'y') else "")
+            row = tree.focus() or (tree.identify_row(event.y) if hasattr(event, "y") else "")
             if row:
                 _toggle(row)
 
@@ -554,7 +575,7 @@ class AppHelpers:
 
         # —— 批量勾选工具条 ——
         tool_row = ttk.Frame(top)
-        tool_row.pack(fill='x', padx=12, pady=(2, 0))
+        tool_row.pack(fill="x", padx=12, pady=(2, 0))
 
         def _all(value: bool):
             for iid in checked_map:
@@ -566,28 +587,28 @@ class AppHelpers:
                 _set_checked(iid, not checked_map[iid])
             _refresh_count()
 
-        ttk.Button(tool_row, text="全选", width=8, command=lambda: _all(True)).pack(side='left', padx=(0, 4))
-        ttk.Button(tool_row, text="全不选", width=8, command=lambda: _all(False)).pack(side='left', padx=4)
-        ttk.Button(tool_row, text="反选", width=8, command=_invert).pack(side='left', padx=4)
-        ttk.Label(tool_row, textvariable=count_var,
-                  font=('Microsoft YaHei', 10, 'bold'), foreground='#1f6feb').pack(side='right')
+        ttk.Button(tool_row, text="全选", width=8, command=lambda: _all(True)).pack(side="left", padx=(0, 4))
+        ttk.Button(tool_row, text="全不选", width=8, command=lambda: _all(False)).pack(side="left", padx=4)
+        ttk.Button(tool_row, text="反选", width=8, command=_invert).pack(side="left", padx=4)
+        ttk.Label(tool_row, textvariable=count_var, font=("Microsoft YaHei", 10, "bold"), foreground="#1f6feb").pack(
+            side="right"
+        )
 
         # —— 与「设置 → 文件整理前先预览」菜单开关双向同步 ——
         # 复用同一 BooleanVar：对话框勾选状态与菜单开关实时一致，杜绝重复/不一致。
         prev_var = getattr(self.app, "preview_before_operation_var", None)
         if prev_var is None or not isinstance(prev_var, _tk.BooleanVar):
-            prev_var = _tk.BooleanVar(
-                value=bool(self.app.config_data.get("preview_before_operation", True)))
+            prev_var = _tk.BooleanVar(value=bool(self.app.config_data.get("preview_before_operation", True)))
             self.app.preview_before_operation_var = prev_var
         # 对话框复选框语义为「以后直接执行，不再询问」= 预览关闭，与开关相反
         always_var = _tk.BooleanVar(value=not prev_var.get())
-        _prev_trace = prev_var.trace_add(
-            "write", lambda *_a: always_var.set(not prev_var.get()))
+        _prev_trace = prev_var.trace_add("write", lambda *_a: always_var.set(not prev_var.get()))
         chk = ttk.Checkbutton(
-            top, text="✅ 以后所有操作都直接执行，不再询问（可在顶部设置菜单改回）",
+            top,
+            text="✅ 以后所有操作都直接执行，不再询问（可在顶部设置菜单改回）",
             variable=always_var,
         )
-        chk.pack(padx=12, pady=(6, 4), anchor='w')
+        chk.pack(padx=12, pady=(6, 4), anchor="w")
 
         def on_close(result: bool):
             # 写回共享开关变量（菜单与对话框同步），并持久化到配置
@@ -598,6 +619,7 @@ class AppHelpers:
             try:
                 self.app.config_data["preview_before_operation"] = prev_var.get()
                 from utils.config import save_config as _save
+
                 _save(self.app.config_data)
             except Exception:
                 pass
@@ -617,10 +639,10 @@ class AppHelpers:
                 on_confirm()
 
         btn_row = ttk.Frame(top)
-        btn_row.pack(fill='x', padx=12, pady=12)
+        btn_row.pack(fill="x", padx=12, pady=12)
         apply_btn = ttk.Button(btn_row, text="✅ 应用选中的项", command=lambda: on_close(True))
-        apply_btn.pack(side='right', padx=4)
-        ttk.Button(btn_row, text="❌ 取消", command=lambda: on_close(False)).pack(side='right', padx=4)
+        apply_btn.pack(side="right", padx=4)
+        ttk.Button(btn_row, text="❌ 取消", command=lambda: on_close(False)).pack(side="right", padx=4)
 
         _refresh_count()
         # Esc 取消是对话框的通用预期；再把窗口摆到主窗口中央，避免出现在屏幕角落
@@ -650,7 +672,7 @@ class AppHelpers:
         try:
             dry_result = dryrun_callable()
         except Exception as e:
-            self.on_log(f"❌ 预览阶段出错: {e}", 'error')
+            self.on_log(f"❌ 预览阶段出错: {e}", "error")
             return
         if isinstance(dry_result, tuple) and len(dry_result) >= 1:
             changes, extra = (dry_result[0], dry_result[1:])
@@ -670,11 +692,11 @@ class AppHelpers:
                     try:
                         real_callable(*extra) if extra else real_callable()
                     except Exception as e:
-                        self.on_log(f"❌ 执行失败: {e}", 'error')
+                        self.on_log(f"❌ 执行失败: {e}", "error")
                 else:
-                    self.on_log(f"❌ 执行失败: {te}", 'error')
+                    self.on_log(f"❌ 执行失败: {te}", "error")
             except Exception as e:
-                self.on_log(f"❌ 执行失败: {e}", 'error')
+                self.on_log(f"❌ 执行失败: {e}", "error")
 
         if self._is_preview_enabled() and changes:
             self.show_preview_dialog(operation_label, changes, _do_confirm)
@@ -715,7 +737,7 @@ class AppHelpers:
             pass
         self.app.status_var.set("已取消")
         self.app.progress_var.set(0)
-        self.on_log("⏹ 任务已取消（部分结果可能未保存）", 'warning')
+        self.on_log("⏹ 任务已取消（部分结果可能未保存）", "warning")
 
     def on_task_error(self, error, job=None):
         try:
@@ -735,11 +757,12 @@ class AppHelpers:
         except Exception:
             pass
         self.app.status_var.set("出错")
-        self.on_log(f"❌ 后台任务出错: {error}", 'error')
+        self.on_log(f"❌ 后台任务出错: {error}", "error")
         # 新手友好：先翻译，再唤起 F07 错误诊断弹窗（规则库驱动，非模态）。
         title, body, hint = "出错啦", "后台任务出错。", "可以把这段文字发给开发者。"
         try:
             from ui.dialogs import Dialogs
+
             title, body, hint = Dialogs.friendly_error(error)
         except Exception:
             pass
@@ -750,15 +773,13 @@ class AppHelpers:
             # 诊断链路失败，fallback 为最朴素 messagebox
             try:
                 from tkinter import messagebox as _mb2
+
                 _mb2.showerror(title, f"{body}\n\n{hint}", parent=self.app)
             except Exception:
                 pass
 
     # ---------- 环境诊断 / 状态栏指示灯同步（问题三：OB 可用性）----------
-    def check_environment(self, *,
-                          announce_missing: bool = False,
-                          show_dialog: bool = False,
-                          parent=None):
+    def check_environment(self, *, announce_missing: bool = False, show_dialog: bool = False, parent=None):
         """
         统一环境检查入口：
           - 检测 OpenBabel（pybel + CLI），并更新状态栏右侧 OB 指示灯
@@ -771,6 +792,7 @@ class AppHelpers:
         app = self.app
         try:
             import chem.openbabel_utils as ob_utils
+
             ob_ok, ob_msg, ob_det = ob_utils.check_openbabel()
         except Exception as _oe:
             ob_ok, ob_msg, ob_det = False, f"check_openbabel 抛错: {_oe}", {}
@@ -783,6 +805,7 @@ class AppHelpers:
             # 改用 find_spec 做「是否安装」的廉价探测；若别处已导入过则顺带读版本号。
             import importlib.util as _ilu
             import sys as _sys
+
             _mod = _sys.modules.get("psi4")
             if _mod is not None:
                 _v = getattr(_mod, "__version__", None)
@@ -810,8 +833,7 @@ class AppHelpers:
                         dot.delete("hl")
                         sz = dot.winfo_width() or 18
                         r2 = max(4, sz // 5)
-                        dot.create_oval(3, 3, 3 + r2, 3 + r2, fill="#FFFFFF",
-                                        outline="", tags="hl")
+                        dot.create_oval(3, 3, 3 + r2, 3 + r2, fill="#FFFFFF", outline="", tags="hl")
                     except Exception:
                         pass
                 except Exception:
@@ -826,12 +848,14 @@ class AppHelpers:
                     lab.configure(fg=(("#0EA288") if ob_ok else "#E5484D"))
                 except Exception:
                     pass
+
             # 绑定/重绑定点击 → 打开环境诊断对话框
             def _on_ob_dot_click(*_a):
                 try:
                     self.check_environment(announce_missing=False, show_dialog=True)
                 except Exception as _e:
                     messagebox.showerror("打开环境诊断失败", str(_e))
+
             for wid in (dot, lab):
                 if wid is not None:
                     try:
@@ -846,8 +870,9 @@ class AppHelpers:
             if ob_ok:
                 logger.debug("环境检测 OK：%s", ob_msg)
             else:
-                logger.warning("环境检测：OpenBabel 不可用：%s  （可在状态栏右侧点击指示灯，或帮助 → 环境诊断解决）",
-                               ob_msg)
+                logger.warning(
+                    "环境检测：OpenBabel 不可用：%s  （可在状态栏右侧点击指示灯，或帮助 → 环境诊断解决）", ob_msg
+                )
         except Exception:
             pass
 
@@ -861,18 +886,22 @@ class AppHelpers:
                 def _op():
                     try:
                         from ui.dialogs import Dialogs
+
                         dlg = Dialogs(app, self)
                         try:
-                            dlg.show_environment_dialog(parent=parent or app,
-                                                        ob_details=ob_det,
-                                                        psi4_details={
-                                                            "ok": psi4_ok,
-                                                            "message": psi4_msg,
-                                                        })
+                            dlg.show_environment_dialog(
+                                parent=parent or app,
+                                ob_details=ob_det,
+                                psi4_details={
+                                    "ok": psi4_ok,
+                                    "message": psi4_msg,
+                                },
+                            )
                         except Exception:
                             pass
                     except Exception as _de:
                         messagebox.showerror("打开环境诊断失败", str(_de))
+
                 try:
                     app.after(200, _op)
                 except Exception:

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """utils/version.py —— 版本号解析与比较（无第三方依赖，纯 Python）。"""
 
 from __future__ import annotations

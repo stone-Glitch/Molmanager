@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 F17 自动备份 —— 快照管理器（T09 / Phase 1）
 ─────────────────────────────────────────
@@ -29,6 +28,7 @@ F17 自动备份 —— 快照管理器（T09 / Phase 1）
 （T08），否则备份副本会混进文件列表，被「整理 / 重命名 / 删除」误伤 —— 安全网
 反而变成事故源。见 model.PROTECTED_DIR_NAMES。
 """
+
 from __future__ import annotations
 
 import json
@@ -60,7 +60,10 @@ TRIGGER_CONFIG: str = "config"
 TRIGGER_PRERESTORE: str = "prerestore"
 
 KNOWN_TRIGGERS: tuple[str, ...] = (
-    TRIGGER_MAPPING, TRIGGER_EXPORT, TRIGGER_CONFIG, TRIGGER_PRERESTORE,
+    TRIGGER_MAPPING,
+    TRIGGER_EXPORT,
+    TRIGGER_CONFIG,
+    TRIGGER_PRERESTORE,
 )
 
 TRIGGER_LABELS: dict[str, str] = {
@@ -84,6 +87,7 @@ _TS_FMT = "%Y%m%d_%H%M%S"
 
 
 # ---------------------------------------------------------------- 工具函数
+
 
 def format_size(num_bytes: Any) -> str:
     """把字节数格式化为人类可读字符串（对话框展示用）。永不抛异常。"""
@@ -150,12 +154,13 @@ def _atomic_write_json(path: Path, payload: Any) -> bool:
 
 # ---------------------------------------------------------------- 数据模型
 
+
 @dataclass
 class SnapshotMeta:
     """一次快照的元数据（对应快照目录下的 meta.json）。"""
 
     snapshot_id: str = ""
-    timestamp: str = ""                       # ISO 8601，秒精度
+    timestamp: str = ""  # ISO 8601，秒精度
     trigger: str = TRIGGER_MAPPING
     description: str = ""
     app_version: str = APP_VERSION
@@ -212,6 +217,7 @@ class SnapshotMeta:
 
 
 # ---------------------------------------------------------------- 管理器
+
 
 class BackupManager:
     """
@@ -329,7 +335,7 @@ class BackupManager:
         if root is None:
             return None
         stamp = datetime.now().strftime(_TS_FMT)
-        for attempt in range(0, 1000):
+        for attempt in range(1000):
             sid = f"{stamp}_{trigger}" if attempt == 0 else f"{stamp}_{attempt}_{trigger}"
             target = root / sid
             try:
@@ -414,7 +420,10 @@ class BackupManager:
 
             self._debug(
                 "📦 已创建 %s 快照 %s（%d 个文件 / %s）",
-                trigger_label(trig), snapshot_id, len(entries), format_size(total),
+                trigger_label(trig),
+                snapshot_id,
+                len(entries),
+                format_size(total),
             )
             self.prune(trig)
             return meta
@@ -468,7 +477,9 @@ class BackupManager:
         if size > self.max_file_bytes:
             self._warn(
                 "⚠️ 文件超过单文件备份上限（%s > %s），跳过 %s",
-                format_size(size), format_size(self.max_file_bytes), src.name,
+                format_size(size),
+                format_size(self.max_file_bytes),
+                src.name,
             )
             return None
 
@@ -563,11 +574,11 @@ class BackupManager:
         parts = sid.split("_")
         if len(parts) < 2:
             return (sid, 0)
-        stamp = f"{parts[0]}_{parts[1]}"      # YYYYmmdd_HHMMSS
+        stamp = f"{parts[0]}_{parts[1]}"  # YYYYmmdd_HHMMSS
         seq = 0
         if len(parts) >= 3:
             try:
-                seq = int(parts[2])           # 同秒冲突序号（无冲突时这里是 trigger，转换失败即 0）
+                seq = int(parts[2])  # 同秒冲突序号（无冲突时这里是 trigger，转换失败即 0）
             except ValueError:
                 seq = 0
         return (stamp, seq)
@@ -625,22 +636,20 @@ class BackupManager:
             except OSError:
                 exists_now = False
             try:
-                stored_exists = (
-                    snap_dir is not None
-                    and bool(stored_name)
-                    and (snap_dir / stored_name).is_file()
-                )
+                stored_exists = snap_dir is not None and bool(stored_name) and (snap_dir / stored_name).is_file()
             except OSError:
                 stored_exists = False
-            rows.append({
-                "orig_name": str(entry.get("orig_name", "") or stored_name),
-                "orig_path": orig_path,
-                "stored_name": stored_name,
-                "size": size,
-                "size_text": format_size(size),
-                "exists_now": exists_now,
-                "stored_exists": stored_exists,
-            })
+            rows.append(
+                {
+                    "orig_name": str(entry.get("orig_name", "") or stored_name),
+                    "orig_path": orig_path,
+                    "stored_name": stored_name,
+                    "size": size,
+                    "size_text": format_size(size),
+                    "exists_now": exists_now,
+                    "stored_exists": stored_exists,
+                }
+            )
         return rows
 
     # ------------------------------------------------------------ 回滚
@@ -696,7 +705,8 @@ class BackupManager:
                 if doomed:
                     # 注意：prerestore 也走 create_snapshot，本身不会再触发回滚，无递归风险
                     self.create_snapshot(
-                        TRIGGER_PRERESTORE, doomed,
+                        TRIGGER_PRERESTORE,
+                        doomed,
                         f"回滚 {meta.snapshot_id} 前的自动保险快照",
                     )
 
@@ -794,7 +804,7 @@ class BackupManager:
                 triggers = sorted({m.trigger for m in self.list_snapshots()})
             for trig in triggers:
                 snaps = self.list_snapshots(trig)  # 已按时间倒序
-                for stale in snaps[self.keep_per_type:]:
+                for stale in snaps[self.keep_per_type :]:
                     if self.delete_snapshot(stale.snapshot_id):
                         removed += 1
             if removed:

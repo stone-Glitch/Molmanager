@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """utils/mapping_utils.py —— 文件名清洗、模糊建议与映射差异对比。"""
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ def test_levenshtein_basics() -> None:
 
 
 def test_levenshtein_single_char_operations() -> None:
-    assert levenshtein("乙醇", "乙醚") == 1   # 替换
+    assert levenshtein("乙醇", "乙醚") == 1  # 替换
     assert levenshtein("乙醇", "乙醇醛") == 1  # 插入
     assert levenshtein("乙醇醛", "乙醇") == 1  # 删除
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 化学感知搜索（E-04 的纯逻辑层）。
 
@@ -23,6 +22,7 @@
        False（即该条目被排除），**绝不**用占位值凑出假阳性命中。
     —— 纯引擎不触碰文件系统 / OpenBabel；富集（算描述符）由调用方（model.filter_files）负责。
 """
+
 from __future__ import annotations
 
 import re
@@ -209,9 +209,7 @@ def matches_free_text(entry: dict[str, Any], free_terms: list[str]) -> bool:
     """自由文本：所有词必须作为子串出现在 name/base/eng/chn 之一（大小写不敏感）。"""
     if not free_terms:
         return True
-    hay = " ".join(
-        str(entry.get(k, "")) for k in ("name", "base", "eng", "chn")
-    ).lower()
+    hay = " ".join(str(entry.get(k, "")) for k in ("name", "base", "eng", "chn")).lower()
     return all(term.lower() in hay for term in free_terms)
 
 

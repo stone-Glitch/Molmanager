@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 对话框几何适配工具。
 
@@ -12,6 +11,7 @@ fix：
   - make_scrollable_body(dialog)：把对话框主体包进「画布 + 垂直滚动条」，返回 (canvas, body)；
     调用方把所有内容 pack/grid 进 body，footer（按钮栏）自行 pack 在 body 之外，保证始终可见。
 """
+
 from __future__ import annotations
 
 import tkinter as tk
@@ -20,6 +20,7 @@ from tkinter import ttk
 
 def fit_dialog_geometry(dialog, w: int, h: int, min_w: int = 420, min_h: int = 300) -> str:
     """把对话框几何钳制到父窗口所在屏幕内，并相对父窗口居中。"""
+
     def _screen():
         try:
             return dialog.winfo_screenwidth(), dialog.winfo_screenheight()

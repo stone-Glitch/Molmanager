@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """FastAPI 接口层的请求 / 响应模型。
 
 只依赖 ``pydantic``（项目本就依赖它做配置校验），不依赖 FastAPI 本体，
@@ -17,9 +16,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class InChIKeyRequest(BaseModel):
     """SMILES → InChIKey（单条或批量二选一，都给了就合并处理）。"""
 
-    model_config = ConfigDict(json_schema_extra={
-        "example": {"smiles_list": ["CCO", "c1ccccc1", "CC(=O)Oc1ccccc1C(=O)O"]},
-    })
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"smiles_list": ["CCO", "c1ccccc1", "CC(=O)Oc1ccccc1C(=O)O"]},
+        }
+    )
 
     smiles: str | None = Field(default=None, description="单条 SMILES")
     smiles_list: list[str] = Field(default_factory=list, description="批量 SMILES")
@@ -65,9 +66,11 @@ class InChIKeyResponse(BaseModel):
 class DescriptorRequest(BaseModel):
     """分子描述符计算：给 SMILES（写临时文件）或给本地文件路径。"""
 
-    model_config = ConfigDict(json_schema_extra={
-        "example": {"smiles": "CC(=O)Oc1ccccc1C(=O)O"},
-    })
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"smiles": "CC(=O)Oc1ccccc1C(=O)O"},
+        }
+    )
 
     smiles: str | None = Field(default=None, description="SMILES 字符串（与 path 二选一）")
     path: str | None = Field(default=None, description="本地分子文件路径（mol/sdf/pdb/xyz…）")
@@ -89,12 +92,14 @@ class DescriptorResponse(BaseModel):
 class SubstructureRequest(BaseModel):
     """SMARTS 子结构检索。"""
 
-    model_config = ConfigDict(json_schema_extra={
-        "example": {
-            "smarts": "C(=O)O",
-            "molecules": ["CCO", "CC(=O)O", "c1ccccc1C(=O)O"],
-        },
-    })
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "smarts": "C(=O)O",
+                "molecules": ["CCO", "CC(=O)O", "c1ccccc1C(=O)O"],
+            },
+        }
+    )
 
     smarts: str = Field(..., description="SMARTS 子结构模式，例如 C-O、[NH2]")
     molecules: list[str] = Field(..., description="待检索分子文本（SMILES 或 molfile）")
@@ -114,14 +119,16 @@ class SubstructureResponse(BaseModel):
 class SimilarityRequest(BaseModel):
     """指纹相似性检索（OpenBabel FP2 等，零额外依赖）。"""
 
-    model_config = ConfigDict(json_schema_extra={
-        "example": {
-            "query": "CC(=O)Oc1ccccc1C(=O)O",
-            "molecules": ["CC(=O)Oc1ccccc1C(=O)O", "CCO", "c1ccccc1"],
-            "threshold": 0.3,
-            "top_n": 10,
-        },
-    })
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "query": "CC(=O)Oc1ccccc1C(=O)O",
+                "molecules": ["CC(=O)Oc1ccccc1C(=O)O", "CCO", "c1ccccc1"],
+                "threshold": 0.3,
+                "top_n": 10,
+            },
+        }
+    )
 
     query: str = Field(..., description="查询分子（SMILES 或 molfile 文本）")
     molecules: list[str] = Field(..., description="候选分子文本列表")
@@ -153,15 +160,17 @@ class ChemQueryRequest(BaseModel):
     详见 ``utils/chem_query.py`` 的 ``parse_chem_query``。
     """
 
-    model_config = ConfigDict(json_schema_extra={
-        "example": {
-            "entries": [
-                {"name": "aspirin", "MW": 180.16, "logP": 1.2, "formula": "C9H8O4"},
-                {"name": "ethanol", "MW": 46.07, "logP": -0.18, "formula": "C2H6O"},
-            ],
-            "query": "MW>100 logP<3",
-        },
-    })
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "entries": [
+                    {"name": "aspirin", "MW": 180.16, "logP": 1.2, "formula": "C9H8O4"},
+                    {"name": "ethanol", "MW": 46.07, "logP": -0.18, "formula": "C2H6O"},
+                ],
+                "query": "MW>100 logP<3",
+            },
+        }
+    )
 
     entries: list[dict[str, Any]] = Field(..., description="待过滤条目（任意键的 dict 列表）")
     query: str = Field(default="", description="查询串，例如 'MW>200 logP<3 芳香'")

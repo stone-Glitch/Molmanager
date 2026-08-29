@@ -36,16 +36,15 @@ def set_manual_obabel_path(path: str | None) -> None:
         _OBABEL_CLI_EXE = None
 
 
-
 def get_manual_obabel_path() -> str | None:
     return _MANUAL_OBABEL_PATH
-
 
 
 def _load_manual_from_config() -> str | None:
     """在第一次解析 CLI 时，从配置懒加载用户手动路径（避免 openbabel_utils → config 循环 import）。"""
     try:
         from utils.config import load_config
+
         cfg = load_config()
         v = str(cfg.get("obabel_path", "") or "").strip()
         return v or None
@@ -55,6 +54,7 @@ def _load_manual_from_config() -> str | None:
 
 
 # ======================== 子进程包装（安全、跨平台） ========================
+
 
 def _resolve_obabel_cli() -> str:
     """
@@ -71,6 +71,7 @@ def _resolve_obabel_cli() -> str:
     """
     import shutil as _shutil
     import tempfile as _tempfile
+
     global _OBABEL_CLI_EXE, _MANUAL_OBABEL_PATH
 
     def _candidate_locations() -> list[str]:
@@ -90,17 +91,19 @@ def _resolve_obabel_cli() -> str:
             ]
             out.extend(candidates)
         else:
-            out.extend([
-                "/usr/bin/obabel",
-                "/usr/local/bin/obabel",
-                "/opt/homebrew/bin/obabel",              # macOS Apple Silicon
-                "/usr/local/homebrew/bin/obabel",        # macOS Intel
-                str(home / "anaconda3" / "bin" / "obabel"),
-                str(home / "miniconda3" / "bin" / "obabel"),
-                str(home / "miniforge3" / "bin" / "obabel"),
-                str(home / "mambaforge" / "bin" / "obabel"),
-                str(home / "bin" / "obabel"),
-            ])
+            out.extend(
+                [
+                    "/usr/bin/obabel",
+                    "/usr/local/bin/obabel",
+                    "/opt/homebrew/bin/obabel",  # macOS Apple Silicon
+                    "/usr/local/homebrew/bin/obabel",  # macOS Intel
+                    str(home / "anaconda3" / "bin" / "obabel"),
+                    str(home / "miniconda3" / "bin" / "obabel"),
+                    str(home / "miniforge3" / "bin" / "obabel"),
+                    str(home / "mambaforge" / "bin" / "obabel"),
+                    str(home / "bin" / "obabel"),
+                ]
+            )
         return out
 
     def _safe_real(p: Path, *, user_explicit: bool) -> Path:
@@ -196,8 +199,7 @@ def _resolve_obabel_cli() -> str:
             if real_path is None and last_err is not None:
                 # 把兜底里最严重的错误也带出去，方便诊断
                 raise RuntimeError(
-                    "未找到可用的 obabel（OpenBabel 命令行），请安装或手动指定路径。\n"
-                    f"最近一次失败原因：{last_err}"
+                    f"未找到可用的 obabel（OpenBabel 命令行），请安装或手动指定路径。\n最近一次失败原因：{last_err}"
                 )
 
         if real_path is None:
@@ -209,9 +211,9 @@ def _resolve_obabel_cli() -> str:
         return _OBABEL_CLI_EXE
 
 
-
-def _run_obabel(args: list[str], timeout: int | None = OB_DEFAULT_TIMEOUT_SEC,
-                check: bool = False) -> subprocess.CompletedProcess:
+def _run_obabel(
+    args: list[str], timeout: int | None = OB_DEFAULT_TIMEOUT_SEC, check: bool = False
+) -> subprocess.CompletedProcess:
     """
     安全执行 obabel 命令，自动处理 Windows 控制台窗口隐藏。
     args[0] 应为 "obabel"（相对名占位），此函数会替换为已解析的绝对路径。
@@ -230,10 +232,7 @@ def _run_obabel(args: list[str], timeout: int | None = OB_DEFAULT_TIMEOUT_SEC,
     if sys.platform == "win32":
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        kwargs = {
-            'startupinfo': startupinfo,
-            'creationflags': subprocess.CREATE_NO_WINDOW
-        }
+        kwargs = {"startupinfo": startupinfo, "creationflags": subprocess.CREATE_NO_WINDOW}
     else:
         kwargs = {}
 
@@ -325,13 +324,7 @@ def _run_obabel(args: list[str], timeout: int | None = OB_DEFAULT_TIMEOUT_SEC,
         i += 1
 
     return subprocess.run(
-        real_args,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=check,
-        shell=False,
-        **kwargs
+        real_args, capture_output=True, text=True, timeout=timeout, check=check, shell=False, **kwargs
     )
 
 
@@ -342,6 +335,7 @@ def _run_obabel(args: list[str], timeout: int | None = OB_DEFAULT_TIMEOUT_SEC,
 # 审计 5.2：此为进程级全局变量。本应用为单 MolManagerModel 实例 / 单进程架构，全局兜底足够；
 # 若将来出现「同一进程多个 Model 指向不同工作目录」的场景，全局会被后者覆盖导致路径校验混乱——
 # 届时调用方应显式传 base_dir（_secure_output_path 已支持），而非依赖此全局。当前架构下仅作便利兜底。
+
 
 def set_default_base_dir(path=None) -> None:
     """设置 ob_utils 写出操作默认的可信根目录（base_dir 为 None 时的回退）。传 None 还原为 cwd 兜底。"""
@@ -361,6 +355,7 @@ def set_default_base_dir(path=None) -> None:
 
 
 # 输出路径安全校验：统一包装（审计 1.1 路径遍历修复）
+
 
 def _secure_output_path(
     requested_path,
@@ -404,6 +399,7 @@ def _secure_output_path(
 
 
 # ======================== 环境检测 ========================
+
 
 def check_openbabel() -> tuple[bool, str, dict[str, Any]]:
     """
@@ -455,9 +451,9 @@ def check_openbabel() -> tuple[bool, str, dict[str, Any]]:
                 pybel_ok = True
                 details["interfaces_available"].append("pybel")
                 try:
-                    details["pybel_version"] = getattr(ob, "__version__", None) or \
-                                                getattr(pybel, "__version__", None) or \
-                                                "unknown"
+                    details["pybel_version"] = (
+                        getattr(ob, "__version__", None) or getattr(pybel, "__version__", None) or "unknown"
+                    )
                 except Exception as _ve:
                     logger.debug("pybel 版本探测失败: %s", _ve)
                 try:
@@ -495,9 +491,13 @@ def check_openbabel() -> tuple[bool, str, dict[str, Any]]:
 
     if not cli_ok:
         if details.get("manual_path_used"):
-            diagnosis_list.append("已配置手动 obabel 路径，但命令行仍不可用，请检查路径是否指向正确的可执行文件（Windows 下应为 obabel.exe）")
+            diagnosis_list.append(
+                "已配置手动 obabel 路径，但命令行仍不可用，请检查路径是否指向正确的可执行文件（Windows 下应为 obabel.exe）"
+            )
         else:
-            diagnosis_list.append("未找到 obabel 命令行：推荐执行 conda install -c conda-forge openbabel，或使用下方「手动选择路径」")
+            diagnosis_list.append(
+                "未找到 obabel 命令行：推荐执行 conda install -c conda-forge openbabel，或使用下方「手动选择路径」"
+            )
         diagnosis_list.append("点击状态栏右下角的红点（OB 指示灯）可查看完整诊断并一键进入手动路径设置")
 
     # 汇总
@@ -527,12 +527,10 @@ def check_openbabel() -> tuple[bool, str, dict[str, Any]]:
     return available, msg, details
 
 
-
 def check_openbabel_simple() -> tuple[bool, str]:
     """兼容旧调用方：只返回 (bool, str)，内部调用增强版。"""
     ok, msg, _ = check_openbabel()
     return ok, msg
-
 
 
 def get_supported_formats() -> list[str]:

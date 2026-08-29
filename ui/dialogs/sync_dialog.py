@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 目录同步对话框 - 两工作目录差异比较 + 一键同步
 """
+
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -34,6 +34,7 @@ def show_diff_sync_dialog(app, controller):
                 return float(val)
             except Exception:
                 return val
+
         rows = [(tv.set(k, col), k) for k in tv.get_children("")]
         rows.sort(key=lambda r: _key(r[0]), reverse=reverse)
         for i, (_, k) in enumerate(rows):
@@ -51,7 +52,7 @@ def show_diff_sync_dialog(app, controller):
             show="headings",
             selectmode=tk.EXTENDED,
             yscrollcommand=v_scroll.set,
-            xscrollcommand=h_scroll.set
+            xscrollcommand=h_scroll.set,
         )
         v_scroll.config(command=tv.yview)
         h_scroll.config(command=tv.xview)
@@ -59,6 +60,7 @@ def show_diff_sync_dialog(app, controller):
         h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
         tv.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         import ui.ui_theme as _ut
+
         _ut.bind_treeview_hover(tv)
         for i, col in enumerate(columns):
             tv.heading(col, text=col, command=lambda c=col, ii=i: _sort_treeview_column(tv, c, ii, False))
@@ -117,8 +119,10 @@ def show_diff_sync_dialog(app, controller):
             else:
                 vals = (
                     row["name"],
-                    row["left_size"], _fmt_mtime(row["left_mtime"]),
-                    row["right_size"], _fmt_mtime(row["right_mtime"])
+                    row["left_size"],
+                    _fmt_mtime(row["left_mtime"]),
+                    row["right_size"],
+                    _fmt_mtime(row["right_mtime"]),
                 )
             tv.insert("", tk.END, values=vals)
 
@@ -134,7 +138,7 @@ def show_diff_sync_dialog(app, controller):
         _fill_tree(tv_diff, result["diff_content"], mode="diff")
         app.helpers.on_log(
             f"🔍 比较完成：仅左 {len(result['only_left'])}，仅右 {len(result['only_right'])}，差异 {len(result['diff_content'])}",
-            'info'
+            "info",
         )
 
     compare_btn.config(command=_do_compare)
@@ -162,6 +166,7 @@ def show_diff_sync_dialog(app, controller):
             model.copy_from_left_to_right(names, left, right)
             app.after(0, _do_compare)
             app.after(0, lambda: controller.scan_files())
+
         app.helpers.run_task(task)
 
     def _only_left_copy_from_right():
@@ -179,6 +184,7 @@ def show_diff_sync_dialog(app, controller):
             model.copy_from_right_to_left(names, left, right)
             app.after(0, _do_compare)
             app.after(0, lambda: controller.scan_files())
+
         app.helpers.run_task(task)
 
     btn_left_frame = ttk.Frame(tab_left)
@@ -201,6 +207,7 @@ def show_diff_sync_dialog(app, controller):
             model.copy_from_right_to_left(names, left, right)
             app.after(0, _do_compare)
             app.after(0, lambda: controller.scan_files())
+
         app.helpers.run_task(task)
 
     def _only_right_copy_from_left():
@@ -218,6 +225,7 @@ def show_diff_sync_dialog(app, controller):
             model.copy_from_left_to_right(names, left, right)
             app.after(0, _do_compare)
             app.after(0, lambda: controller.scan_files())
+
         app.helpers.run_task(task)
 
     btn_right_frame = ttk.Frame(tab_right)
@@ -240,6 +248,7 @@ def show_diff_sync_dialog(app, controller):
             model.copy_from_left_to_right(names, left, right)
             app.after(0, _do_compare)
             app.after(0, lambda: controller.scan_files())
+
         app.helpers.run_task(task)
 
     def _diff_copy_from_right():
@@ -257,6 +266,7 @@ def show_diff_sync_dialog(app, controller):
             model.copy_from_right_to_left(names, left, right)
             app.after(0, _do_compare)
             app.after(0, lambda: controller.scan_files())
+
         app.helpers.run_task(task)
 
     def _diff_overwrite_right():
@@ -264,7 +274,9 @@ def show_diff_sync_dialog(app, controller):
         if not names:
             messagebox.showinfo("提示", "请先在「同名内容不同」Tab 选中项", parent=dialog)
             return
-        if not messagebox.askyesno("确认覆盖", f"确定用左目录文件覆盖右目录中选中的 {len(names)} 个文件？", parent=dialog):
+        if not messagebox.askyesno(
+            "确认覆盖", f"确定用左目录文件覆盖右目录中选中的 {len(names)} 个文件？", parent=dialog
+        ):
             return
         left = left_dir_var.get().strip()
         right = right_dir_var.get().strip()
@@ -273,6 +285,7 @@ def show_diff_sync_dialog(app, controller):
             model.sync_overwrite_left_to_right(names, left, right)
             app.after(0, _do_compare)
             app.after(0, lambda: controller.scan_files())
+
         app.helpers.run_task(task)
 
     def _diff_overwrite_left():
@@ -280,7 +293,9 @@ def show_diff_sync_dialog(app, controller):
         if not names:
             messagebox.showinfo("提示", "请先在「同名内容不同」Tab 选中项", parent=dialog)
             return
-        if not messagebox.askyesno("确认覆盖", f"确定用右目录文件覆盖左目录中选中的 {len(names)} 个文件？", parent=dialog):
+        if not messagebox.askyesno(
+            "确认覆盖", f"确定用右目录文件覆盖左目录中选中的 {len(names)} 个文件？", parent=dialog
+        ):
             return
         left = left_dir_var.get().strip()
         right = right_dir_var.get().strip()
@@ -289,6 +304,7 @@ def show_diff_sync_dialog(app, controller):
             model.sync_overwrite_right_to_left(names, left, right)
             app.after(0, _do_compare)
             app.after(0, lambda: controller.scan_files())
+
         app.helpers.run_task(task)
 
     btn_diff_frame = ttk.Frame(tab_diff)
@@ -306,6 +322,7 @@ def show_diff_sync_dialog(app, controller):
 
 def _browse_dir(var):
     from tkinter import filedialog
+
     d = filedialog.askdirectory(title="选择目录")
     if d:
         var.set(d)

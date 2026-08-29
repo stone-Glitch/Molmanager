@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 程序入口（含启动动画）
 
@@ -7,6 +6,7 @@
   - 移除内部重复的 _is_windows_junction，改用 path_utils.is_windows_junction
   - 保持所有外部接口不变
 """
+
 import math
 import random
 import sys
@@ -27,9 +27,9 @@ class SplashScreen:
     """
 
     # —— 配色（与 App 主题 Aurora Frost 一致）——
-    BG_C1 = (15, 23, 51)      # #0F1733
-    BG_C2 = (27, 31, 75)      # #1B1F4B
-    ACCENT = "#0EA288"        # teal
+    BG_C1 = (15, 23, 51)  # #0F1733
+    BG_C2 = (27, 31, 75)  # #1B1F4B
+    ACCENT = "#0EA288"  # teal
     BLUE = "#3B6EFF"
     PURPLE = "#8B5CF6"
     INK = "#FFFFFF"
@@ -44,9 +44,8 @@ class SplashScreen:
         W, H = self.W, self.H
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
-        self.root.geometry(f"{W}x{H}+{(sw - W)//2}+{(sh - H)//2}")
-        self.canvas = tk.Canvas(self.root, width=W, height=H, bg="#0F1733",
-                                highlightthickness=0, bd=0)
+        self.root.geometry(f"{W}x{H}+{(sw - W) // 2}+{(sh - H) // 2}")
+        self.canvas = tk.Canvas(self.root, width=W, height=H, bg="#0F1733", highlightthickness=0, bd=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
         self._rng = random.Random(42)
@@ -67,12 +66,12 @@ class SplashScreen:
     @staticmethod
     def _hex_to_rgb(h):
         h = h.lstrip("#")
-        return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+        return tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
 
     def _mix_with_bg(self, hex_col, alpha):
         r, g, b = self._hex_to_rgb(hex_col)
         br, bg_, bb = self.BG_C1
-        return f"#{int(br+(r-br)*alpha):02x}{int(bg_+(g-bg_)*alpha):02x}{int(bb+(b-bb)*alpha):02x}"
+        return f"#{int(br + (r - br) * alpha):02x}{int(bg_ + (g - bg_) * alpha):02x}{int(bb + (b - bb) * alpha):02x}"
 
     def _draw_bg(self):
         W, H = self.W, self.H
@@ -86,8 +85,7 @@ class SplashScreen:
             self.canvas.create_rectangle(0, y, W, y + 2, fill=col, outline=col)
         # 顶部一抹冷光晕，增强“极光”氛围
         for k in range(6, 0, -1):
-            self.canvas.create_rectangle(0, 0, W, k * 14,
-                                         fill=self._mix_with_bg(self.BLUE, 0.04 * k), outline="")
+            self.canvas.create_rectangle(0, 0, W, k * 14, fill=self._mix_with_bg(self.BLUE, 0.04 * k), outline="")
 
     def _init_aurora(self):
         W, H = self.W, self.H
@@ -102,10 +100,9 @@ class SplashScreen:
         xs = list(range(0, W + dx, dx))
         for base_y, amp, wl, speed, th, color in specs:
             # 占位多边形，_step_aurora 每帧刷新真实波形
-            item = self.canvas.create_polygon([0, 0, W, 0],
-                                              outline="",
-                                              fill=self._mix_with_bg(color, 0.16),
-                                              smooth=True)
+            item = self.canvas.create_polygon(
+                [0, 0, W, 0], outline="", fill=self._mix_with_bg(color, 0.16), smooth=True
+            )
             self._aurora.append((item, xs, base_y, amp, wl, speed, th, color))
 
     def _init_orbit(self):
@@ -113,17 +110,20 @@ class SplashScreen:
         mx, my = int(W * 0.18), int(H * 0.5)
         self._omx, self._omy = mx, my
         # 核外大 halo（呼吸式辉光，置于最底层）
-        self._nucleus_glow = self.canvas.create_oval(mx - 20, my - 20, mx + 20, my + 20,
-                                                     outline="", fill=self._mix_with_bg(self.ACCENT, 0.10))
+        self._nucleus_glow = self.canvas.create_oval(
+            mx - 20, my - 20, mx + 20, my + 20, outline="", fill=self._mix_with_bg(self.ACCENT, 0.10)
+        )
         # 核脉冲光晕（多层，随帧缩放）
         self._nucleus = []
         for k in range(6, 0, -1):
             rad = 4 + k * 2
-            item = self.canvas.create_oval(mx - rad, my - rad, mx + rad, my + rad,
-                                           outline="", fill=self._mix_with_bg(self.ACCENT, 0.10 * k))
+            item = self.canvas.create_oval(
+                mx - rad, my - rad, mx + rad, my + rad, outline="", fill=self._mix_with_bg(self.ACCENT, 0.10 * k)
+            )
             self._nucleus.append(item)
-        self._nucleus_core = self.canvas.create_oval(mx - 5, my - 5, mx + 5, my + 5,
-                                                     outline="#FFFFFF", fill=self.ACCENT, width=1)
+        self._nucleus_core = self.canvas.create_oval(
+            mx - 5, my - 5, mx + 5, my + 5, outline="#FFFFFF", fill=self.ACCENT, width=1
+        )
         # 三条轨道（装饰椭圆）+ 3 个真实公转的电子（glow + core）
         self._electrons = []
         orbit_specs = [
@@ -133,12 +133,15 @@ class SplashScreen:
         ]
         rot = math.pi / 180
         for ry, rx, rotd, color, spd in orbit_specs:
-            self.canvas.create_oval(mx - rx, my - ry, mx + rx, my + ry,
-                                    outline=self._mix_with_bg(color, 0.55), width=1.5)
-            glow = self.canvas.create_oval(mx - rx - 9, my - 9, mx - rx + 9, my + 9,
-                                           outline="", fill=self._mix_with_bg(color, 0.35))
-            core = self.canvas.create_oval(mx - rx - 4, my - 4, mx - rx + 4, my + 4,
-                                           outline="#FFFFFF", fill=color, width=1)
+            self.canvas.create_oval(
+                mx - rx, my - ry, mx + rx, my + ry, outline=self._mix_with_bg(color, 0.55), width=1.5
+            )
+            glow = self.canvas.create_oval(
+                mx - rx - 9, my - 9, mx - rx + 9, my + 9, outline="", fill=self._mix_with_bg(color, 0.35)
+            )
+            core = self.canvas.create_oval(
+                mx - rx - 4, my - 4, mx - rx + 4, my + 4, outline="#FFFFFF", fill=color, width=1
+            )
             # 末尾 0.0 为电子相位（公转角度），每帧累加
             self._electrons.append([glow, core, rx, ry, rotd * rot, color, spd, 0.0])
 
@@ -148,43 +151,68 @@ class SplashScreen:
         # 标题：多方向淡蓝柔光描边 + 实心白字
         gy = 92
         for dx, dy in [(-2, -2), (2, -2), (-2, 2), (2, 2)]:
-            self.canvas.create_text(x0 + dx, gy + dy, anchor="w",
-                                    text="分子与计算文件管理器",
-                                    fill=self._mix_with_bg(self.BLUE, 0.5),
-                                    font=("Microsoft YaHei UI", 20, "bold"))
-        self.canvas.create_text(x0, gy, anchor="w",
-                                text="分子与计算文件管理器",
-                                fill=self.INK, font=("Microsoft YaHei UI", 20, "bold"))
+            self.canvas.create_text(
+                x0 + dx,
+                gy + dy,
+                anchor="w",
+                text="分子与计算文件管理器",
+                fill=self._mix_with_bg(self.BLUE, 0.5),
+                font=("Microsoft YaHei UI", 20, "bold"),
+            )
+        self.canvas.create_text(
+            x0, gy, anchor="w", text="分子与计算文件管理器", fill=self.INK, font=("Microsoft YaHei UI", 20, "bold")
+        )
         # 副标题胶囊
-        self.canvas.create_rectangle(x0, 120, W - 20, 148,
-                                     outline=self._mix_with_bg(self.BLUE, 0.6),
-                                     fill="#1A224F", width=1)
-        self.canvas.create_text(x0 + 12, 134, anchor="w",
-                                text="  🫧  Aurora Frost   ·   分子文件 · QM · 动画 · 工具箱",
-                                fill=self.SUB, font=("Microsoft YaHei UI", 10))
+        self.canvas.create_rectangle(
+            x0, 120, W - 20, 148, outline=self._mix_with_bg(self.BLUE, 0.6), fill="#1A224F", width=1
+        )
+        self.canvas.create_text(
+            x0 + 12,
+            134,
+            anchor="w",
+            text="  🫧  Aurora Frost   ·   分子文件 · QM · 动画 · 工具箱",
+            fill=self.SUB,
+            font=("Microsoft YaHei UI", 10),
+        )
         # 状态 / 加载点 / 进度条
-        self.status_lbl = self.canvas.create_text(x0, 198, anchor="w",
-                                                  text="正在初始化…", fill=self.MUTE,
-                                                  font=("Microsoft YaHei UI", 10))
-        self.dots_lbl = self.canvas.create_text(x0, 228, anchor="w", text="",
-                                                fill=self.BLUE, font=("Consolas", 14, "bold"))
+        self.status_lbl = self.canvas.create_text(
+            x0, 198, anchor="w", text="正在初始化…", fill=self.MUTE, font=("Microsoft YaHei UI", 10)
+        )
+        self.dots_lbl = self.canvas.create_text(
+            x0, 228, anchor="w", text="", fill=self.BLUE, font=("Consolas", 14, "bold")
+        )
         self._pbar_x0, self._pbar_x1 = x0, W - 40
         self._pbar_y0, self._pbar_y1 = 260, 272
-        self.canvas.create_rectangle(self._pbar_x0, self._pbar_y0,
-                                     self._pbar_x1, self._pbar_y1,
-                                     outline=self._mix_with_bg(self.BLUE, 0.4), fill="#1A224F")
+        self.canvas.create_rectangle(
+            self._pbar_x0,
+            self._pbar_y0,
+            self._pbar_x1,
+            self._pbar_y1,
+            outline=self._mix_with_bg(self.BLUE, 0.4),
+            fill="#1A224F",
+        )
         self.progress_bar = self.canvas.create_rectangle(
-            self._pbar_x0, self._pbar_y0, self._pbar_x0, self._pbar_y1,
-            outline="", fill=self._mix_with_bg(self.ACCENT, 0.95))
+            self._pbar_x0,
+            self._pbar_y0,
+            self._pbar_x0,
+            self._pbar_y1,
+            outline="",
+            fill=self._mix_with_bg(self.ACCENT, 0.95),
+        )
         # 进度条流光高光（在已填充区间内循环移动）
         self._shimmer = self.canvas.create_rectangle(
-            self._pbar_x0, self._pbar_y0, self._pbar_x0 + 24, self._pbar_y1,
-            outline="", fill="#BFF7EC")
+            self._pbar_x0, self._pbar_y0, self._pbar_x0 + 24, self._pbar_y1, outline="", fill="#BFF7EC"
+        )
         self.canvas.itemconfigure(self._shimmer, state="hidden")
         # 进度百分比数字
-        self.pct_lbl = self.canvas.create_text(self._pbar_x1 + 10, (self._pbar_y0 + self._pbar_y1) // 2,
-                                              anchor="w", text="0%", fill=self.ACCENT,
-                                              font=("Microsoft YaHei UI", 10, "bold"))
+        self.pct_lbl = self.canvas.create_text(
+            self._pbar_x1 + 10,
+            (self._pbar_y0 + self._pbar_y1) // 2,
+            anchor="w",
+            text="0%",
+            fill=self.ACCENT,
+            font=("Microsoft YaHei UI", 10, "bold"),
+        )
 
     def _init_particles(self):
         W, H = self.W, self.H
@@ -197,8 +225,7 @@ class SplashScreen:
             vx = rng.uniform(-0.25, 0.25)
             vy = rng.uniform(-0.18, 0.18)
             col = rng.choice([self.BLUE, self.PURPLE, self.ACCENT])
-            item = self.canvas.create_oval(x - r, y - r, x + r, y + r, outline="",
-                                          fill=self._mix_with_bg(col, 0.5))
+            item = self.canvas.create_oval(x - r, y - r, x + r, y + r, outline="", fill=self._mix_with_bg(col, 0.5))
             self._particles.append([item, x, y, vx, vy, r, col])
 
     def _step_particles(self):
@@ -221,7 +248,7 @@ class SplashScreen:
             self.canvas.itemconfigure(item, fill=self._mix_with_bg(col, a))
 
     def _step_aurora(self):
-        for item, xs, base_y, amp, wl, speed, th, color in self._aurora:
+        for item, xs, base_y, amp, wl, speed, th, _color in self._aurora:
             ph = self._frame * speed
             pts = []
             for x in xs:
@@ -296,6 +323,7 @@ class SplashScreen:
 
 def main():
     logger.info("程序启动")
+
     # M-3 修复：清理过期临时目录：改为非守护线程（daemon=False）
     # daemon 线程会在解释器退出时被硬杀，正在 rmtree/stat 时被强杀可能留下 Fatal Python error，
     # 且清理操作本身耗时极短（几百毫秒级），等它结束是安全的。
@@ -305,8 +333,10 @@ def main():
             cleanup_stale_tempdirs()
         except Exception as _ce:
             logger.debug("临时目录清理线程异常（已忽略）: %s", _ce)
+
     try:
         import threading as _th
+
         _th.Thread(target=_run_tmp_cleanup, daemon=False, name="TmpCleanup").start()
     except Exception as e:
         logger.debug("启动临时目录清理线程失败（将跳过清理）: %s", e)
@@ -316,7 +346,7 @@ def main():
     def _close_splash_safely():
         """无论哪种失败路径都关 splash，避免一个看不见的 Tk 根一直挂着导致 showerror 无父窗口"""
         try:
-            if getattr(splash, 'root', None) is not None:
+            if getattr(splash, "root", None) is not None:
                 try:
                     splash.close()
                 except Exception as _sc:
@@ -336,7 +366,11 @@ def main():
         """
         try:
             # Tkinter 内部用 _toplevel 字典维护所有活着的 Tk/Toplevel 实例
-            all_tk = list(tk._default_root.tk.call("winfo", "children", ".")) if getattr(tk._default_root, 'tk', None) else []
+            all_tk = (
+                list(tk._default_root.tk.call("winfo", "children", "."))
+                if getattr(tk._default_root, "tk", None)
+                else []
+            )
         except Exception as _we:
             logger.debug("枚举 Tk 窗口失败: %s", _we)
             all_tk = []
@@ -345,7 +379,7 @@ def main():
                 py_obj = None
                 try:
                     # Tkinter 有个 NameToWidget 字典，路径 → Python 控件对象
-                    py_obj = getattr(tk._default_root, '_nametowidget', lambda _: None)(w_path)
+                    py_obj = getattr(tk._default_root, "_nametowidget", lambda _: None)(w_path)
                 except Exception as _nw:
                     logger.debug("NameToWidget 失败 path=%s: %s", w_path, _nw)
                     py_obj = None
@@ -382,13 +416,14 @@ def main():
         # Tkinter 会自动用当前最顶层的 Tk 做父（也就是 splash.root 已经关掉后新建的隐式 Tk）
         try:
             import tkinter.messagebox as _mb
+
             # （关键改动）先 destroy 掉任何残留的不可见 Tk：可能是半初始化的 MainView
             # 或者 splash，确保这次 messagebox 不会作为它们的「子对话框」被一起隐藏。
             tmp_root = None
             try:
                 try:
                     alive_root = tk._default_root  # type: ignore[attr-defined]
-                    if alive_root is None or not bool(getattr(alive_root, 'tk', None)):
+                    if alive_root is None or not bool(getattr(alive_root, "tk", None)):
                         raise RuntimeError("no alive tk")
                 except Exception:
                     pass
@@ -416,14 +451,14 @@ def main():
         except Exception as _mb_err:
             # 最后兜底：打印到控制台 + 写日志（如果还没写进去）
             try:
-                print("=" * 60, file=sys.stderr)
-                print(f"[{title}]", file=sys.stderr)
-                print(body, file=sys.stderr)
+                print("=" * 60, file=sys.stderr)  # noqa: T201
+                print(f"[{title}]", file=sys.stderr)  # noqa: T201
+                print(body, file=sys.stderr)  # noqa: T201
                 if fallback_tb:
-                    print("---- traceback ----", file=sys.stderr)
-                    print(fallback_tb, file=sys.stderr)
-                    print(f"(messagebox 不可用: {_mb_err})", file=sys.stderr)
-                    print("=" * 60, file=sys.stderr)
+                    print("---- traceback ----", file=sys.stderr)  # noqa: T201
+                    print(fallback_tb, file=sys.stderr)  # noqa: T201
+                    print(f"(messagebox 不可用: {_mb_err})", file=sys.stderr)  # noqa: T201
+                    print("=" * 60, file=sys.stderr)  # noqa: T201
             except Exception:
                 pass
 
@@ -442,6 +477,7 @@ def main():
         _handle_tk_callback_exception._busy = True
         try:
             import traceback as _tb
+
             tb_text = "".join(_tb.format_exception(exc_type, exc_value, exc_tb))
             logger.error("Tk 回调未捕获异常:\n%s", tb_text)
             try:
@@ -462,10 +498,12 @@ def main():
 
     def load_main():
         import traceback as _tb
+
         captured_tb: str = ""
         app = None
         try:
             from core.view import MainView
+
             # 关 splash 再实例化主窗口（主窗口实例化失败时下面的 except 会再次安全关一次）
             _close_splash_safely()
             try:
@@ -475,7 +513,7 @@ def main():
                 # 防止 MainView 在 super().__init__() 之后但在自己的 destroy 之前，
                 # 因某些资源抛错而留残根。
                 try:
-                    if app is not None and bool(getattr(app, 'tk', None)):
+                    if app is not None and bool(getattr(app, "tk", None)):
                         app.destroy()
                 except Exception:
                     pass
@@ -492,7 +530,7 @@ def main():
             except Exception:
                 # mainloop 抛异常时也把 app .destroy 掉，防止主窗口半关不关的残根
                 try:
-                    if app is not None and bool(getattr(app, 'tk', None)):
+                    if app is not None and bool(getattr(app, "tk", None)):
                         app.destroy()
                 except Exception:
                     pass
@@ -519,6 +557,7 @@ def main():
     except Exception as _ml_err:
         # splash 自己的 mainloop 也可能因 Tcl/Tk 底层问题报错，别静默吞掉
         import traceback as _tb2
+
         captured2 = _tb2.format_exc()
         _close_splash_safely()
         _show_fatal_error(

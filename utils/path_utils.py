@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 路径工具模块 - 集中管理所有路径安全、目录解析、跨平台兼容等公共函数
 
@@ -12,6 +11,7 @@
 
 所有函数保持原有行为不变，仅做命名空间统一。
 """
+
 import os
 import shutil
 import stat
@@ -25,6 +25,7 @@ PathLike = Union[str, os.PathLike]
 
 
 # ==================== Windows 长路径（>260）扩展长度前缀 ====================
+
 
 def win_longpath(p: PathLike) -> str:
     """
@@ -60,10 +61,11 @@ def win_longpath(p: PathLike) -> str:
 
 # ==================== 目录权限 ====================
 
+
 def chmod_quiet(p: Path, mode: int) -> None:
     """静默设置文件/目录权限，失败不报错（Windows 下某些路径会拒绝）。"""
     try:
-        if hasattr(os, 'chmod'):
+        if hasattr(os, "chmod"):
             os.chmod(p, mode)
     except OSError:
         # Windows 对某些路径可能拒绝 chmod，静默跳过（ACL 仍有效）
@@ -72,6 +74,7 @@ def chmod_quiet(p: Path, mode: int) -> None:
 
 # ==================== 应用数据目录 ====================
 
+
 def get_app_data_dir() -> Path:
     """
     获取应用数据目录（跨平台）。
@@ -79,8 +82,8 @@ def get_app_data_dir() -> Path:
     - macOS/Linux: ~/.mol_manager
     目录不存在时自动创建，并设置为仅当前用户可访问（0o700）。
     """
-    if sys.platform == 'win32':
-        base = os.environ.get('APPDATA')
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA")
         if base:
             d = Path(base) / "MolManager"
         else:
@@ -136,6 +139,7 @@ def get_backup_dir(work_dir: PathLike | None = None, *, create: bool = True) -> 
 
 # ==================== Windows Junction 检测 ====================
 
+
 def is_windows_junction(path: PathLike, *, raise_on_junction: bool = False) -> bool:
     """
     检测路径是否为 Windows NTFS Junction / ReparsePoint。
@@ -167,9 +171,7 @@ def is_windows_junction(path: PathLike, *, raise_on_junction: bool = False) -> b
         attrs = getattr(st, "st_file_attributes", 0)
         if stat.S_IFMT(st.st_mode) == stat.S_IFDIR and (attrs & FILE_ATTRIBUTE_REPARSE_POINT):
             if raise_on_junction:
-                raise ValueError(
-                    f"检测到 Windows Junction / ReparsePoint 目录，拒绝跟随操作: {os.fspath(p)!r}"
-                )
+                raise ValueError(f"检测到 Windows Junction / ReparsePoint 目录，拒绝跟随操作: {os.fspath(p)!r}")
             return True
     except ValueError:
         raise
@@ -178,15 +180,19 @@ def is_windows_junction(path: PathLike, *, raise_on_junction: bool = False) -> b
         # 长期潜伏、在用户数据上酿成真实损坏。此处降级为 False（保守：不误判为
         # junction，交给 is_symlink / 上层 commonpath 等其余防线兜底）。
         from utils.logger import default_logger as _logger
+
         _logger.warning(
             "is_windows_junction 检测异常，降级为 False（保守非 junction）: %r (%s: %s)",
-            os.fspath(path), type(exc).__name__, exc,
+            os.fspath(path),
+            type(exc).__name__,
+            exc,
         )
         return False
     return False
 
 
 # ==================== 符号链接 / Junction 安全检查 ====================
+
 
 def enforce_no_symlink_target(
     path: PathLike,
@@ -249,8 +255,8 @@ def enforce_no_symlink_target(
             is_windows_junction(cur, raise_on_junction=True)
 
 
-
 # ==================== 安全输出路径解析 ====================
+
 
 def resolve_secure_output_path(
     requested_path,
@@ -344,9 +350,7 @@ def resolve_secure_output_path(
             base_norm_real = os.path.realpath(base_norm)
             common = os.path.commonpath([base_norm_real, norm_abs_real])
             if os.path.normcase(common) != os.path.normcase(base_norm_real):
-                raise ValueError(
-                    f"输出路径越出允许范围（commonpath 判定）：请求 {norm_abs!r}，允许根 {base_norm!r}"
-                )
+                raise ValueError(f"输出路径越出允许范围（commonpath 判定）：请求 {norm_abs!r}，允许根 {base_norm!r}")
         except (OSError, ValueError) as exc:
             if isinstance(exc, ValueError):
                 raise
@@ -406,6 +410,7 @@ def resolve_secure_output_path(
 
 # ==================== 安全输入文件解析 ====================
 
+
 def resolve_secure_input_file(
     path: PathLike,
     *,
@@ -446,9 +451,7 @@ def resolve_secure_input_file(
     if not real.exists():
         raise ValueError(f"输入文件不存在: {os.fspath(real)!r}")
     if not real.is_file():
-        raise ValueError(
-            f"输入路径不是普通文件（可能是目录或设备），拒绝读取: {os.fspath(real)!r}"
-        )
+        raise ValueError(f"输入路径不是普通文件（可能是目录或设备），拒绝读取: {os.fspath(real)!r}")
     if base_dir is not None and not allow_outside:
         try:
             base_real = Path(base_dir).resolve(strict=True)
@@ -459,6 +462,7 @@ def resolve_secure_input_file(
 
 
 # ==================== 默认 base_dir 推断 ====================
+
 
 def default_base_dir_from_input(
     *inputs: PathLike | None,
@@ -501,6 +505,7 @@ def default_base_dir_from_input(
 
 # ==================== 便捷封装 ====================
 
+
 def secure_output_path(
     requested_path,
     *,
@@ -536,6 +541,7 @@ def secure_output_path(
 
 # ==================== 过期临时目录清理 ====================
 
+
 def cleanup_stale_tempdirs(max_age_seconds: int = 3 * 24 * 3600) -> int:
     """
     清理系统临时目录中过期（> max_age_seconds）的 psi4_temp_* 目录，返回删除数量。
@@ -546,9 +552,10 @@ def cleanup_stale_tempdirs(max_age_seconds: int = 3 * 24 * 3600) -> int:
       - age 检查与 rmtree 作用于同一已 resolve 的 Path 对象，缩小竞争窗口。
     """
     from utils.logger import default_logger as logger
+
     removed = 0
     roots: set = set()
-    for envvar in ('TMPDIR', 'TEMP', 'TMP'):
+    for envvar in ("TMPDIR", "TEMP", "TMP"):
         v = os.environ.get(envvar)
         if v:
             try:

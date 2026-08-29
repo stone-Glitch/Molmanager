@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 NMR 模拟模块 - Boltzmann 加权 ¹H NMR 谱
 """
+
 import csv
 import logging
 import math
@@ -43,6 +43,7 @@ def run_nmr_simulation(
       2. 每个构象跑 PSI4 CPHF NMR 屏蔽常数（失败则退回经验）
       3. Boltzmann 权重 → 平均 δ → Lorentz 展宽 → PNG
     """
+
     def _report(p, m):
         if _progress_callback:
             try:
@@ -59,8 +60,10 @@ def run_nmr_simulation(
 
     # Step 1: 构象搜索
     cnf_res = conformer_search_ensemble(
-        input_file, output_dir=str(out_dir / "conformers"),
-        n_confs_total=n_confs_total, top_n=top_n_confs,
+        input_file,
+        output_dir=str(out_dir / "conformers"),
+        n_confs_total=n_confs_total,
+        top_n=top_n_confs,
         psi4_high_precision=False,
     )
     if not cnf_res.get("success") or not cnf_res.get("mmff_top"):
@@ -77,8 +80,7 @@ def run_nmr_simulation(
     sum_w = sum(w_raw) or 1.0
     weights = [w / sum_w for w in w_raw]
     result["conformer_weights"] = [
-        {"rank": t["rank"], "rel_kcal": t["energy_kcal_mol"] - base, "w": w}
-        for t, w in zip(top, weights)
+        {"rank": t["rank"], "rel_kcal": t["energy_kcal_mol"] - base, "w": w} for t, w in zip(top, weights, strict=False)
     ]
 
     # Step 3: NMR 屏蔽常数
@@ -87,6 +89,7 @@ def run_nmr_simulation(
 
     def _read_xyz_info(path):
         from .core import read_xyz_content
+
         txt = read_xyz_content(path)
         if txt is None:
             return 0, [], []
@@ -104,6 +107,7 @@ def run_nmr_simulation(
     _det: dict = {}
     try:
         import psi4
+
         psi4_available = True
     except Exception:
         psi4_available = False
@@ -114,18 +118,23 @@ def run_nmr_simulation(
             logger.warning("PSI4 已安装但未启用 CPHF NMR，将退回经验化学位移")
 
     if psi4_available and _det.get("has_cphf_nmr"):
-        for idx, (t, w) in enumerate(zip(top, weights), 1):
-            _report(10 + int(70 * (idx - 1) / max(1, len(top))),
-                    f"NMR CPHF 构象 {idx}/{len(top)}")
+        for idx, (t, _w) in enumerate(zip(top, weights, strict=False), 1):
+            _report(10 + int(70 * (idx - 1) / max(1, len(top))), f"NMR CPHF 构象 {idx}/{len(top)}")
             prefix = str(out_dir / f"nmr_conf{t['rank']:02d}")
             try:
                 r = run_psi4_task(
-                    t["xyz"], "energy", method, basis,
+                    t["xyz"],
+                    "energy",
+                    method,
+                    basis,
                     output_dir=str(out_dir),
                     preset_name=preset_name,
-                    solvent=solvent, d3=d3,
-                    charge=charge, multiplicity=multiplicity,
+                    solvent=solvent,
+                    d3=d3,
+                    charge=charge,
+                    multiplicity=multiplicity,
                     memory=memory,
+                    base_name=prefix,
                     _extra_post_hook=lambda wfn_mol, mol_mol, _method: psi4.cphf("nmr", molecule=mol_mol),
                 )
                 log_p = r.get("log_file")
@@ -180,7 +189,9 @@ def run_nmr_simulation(
             logger.warning(
                 "NMR：不同构象氢原子数不一致（min=%d, max=%d），仅对共有 %d 个氢做加权，"
                 "其余氢的化学位移可能未计入。建议检查各构象 NMR 计算是否完整。",
-                min(valid_counts), max(valid_counts), m,
+                min(valid_counts),
+                max(valid_counts),
+                m,
             )
         # 仅截断到共有氢数；不再用 30.0 填充（否则混入虚假峰）
         H_shifts_per_conf = [s[:m] for s in H_shifts_per_conf]
@@ -188,12 +199,12 @@ def run_nmr_simulation(
 
     while len(weights) < len(H_shifts_per_conf):
         weights.append(0.0)
-    weights = weights[:len(H_shifts_per_conf)]
+    weights = weights[: len(H_shifts_per_conf)]
     if sum(weights) <= 0:
         weights = [1.0 / max(1, len(weights))] * len(weights)
     else:
         s = sum(weights)
-        weights = [w/s for w in weights]
+        weights = [w / s for w in weights]
 
     # Step 5: Boltzmann 加权
     avg_sigma = [0.0 for _ in range(H_atom_count)]
@@ -218,7 +229,7 @@ def run_nmr_simulation(
     ys = [0.0 for _ in xs]
     FWHM = 0.05
     half = FWHM / 2.0
-    g = half ** 2
+    g = half**2
 
     for d in delta_ppm:
         i_center = int((d / 12.0) * (npts - 1))
@@ -232,8 +243,10 @@ def run_nmr_simulation(
 
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         try:
             if os.name == "nt":
                 for _cand in ("Microsoft YaHei", "SimHei", "SimSun"):
@@ -262,6 +275,7 @@ def run_nmr_simulation(
     except Exception:
         try:
             from PIL import Image, ImageDraw
+
             W, H = 1400, 560
             img = Image.new("RGB", (W, H), "white")
             d = ImageDraw.Draw(img)
@@ -289,10 +303,10 @@ def run_nmr_simulation(
                 pct = i / 4.0
                 tx = int(x1 - pct * (x1 - x0))
                 d.line([(tx, y0, tx, y1)], fill="#ddd")
-                d.text((tx-20, y1+10), f"{12 - pct*12:.1f}", fill="black")
+                d.text((tx - 20, y1 + 10), f"{12 - pct * 12:.1f}", fill="black")
 
-            d.text((W//2-160, H-40), "δ / ¹H chemical shift (ppm)", fill="black")
-            d.text((W//2-240, 10), f"Simulated 1H NMR ({len(top)} confs, Boltzmann)", fill="black")
+            d.text((W // 2 - 160, H - 40), "δ / ¹H chemical shift (ppm)", fill="black")
+            d.text((W // 2 - 240, 10), f"Simulated 1H NMR ({len(top)} confs, Boltzmann)", fill="black")
             img.save(png_path, "PNG")
         except Exception:
             png_path = None

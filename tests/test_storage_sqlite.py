@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """core/storage_sqlite.py —— SQLite 持久化往返。
 
 只依赖标准库，是 CI 里必跑的一层：映射表丢了用户要重填几百条中文名。
@@ -26,9 +25,11 @@ def storage(tmp_path: Path):
 # ---------------------------------------------------------------- 分子
 def test_upsert_and_get_molecule(storage: Storage) -> None:
     rec = MoleculeRecord(
-        name="aspirin", formula="C9H8O4",
+        name="aspirin",
+        formula="C9H8O4",
         smiles="CC(=O)Oc1ccccc1C(=O)O",
-        tags=["药物", "芳香"], extra={"note": "阿司匹林"},
+        tags=["药物", "芳香"],
+        extra={"note": "阿司匹林"},
     )
     assert storage.upsert_molecule(rec) is True
     got = storage.get_molecule("aspirin")
@@ -101,11 +102,18 @@ def test_delete_mapping(storage: Storage) -> None:
 
 # ---------------------------------------------------------------- 计算结果
 def test_add_and_list_calc_results(storage: Storage) -> None:
-    rid = storage.add_calc_result(CalcResult(
-        molecule="aspirin", calc_type="psi4", method="B3LYP",
-        basis="6-31G*", energy=-647.1, summary={"homo": -0.25},
-    ))
-    assert rid is not None and rid > 0
+    rid = storage.add_calc_result(
+        CalcResult(
+            molecule="aspirin",
+            calc_type="psi4",
+            method="B3LYP",
+            basis="6-31G*",
+            energy=-647.1,
+            summary={"homo": -0.25},
+        )
+    )
+    assert rid is not None
+    assert rid > 0
     rows = storage.list_calc_results(molecule="aspirin")
     assert len(rows) == 1
     assert rows[0].energy == pytest.approx(-647.1)
@@ -140,4 +148,5 @@ def test_data_survives_reopen(tmp_path: Path) -> None:
         st.upsert_molecule(MoleculeRecord(name="persisted", formula="H2O"))
     with Storage(db) as st2:
         got = st2.get_molecule("persisted")
-        assert got is not None and got.formula == "H2O"
+        assert got is not None
+        assert got.formula == "H2O"

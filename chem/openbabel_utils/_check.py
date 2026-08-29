@@ -40,6 +40,7 @@ def set_default_base_dir(path=None) -> None:
 
 # 输出路径安全校验：统一包装（审计 1.1 路径遍历修复）
 
+
 def _secure_output_path(
     requested_path,
     *,
@@ -82,6 +83,7 @@ def _secure_output_path(
 
 
 # ======================== 环境检测 ========================
+
 
 def check_openbabel() -> tuple[bool, str, dict[str, Any]]:
     """
@@ -133,9 +135,9 @@ def check_openbabel() -> tuple[bool, str, dict[str, Any]]:
                 pybel_ok = True
                 details["interfaces_available"].append("pybel")
                 try:
-                    details["pybel_version"] = getattr(ob, "__version__", None) or \
-                                                getattr(pybel, "__version__", None) or \
-                                                "unknown"
+                    details["pybel_version"] = (
+                        getattr(ob, "__version__", None) or getattr(pybel, "__version__", None) or "unknown"
+                    )
                 except Exception as _ve:
                     logger.debug("pybel 版本探测失败: %s", _ve)
                 try:
@@ -173,9 +175,13 @@ def check_openbabel() -> tuple[bool, str, dict[str, Any]]:
 
     if not cli_ok:
         if details.get("manual_path_used"):
-            diagnosis_list.append("已配置手动 obabel 路径，但命令行仍不可用，请检查路径是否指向正确的可执行文件（Windows 下应为 obabel.exe）")
+            diagnosis_list.append(
+                "已配置手动 obabel 路径，但命令行仍不可用，请检查路径是否指向正确的可执行文件（Windows 下应为 obabel.exe）"
+            )
         else:
-            diagnosis_list.append("未找到 obabel 命令行：推荐执行 conda install -c conda-forge openbabel，或使用下方「手动选择路径」")
+            diagnosis_list.append(
+                "未找到 obabel 命令行：推荐执行 conda install -c conda-forge openbabel，或使用下方「手动选择路径」"
+            )
         diagnosis_list.append("点击状态栏右下角的红点（OB 指示灯）可查看完整诊断并一键进入手动路径设置")
 
     # 汇总
@@ -205,12 +211,10 @@ def check_openbabel() -> tuple[bool, str, dict[str, Any]]:
     return available, msg, details
 
 
-
 def check_openbabel_simple() -> tuple[bool, str]:
     """兼容旧调用方：只返回 (bool, str)，内部调用增强版。"""
     ok, msg, _ = check_openbabel()
     return ok, msg
-
 
 
 def get_supported_formats() -> list[str]:

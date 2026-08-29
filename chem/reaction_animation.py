@@ -23,6 +23,7 @@ from utils.path_utils import default_base_dir_from_input, resolve_secure_input_f
 
 try:
     from PIL import Image, ImageDraw, ImageFont  # type: ignore
+
     PIL_AVAILABLE = True
 except Exception:
     PIL_AVAILABLE = False
@@ -38,6 +39,7 @@ RESOLUTIONS = {
 
 # ===== 安全：路径遍历封装（审计 1.1）=====
 # ---- 以下函数已统一到 path_utils 模块，此处保留向后兼容别名 ----
+
 
 def _secure_output_path(
     requested_path,
@@ -65,7 +67,6 @@ def _default_base_dir_from_input(
 ) -> Path:
     """向后兼容包装：委托给 path_utils.default_base_dir_from_input"""
     return default_base_dir_from_input(*inputs, fallback=fallback)
-
 
 
 _FONT_CACHE: LRUCache = LRUCache(maxsize=32)
@@ -136,9 +137,15 @@ def _read_energy_csv(path: str | os.PathLike[str]) -> list[float] | None:
         return None
 
 
-def _overlay_caption(png_in: Path, png_out: Path, title: str, sub_title: str,
-                     reaction_pos: float, energy: float | None,
-                     energy_series: list[float] | None) -> bool:
+def _overlay_caption(
+    png_in: Path,
+    png_out: Path,
+    title: str,
+    sub_title: str,
+    reaction_pos: float,
+    energy: float | None,
+    energy_series: list[float] | None,
+) -> bool:
     if not PIL_AVAILABLE:
         if png_in != png_out:
             shutil.copy2(png_in, png_out)
@@ -156,8 +163,7 @@ def _overlay_caption(png_in: Path, png_out: Path, title: str, sub_title: str,
             draw.rectangle([(0, 0), (W, banner_h)], fill=(20, 24, 36, 230))
             draw.text((pad, pad // 2), title, fill=(240, 240, 240, 255), font=font_title)
             if sub_title:
-                draw.text((pad, pad // 2 + int(H * 0.045)), sub_title,
-                          fill=(180, 220, 255, 255), font=font_sub)
+                draw.text((pad, pad // 2 + int(H * 0.045)), sub_title, fill=(180, 220, 255, 255), font=font_sub)
 
             axis_h = int(H * 0.14)
             axis_top = H - axis_h
@@ -172,22 +178,28 @@ def _overlay_caption(png_in: Path, png_out: Path, title: str, sub_title: str,
             draw.text((x0, cy + 9), "R (反应物)", fill=(250, 150, 150, 255), font=font_sub)
             mid_label = "反应坐标 →"
             bb = draw.textbbox((0, 0), mid_label, font=font_sub)
-            draw.text((((x0 + x1) // 2) - (bb[2] - bb[0]) // 2, cy + 9),
-                      mid_label, fill=(230, 230, 230, 255), font=font_sub)
+            draw.text(
+                (((x0 + x1) // 2) - (bb[2] - bb[0]) // 2, cy + 9), mid_label, fill=(230, 230, 230, 255), font=font_sub
+            )
             draw.text((x1 - 150, cy + 9), "P (产物)", fill=(150, 250, 170, 255), font=font_sub)
 
             cursor_x = x0 + int((x1 - x0) * max(0.0, min(1.0, reaction_pos)))
             r = max(8, int(W * 0.012))
-            draw.ellipse([(cursor_x - r, cy - r), (cursor_x + r, cy + r)],
-                         fill=(255, 90, 90, 255), outline=(255, 255, 255, 255), width=2)
+            draw.ellipse(
+                [(cursor_x - r, cy - r), (cursor_x + r, cy + r)],
+                fill=(255, 90, 90, 255),
+                outline=(255, 255, 255, 255),
+                width=2,
+            )
 
             if energy is not None or energy_series:
                 plot_left = int(W * 0.58)
                 plot_right = W - pad
                 plot_top = axis_top + pad // 3
                 plot_bottom = axis_top + axis_h - pad // 3
-                draw.rectangle([(plot_left, plot_top), (plot_right, plot_bottom)],
-                               outline=(120, 120, 120, 255), width=1)
+                draw.rectangle(
+                    [(plot_left, plot_top), (plot_right, plot_bottom)], outline=(120, 120, 120, 255), width=1
+                )
                 series = energy_series if energy_series else ([energy] if energy is not None else [])
                 if len(series) >= 2:
                     emin, emax = min(series), max(series)
@@ -197,17 +209,19 @@ def _overlay_caption(png_in: Path, png_out: Path, title: str, sub_title: str,
                         tx = plot_left + (plot_right - plot_left) * (i / (len(series) - 1))
                         ty = plot_bottom - (plot_bottom - plot_top) * ((e - emin) / span)
                         pts.append((tx, ty))
-                    for p0, p1 in zip(pts, pts[1:]):
+                    for p0, p1 in zip(pts, pts[1:], strict=False):
                         draw.line([p0, p1], fill=(110, 200, 255, 255), width=2)
                     if energy is not None:
                         ty_curr = plot_bottom - (plot_bottom - plot_top) * ((energy - emin) / span)
                         curr_x = plot_left + (plot_right - plot_left) * max(0.0, min(1.0, reaction_pos))
                         r2 = max(4, int(W * 0.006))
-                        draw.ellipse([(curr_x - r2, ty_curr - r2), (curr_x + r2, ty_curr + r2)],
-                                     fill=(255, 220, 80, 255))
+                        draw.ellipse(
+                            [(curr_x - r2, ty_curr - r2), (curr_x + r2, ty_curr + r2)], fill=(255, 220, 80, 255)
+                        )
                 if energy is not None:
-                    draw.text((plot_left + 4, plot_top + 2), f"E = {energy:.6f} Ha",
-                              fill=(255, 230, 120, 255), font=font_sub)
+                    draw.text(
+                        (plot_left + 4, plot_top + 2), f"E = {energy:.6f} Ha", fill=(255, 230, 120, 255), font=font_sub
+                    )
 
             canvas.convert("RGB").save(png_out, format="PNG", optimize=True)
         return True
@@ -221,8 +235,9 @@ def _overlay_caption(png_in: Path, png_out: Path, title: str, sub_title: str,
         return False
 
 
-def _find_energy_for_frame(idx: int, total_frames: int, energies: list[float] | None,
-                           one_way_steps: int, mode: str) -> float | None:
+def _find_energy_for_frame(
+    idx: int, total_frames: int, energies: list[float] | None, one_way_steps: int, mode: str
+) -> float | None:
     """
     将动画 timeline 第 idx 帧映射到 energies[n]（长度为 n=one_way_steps 的扫描能量数组）。
 
@@ -250,8 +265,9 @@ def _find_energy_for_frame(idx: int, total_frames: int, energies: list[float] | 
     return energies[max(0, min(n - 1, j))]
 
 
-def _plot_energy_profile(timeline: list[float], energies: list[float] | None,
-                         one_way_steps: int, mode: str, out_png: Path | str) -> str | None:
+def _plot_energy_profile(
+    timeline: list[float], energies: list[float] | None, one_way_steps: int, mode: str, out_png: Path | str
+) -> str | None:
     """
     X4：导出 能量 vs 反应进度 的 PNG 曲线图（"双屏联动"的一半：动画和能量图放在一起）。
     - Hartree → kcal/mol 单位化（1 E_h = 627.509474 kcal/mol）更化学生友好
@@ -259,6 +275,7 @@ def _plot_energy_profile(timeline: list[float], energies: list[float] | None,
     - matplotlib 优先，Pillow 直画兜底
     """
     import os as _os
+
     out_png = str(out_png)
     if not timeline:
         return None
@@ -276,6 +293,7 @@ def _plot_energy_profile(timeline: list[float], energies: list[float] | None,
         return None
     # 归一化 y：相对最小值（化学生想看的是能量差而不是绝对值）
     import math as _math
+
     finite = [v for v in y_vals if _math.isfinite(v)]
     if not finite:
         return None
@@ -289,13 +307,16 @@ def _plot_energy_profile(timeline: list[float], energies: list[float] | None,
     # ---- A. matplotlib ----
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         try:
             if _os.name == "nt":
                 for _cand in ("Microsoft YaHei", "SimHei", "SimSun", "Arial Unicode MS"):
                     try:
                         from matplotlib import font_manager as _fm  # noqa: F401
+
                         plt.rcParams["font.sans-serif"] = [_cand] + list(plt.rcParams.get("font.sans-serif", []))
                         break
                     except Exception:
@@ -314,25 +335,45 @@ def _plot_energy_profile(timeline: list[float], energies: list[float] | None,
             rev_x = xs_s[rev_start:]
             rev_y = [y_rel[i] for i in range(rev_start, total)]
             if rev_x and any(v is not None for v in rev_y):
-                ax.plot(rev_x, rev_y, color="#ff7f0e", marker="s", markersize=3, linewidth=1.6,
-                        linestyle="--", label="P→R (reverse, bounce)")
+                ax.plot(
+                    rev_x,
+                    rev_y,
+                    color="#ff7f0e",
+                    marker="s",
+                    markersize=3,
+                    linewidth=1.6,
+                    linestyle="--",
+                    label="P→R (reverse, bounce)",
+                )
+
         # 端点高亮
         def _find_first_valid(arr):
             for i, v in enumerate(arr):
                 if v is not None:
                     return i, v
             return None
+
         first = _find_first_valid(y_rel)
         last = None
         for i in range(len(y_rel) - 1, -1, -1):
             if y_rel[i] is not None:
-                last = (i, y_rel[i]); break
+                last = (i, y_rel[i])
+                break
         if first is not None:
-            ax.scatter([xs_s[first[0]]], [first[1]], s=100, c="#2ca02c", zorder=5, label=f"R 反应物 = {first[1]:.2f} kcal/mol")
+            ax.scatter(
+                [xs_s[first[0]]], [first[1]], s=100, c="#2ca02c", zorder=5, label=f"R 反应物 = {first[1]:.2f} kcal/mol"
+            )
         if last is not None and last[0] != first[0] if first is not None else True:
             if last is not None:
-                ax.scatter([xs_s[last[0]]], [last[1]], s=100, c="#d62728", zorder=5,
-                           marker="*", label=f"P 产物 = {last[1]:.2f} kcal/mol")
+                ax.scatter(
+                    [xs_s[last[0]]],
+                    [last[1]],
+                    s=100,
+                    c="#d62728",
+                    zorder=5,
+                    marker="*",
+                    label=f"P 产物 = {last[1]:.2f} kcal/mol",
+                )
         ax.set_xlabel("Reaction coordinate s / 反应进度  (0=反应物, 1=产物)")
         ax.set_ylabel("Relative Energy / 相对能量 (kcal/mol)")
         title = f"Energy Profile / 能量曲线  ({len(xs_s)} 帧)"
@@ -368,10 +409,15 @@ def _plot_energy_profile(timeline: list[float], energies: list[float] | None,
         ymax = max(y_valid) + 1.0
         if ymax - ymin < 1e-6:
             ymax = ymin + 1.0
-        def _X(s): return int(x0 + s * (x1 - x0))
+
+        def _X(s):
+            return int(x0 + s * (x1 - x0))
+
         def _Y(v):
-            if v is None: return None
+            if v is None:
+                return None
             return int(y1 - (v - ymin) / (ymax - ymin) * (y1 - y0))
+
         # 边框 + 网格
         draw.rectangle([x0, y0, x1, y1], outline="black", width=1)
         for i in range(5):
@@ -386,30 +432,39 @@ def _plot_energy_profile(timeline: list[float], energies: list[float] | None,
         # Forward: blue
         pts_f = []
         for i in range(fwd_end):
-            x = _X(xs_s[i]); y = _Y(y_rel[i])
-            if y is not None: pts_f.append((x, y))
-        if len(pts_f) >= 2: draw.line(pts_f, fill="#1f77b4", width=3)
+            x = _X(xs_s[i])
+            y = _Y(y_rel[i])
+            if y is not None:
+                pts_f.append((x, y))
+        if len(pts_f) >= 2:
+            draw.line(pts_f, fill="#1f77b4", width=3)
         # Reverse: dashed orange (用短线段模拟)
         if rev_start < total:
             pts_r = [(_X(xs_s[i]), _Y(y_rel[i])) for i in range(rev_start, total) if _Y(y_rel[i]) is not None]
-            for a, b in zip(pts_r, pts_r[1:]):
+            for a, b in zip(pts_r, pts_r[1:], strict=False):
                 draw.line([a, b], fill="#ff7f0e", width=3)
         # 端点标注
         first = None
         for i, v in enumerate(y_rel):
-            if v is not None: first = (i, v); break
+            if v is not None:
+                first = (i, v)
+                break
         last = None
         for i in range(len(y_rel) - 1, -1, -1):
-            if y_rel[i] is not None: last = (i, y_rel[i]); break
+            if y_rel[i] is not None:
+                last = (i, y_rel[i])
+                break
         if first is not None:
             i, v = first
-            cx = _X(xs_s[i]); cy = _Y(v)
-            draw.ellipse((cx-8, cy-8, cx+8, cy+8), fill="#2ca02c", outline="black")
+            cx = _X(xs_s[i])
+            cy = _Y(v)
+            draw.ellipse((cx - 8, cy - 8, cx + 8, cy + 8), fill="#2ca02c", outline="black")
             draw.text((cx + 12, cy - 20), f"R 反应物 = {v:.2f} kcal/mol", fill="#2ca02c")
         if last is not None and (first is None or last[0] != first[0]):
             i, v = last
-            cx = _X(xs_s[i]); cy = _Y(v)
-            draw.ellipse((cx-10, cy-10, cx+10, cy+10), fill="#d62728", outline="black")
+            cx = _X(xs_s[i])
+            cy = _Y(v)
+            draw.ellipse((cx - 10, cy - 10, cx + 10, cy + 10), fill="#d62728", outline="black")
             draw.text((cx - 200, cy - 26), f"P 产物 = {v:.2f} kcal/mol", fill="#d62728")
         if first is not None and last is not None:
             delta = last[1] - first[1]
@@ -449,11 +504,13 @@ def generate_xyz_trajectory(
             r_p = resolve_secure_input_file(reactant_xyz)
             p_p = resolve_secure_input_file(product_xyz)
         except ValueError as _ve:
-            result["error"] = str(_ve); return result
+            result["error"] = str(_ve)
+            return result
         n_r, atoms_r, R = _parse_xyz(r_p.read_text(encoding="utf-8"))
         n_p, atoms_p, P = _parse_xyz(p_p.read_text(encoding="utf-8"))
         if n_r != n_p or atoms_r != atoms_p:
-            result["error"] = f"原子顺序不一致 (R:{n_r} P:{n_p})，请先做分子叠加"; return result
+            result["error"] = f"原子顺序不一致 (R:{n_r} P:{n_p})，请先做分子叠加"
+            return result
         mode = mode if mode in ("bounce", "forward") else "bounce"
         trajectory_format = trajectory_format if trajectory_format in ("xyz", "sdf") else "xyz"
         timeline = _expand_timeline(int(steps), mode, bool(smooth))
@@ -475,14 +532,14 @@ def generate_xyz_trajectory(
                 out = out.with_suffix(ext)
             out = _secure_output_path(out, base_dir=_base_dir, create_parent=True)
         except ValueError as _v:
-            result["error"] = f"输出路径非法: {_v}"; return result
+            result["error"] = f"输出路径非法: {_v}"
+            return result
 
         if trajectory_format == "xyz":
             with open(out, "w", encoding="utf-8", newline="\n") as f:
                 for idx, t in enumerate(timeline):
                     if progress_callback and idx % max(1, total // 100 + 1) == 0:
-                        progress_callback(10 + 80 * idx / max(1, total),
-                                          f"写入 XYZ 帧 {idx+1}/{total}")
+                        progress_callback(10 + 80 * idx / max(1, total), f"写入 XYZ 帧 {idx + 1}/{total}")
                     coords = _lerp_coords(R, P, t)
                     e = _find_energy_for_frame(idx, total, energies, one_way_steps, mode)
                     comment_tokens = []
@@ -491,7 +548,7 @@ def generate_xyz_trajectory(
                     else:
                         rp = t if idx < one_way_steps else (2.0 - t)
                         rp = max(0.0, min(1.0, rp))
-                    comment_tokens.append(f"frame={idx+1}/{total}")
+                    comment_tokens.append(f"frame={idx + 1}/{total}")
                     comment_tokens.append(f"t={rp:.4f}")
                     if e is not None:
                         comment_tokens.append(f"E={e:.8f}")
@@ -499,7 +556,7 @@ def generate_xyz_trajectory(
                     comment = "  ".join(comment_tokens)
                     f.write(f"{n_r}\n")
                     f.write(f"{comment}\n")
-                    for sym, xyz in zip(atoms_r, coords):
+                    for sym, xyz in zip(atoms_r, coords, strict=False):
                         f.write(f"{sym:<3s} {xyz[0]:15.10f} {xyz[1]:15.10f} {xyz[2]:15.10f}\n")
         else:
             try:
@@ -511,8 +568,7 @@ def generate_xyz_trajectory(
                 written = 0
                 for idx, t in enumerate(timeline):
                     if progress_callback and idx % max(1, total // 100 + 1) == 0:
-                        progress_callback(10 + 70 * idx / max(1, total),
-                                          f"生成 SDF 中间帧 {idx+1}/{total}")
+                        progress_callback(10 + 70 * idx / max(1, total), f"生成 SDF 中间帧 {idx + 1}/{total}")
                     coords = _lerp_coords(R, P, t)
                     e = _find_energy_for_frame(idx, total, energies, one_way_steps, mode)
                     xyz_text = _write_xyz(n_r, atoms_r, coords)
@@ -541,7 +597,8 @@ def generate_xyz_trajectory(
                             continue
                     written += 1
                 if written == 0:
-                    result["error"] = "SDF 输出需要 OpenBabel (pybel / obabel)"; return result
+                    result["error"] = "SDF 输出需要 OpenBabel (pybel / obabel)"
+                    return result
                 # written 是成功写入的中间帧数量，glob 后按名字顺序读，实际写出的帧数 = written；
                 # 若中间帧有部分失败，需以实际 written 为准，避免 n_frames 虚报。
                 sdf_frames: list[str] = []
@@ -551,9 +608,10 @@ def generate_xyz_trajectory(
                         body += "\n"
                     sdf_frames.append(body)
                 if len(sdf_frames) != written:
-                    logger.warning("SDF 中间帧 glob 数量与 written 计数不一致: glob=%s written=%s",
-                                   len(sdf_frames), written)
-                real_total = min(written, len(sdf_frames))
+                    logger.warning(
+                        "SDF 中间帧 glob 数量与 written 计数不一致: glob=%s written=%s", len(sdf_frames), written
+                    )
+                min(written, len(sdf_frames))
                 with open(out, "w", encoding="utf-8", newline="\n") as target:
                     target.write("".join(sdf_frames))
 
@@ -580,8 +638,9 @@ def generate_xyz_trajectory(
         return result
 
 
-def _concat_xyz_files(paths: list[str | os.PathLike[str]],
-                      translate_spacing: float = 6.0) -> tuple[int, list[str], list[list[float]]]:
+def _concat_xyz_files(
+    paths: list[str | os.PathLike[str]], translate_spacing: float = 6.0
+) -> tuple[int, list[str], list[list[float]]]:
     all_atoms: list[str] = []
     all_coords: list[list[float]] = []
     offset = 0.0
@@ -590,7 +649,7 @@ def _concat_xyz_files(paths: list[str | os.PathLike[str]],
         # 拒绝目录 / 设备 / 不存在路径（防止越权读取）。
         fp = resolve_secure_input_file(p)
         n, atoms, coords = _parse_xyz(fp.read_text(encoding="utf-8"))
-        for (sym, xyz) in zip(atoms, coords):
+        for sym, xyz in zip(atoms, coords, strict=False):
             all_atoms.append(sym)
             all_coords.append([xyz[0] + offset, xyz[1], xyz[2]])
         xs = [c[0] for c in coords]
@@ -609,6 +668,7 @@ def _kabsch_rotation(source: np.ndarray, target: np.ndarray):
     有正确对应关系（这里由匈牙利迭代给出），不能拿乱序分子直接喂入。
     """
     import numpy as np
+
     src = np.asarray(source, dtype=float)
     tgt = np.asarray(target, dtype=float)
     src_c = src - src.mean(axis=0)
@@ -621,9 +681,9 @@ def _kabsch_rotation(source: np.ndarray, target: np.ndarray):
     return R, tgt.mean(axis=0)
 
 
-def _auto_reorder_atoms(atoms_R: list[str], coords_R: list[list[float]],
-                        atoms_P: list[str], coords_P: list[list[float]]
-                        ) -> tuple[list[str], list[list[float]]]:
+def _auto_reorder_atoms(
+    atoms_R: list[str], coords_R: list[list[float]], atoms_P: list[str], coords_P: list[list[float]]
+) -> tuple[list[str], list[list[float]]]:
     """产物原子顺序自动对齐（修复版，问题8 科学硬伤）。
 
     算法（ICP 迭代，朝向无关）：
@@ -638,6 +698,7 @@ def _auto_reorder_atoms(atoms_R: list[str], coords_R: list[list[float]],
     复杂度：每轮 对齐 O(N) + 匹配 O(ΣK³)，迭代 ≤20（通常 1-3 轮收敛）。
     """
     from collections import Counter, defaultdict
+
     if len(atoms_R) != len(atoms_P) or Counter(atoms_R) != Counter(atoms_P):
         raise ValueError(
             f"反应物和产物原子组成不一致（原子守恒失败）：R Counter={Counter(atoms_R)} P Counter={Counter(atoms_P)}"
@@ -647,6 +708,7 @@ def _auto_reorder_atoms(atoms_R: list[str], coords_R: list[list[float]],
     try:
         import numpy as np
         from scipy.optimize import linear_sum_assignment
+
         _have_opt = True
     except Exception:
         np = None
@@ -680,7 +742,8 @@ def _auto_reorder_atoms(atoms_R: list[str], coords_R: list[list[float]],
                 if ri in used_r or pj in used_p:
                     continue
                 perm[ri] = pj
-                used_r.add(ri); used_p.add(pj)
+                used_r.add(ri)
+                used_p.add(pj)
         if -1 in perm or len(set(perm)) != n:
             raise RuntimeError("产物原子顺序重排失败")
         return [atoms_P[perm[i]] for i in range(n)], [list(coords_P[perm[i]]) for i in range(n)]
@@ -693,12 +756,12 @@ def _auto_reorder_atoms(atoms_R: list[str], coords_R: list[list[float]],
         perm: list[int] = [-1] * n
         for elem, r_ids in idxs_by_elem_R.items():
             p_ids = list(idxs_by_elem_P[elem])
-            R_block = arr_R[r_ids]              # (k, 3)
-            P_block = aligned_P[p_ids]          # (k, 3)
+            R_block = arr_R[r_ids]  # (k, 3)
+            P_block = aligned_P[p_ids]  # (k, 3)
             # 成本矩阵：每对 (ri, pj) 距离平方
             cost = np.sum((R_block[:, None, :] - P_block[None, :, :]) ** 2, axis=2)
             row_ind, col_ind = linear_sum_assignment(cost)
-            for r_pos, p_pos in zip(row_ind, col_ind):
+            for r_pos, p_pos in zip(row_ind, col_ind, strict=False):
                 perm[r_ids[r_pos]] = p_ids[p_pos]
         return perm
 
@@ -707,10 +770,10 @@ def _auto_reorder_atoms(atoms_R: list[str], coords_R: list[list[float]],
     perm = _hungarian_perm(aligned)
     # ICP 迭代：Kabsch 用当前对应对齐 -> 重新匈牙利匹配 -> 直到收敛
     for _ in range(20):
-        P_ordered = arr_P[perm]                  # 当前对应下的产物点（与 arr_R 同序）
+        P_ordered = arr_P[perm]  # 当前对应下的产物点（与 arr_R 同序）
         R_mat, tgt_c = _kabsch_rotation(P_ordered, arr_R)
         src_c = arr_P - arr_P.mean(axis=0)
-        aligned = src_c @ R_mat.T + tgt_c        # 把整个产物点云旋到反应物坐标系
+        aligned = src_c @ R_mat.T + tgt_c  # 把整个产物点云旋到反应物坐标系
         new_perm = _hungarian_perm(aligned)
         if new_perm == perm:
             break
@@ -736,11 +799,11 @@ def generate_reaction_multispecies(
     translate_spacing: float = 6.0,
     progress_callback: Callable[[float, str], None] | None = None,
 ) -> dict[str, Any]:
-    result: dict[str, Any] = {"success": False, "output": None, "n_frames": 0,
-                              "energies_written": False, "error": None}
+    result: dict[str, Any] = {"success": False, "output": None, "n_frames": 0, "energies_written": False, "error": None}
     try:
         if len(reactant_files) == 0 or len(product_files) == 0:
-            result["error"] = "请至少提供 1 个反应物和 1 个产物文件"; return result
+            result["error"] = "请至少提供 1 个反应物和 1 个产物文件"
+            return result
         if progress_callback:
             progress_callback(2, "拼接反应物分子...")
         _, atoms_R, coords_R = _concat_xyz_files(reactant_files, translate_spacing=translate_spacing)
@@ -752,9 +815,7 @@ def generate_reaction_multispecies(
         atoms_P_sorted, coords_P_sorted = _auto_reorder_atoms(atoms_R, coords_R, atoms_P, coords_P)
         # 用用户原始输入目录作为输出 base_dir（而非内部合并临时目录），
         # 避免输出路径相对临时目录被安全校验误判为「越界」。
-        _out_base_dir = _default_base_dir_from_input(
-            *reactant_files, *product_files, fallback=energy_csv
-        )
+        _out_base_dir = _default_base_dir_from_input(*reactant_files, *product_files, fallback=energy_csv)
         with tempfile.TemporaryDirectory(prefix="ms_xyz_") as td:
             td_path = Path(td)
             r_combined = td_path / "R_combined.xyz"
@@ -762,9 +823,14 @@ def generate_reaction_multispecies(
             r_combined.write_text(_write_xyz(len(atoms_R), atoms_R, coords_R), encoding="utf-8")
             p_combined.write_text(_write_xyz(len(atoms_P_sorted), atoms_P_sorted, coords_P_sorted), encoding="utf-8")
             sub = generate_xyz_trajectory(
-                str(r_combined), str(p_combined), output_path,
-                steps=steps, mode=mode, smooth=smooth,
-                trajectory_format=trajectory_format, energy_csv=energy_csv,
+                str(r_combined),
+                str(p_combined),
+                output_path,
+                steps=steps,
+                mode=mode,
+                smooth=smooth,
+                trajectory_format=trajectory_format,
+                energy_csv=energy_csv,
                 base_dir=_out_base_dir,
                 progress_callback=progress_callback,
             )
@@ -795,9 +861,16 @@ def _frames_to_gif(frames: list[Path], out_gif: Path, duration_ms: int) -> bool:
         if first_im is None:
             return False
         out_gif.parent.mkdir(parents=True, exist_ok=True)
-        first_im.save(out_gif, format="GIF", save_all=True,
-                      append_images=images, duration=max(20, duration_ms),
-                      loop=0, optimize=True, disposal=2)
+        first_im.save(
+            out_gif,
+            format="GIF",
+            save_all=True,
+            append_images=images,
+            duration=max(20, duration_ms),
+            loop=0,
+            optimize=True,
+            disposal=2,
+        )
         return True
     except Exception as e:
         logger.warning("合成 GIF 失败: %s", e)
@@ -887,14 +960,22 @@ def _frames_to_mp4(frames: list[Path], out_mp4: Path, fps: int, ffmpeg_path: str
             pattern = str(td_path / "seq_%05d.") + (frames[0].suffix.lower().lstrip(".") or "png")
             out_mp4.parent.mkdir(parents=True, exist_ok=True)
             cmd = [
-                resolved, "-y",
-                "-framerate", str(max(1, int(fps))),
-                "-i", pattern,
-                "-c:v", "libx264",
-                "-preset", "medium",
-                "-crf", "20",
-                "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
+                resolved,
+                "-y",
+                "-framerate",
+                str(max(1, int(fps))),
+                "-i",
+                pattern,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
                 str(out_mp4),
             ]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -977,20 +1058,21 @@ def generate_reaction_animation(
                 out_raw = Path(output_path)
                 if not out_raw.suffix or out_raw.suffix.lower() != suf:
                     out_raw = out_raw.with_suffix(suf)
-                output = _secure_output_path(
-                    out_raw, base_dir=_base_dir, create_parent=True
-                )
+                output = _secure_output_path(out_raw, base_dir=_base_dir, create_parent=True)
                 out_dir = output.parent
             out_dir.mkdir(parents=True, exist_ok=True)
         except ValueError as _v:
             result["error"] = f"输出路径非法: {_v}"
             return result
         from utils.path_utils import make_temp_dir
+
         frames_root = Path(make_temp_dir("reaction_anim_frames_"))
         xyz_dir = frames_root / "xyz"
         raw_dir = frames_root / "raw"
         final_dir = frames_root / "final"
-        xyz_dir.mkdir(); raw_dir.mkdir(); final_dir.mkdir()
+        xyz_dir.mkdir()
+        raw_dir.mkdir()
+        final_dir.mkdir()
 
         # 性能优化：同一反应的 2D 分子描绘通常只取决于原子/连接关系，与插值的 3D
         # 坐标无关，因此各帧 raw 底图往往完全相同。先用「首两帧字节比对」探测：
@@ -1003,7 +1085,7 @@ def generate_reaction_animation(
         final_frames: list[Path] = []
         for idx, t in enumerate(timeline):
             if progress_callback:
-                progress_callback(5 + idx / max(1, total) * 85, f"渲染 {idx+1}/{total}")
+                progress_callback(5 + idx / max(1, total) * 85, f"渲染 {idx + 1}/{total}")
             coords = _lerp_coords(R, P, t)
             xyz_text = _write_xyz(n_r, atoms_r, coords)
             xyz_fp = xyz_dir / f"frame_{idx:04d}.xyz"
@@ -1025,9 +1107,9 @@ def generate_reaction_animation(
                     if _probe_bytes is None:
                         _probe_bytes = _raw_bytes
                     else:
-                        _cache_enabled = (_probe_bytes == _raw_bytes)
+                        _cache_enabled = _probe_bytes == _raw_bytes
             final_fp = final_dir / f"frame_{idx:04d}.png"
-            title = f"{title_prefix}帧 {idx+1:03d} / {total:03d}".strip()
+            title = f"{title_prefix}帧 {idx + 1:03d} / {total:03d}".strip()
             sub = "cosine 缓动" if smooth else "线性插值"
             if mode == "bounce":
                 if idx < one_way_steps:
@@ -1054,7 +1136,10 @@ def generate_reaction_animation(
         def _export_energy_profile(out_path_obj):
             try:
                 ep_png = _plot_energy_profile(
-                    timeline, energies, one_way_steps, mode,
+                    timeline,
+                    energies,
+                    one_way_steps,
+                    mode,
                     Path(out_path_obj).with_name(Path(out_path_obj).stem + "_energy_profile.png"),
                 )
                 if ep_png:
@@ -1143,6 +1228,7 @@ def preview_first_frame(
     result = {"success": False, "output": None, "error": None}
     try:
         import tempfile
+
         r_p = resolve_secure_input_file(reactant_xyz)
         p_p = resolve_secure_input_file(product_xyz)
         n_r, atoms_r, R = _parse_xyz(r_p.read_text(encoding="utf-8"))
@@ -1161,6 +1247,7 @@ def preview_first_frame(
             tmp_path = tmp.name
         try:
             import chem.openbabel_utils as obu
+
             r = obu.render_png_2d(tmp_path, str(output_png), width, height)
             if r.get("success"):
                 result["success"] = True

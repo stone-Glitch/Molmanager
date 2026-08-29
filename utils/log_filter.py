@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 F15 日志过滤 —— 纯匹配逻辑（T03 / Phase 1）
 ──────────────────────────────────────────
@@ -17,6 +16,7 @@ F15 日志过滤 —— 纯匹配逻辑（T03 / Phase 1）
 不受 tag / 前缀影响（架构 §3.1）。为兼容旧数据，本模块同时接受 3 元组
 ``(levelno, levelname, display_msg)``，此时用 display_msg 参与关键词匹配。
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
@@ -38,7 +38,13 @@ LEVEL_VALUES: dict[str, int] = {
 
 #: 过滤条下拉框的取值顺序（英文键，写入 config 的也是这些键）
 LEVEL_ORDER: tuple[str, ...] = (
-    LEVEL_ALL, "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL",
+    LEVEL_ALL,
+    "DEBUG",
+    "INFO",
+    "SUCCESS",
+    "WARNING",
+    "ERROR",
+    "CRITICAL",
 )
 
 #: 下拉框展示用中文标签
@@ -60,6 +66,7 @@ DEFAULT_KEYWORD: str = ""
 
 
 # ---------------------------------------------------------------- 级别工具
+
 
 def normalize_level(level: Any) -> str:
     """
@@ -122,6 +129,7 @@ def level_name_of(levelno: Any) -> str:
 
 # ---------------------------------------------------------------- 记录工具
 
+
 def record_levelno(record: Sequence[Any]) -> int:
     """安全取出记录的 levelno；取不到时返回 logging.INFO(20)。"""
     try:
@@ -148,6 +156,7 @@ def record_text(record: Sequence[Any]) -> str:
 
 
 # ---------------------------------------------------------------- 匹配
+
 
 def match_level(levelno: Any, level: Any = LEVEL_ALL) -> bool:
     """级别阈值匹配：记录级别 >= 过滤阈值 才通过。"""
@@ -205,10 +214,7 @@ def filter_records(
     case_sensitive: bool = False,
 ) -> list[Sequence[Any]]:
     """返回所有命中的记录（保持原顺序）。"""
-    return [
-        r for r in records
-        if match_record(r, level=level, keyword=keyword, case_sensitive=case_sensitive)
-    ]
+    return [r for r in records if match_record(r, level=level, keyword=keyword, case_sensitive=case_sensitive)]
 
 
 def count_matches(

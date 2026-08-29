@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 🪵 升级日志模块（Python 3.10+ / Aurora Frost 风格）
 ───────────────────────────────────────────────
@@ -17,6 +16,7 @@
   - 移除重复的 _app_data_dir()，改用 path_utils.get_app_data_dir()
   - 保持所有外部接口不变
 """
+
 import gzip
 import json
 import logging
@@ -44,6 +44,7 @@ from utils.path_utils import get_app_data_dir
 # 但 GuiLogHandler 需要 tk.END 等常量，这里在模块开头先确定值。
 try:
     import tkinter as _tk  # noqa: F401
+
     _TK_END = _tk.END
     _TK_AFTER = hasattr(_tk.Misc, "after")
     _HAS_TK = True
@@ -80,9 +81,9 @@ def success(self: logging.Logger, msg: object, *args: Any, **kwargs: Any) -> Non
 logging.Logger.success = success  # type: ignore[attr-defined]
 
 
-def log_exception(logger: "logging.Logger", msg: str = "",
-                  exc: "BaseException | None" = None,
-                  level: int = logging.ERROR) -> None:
+def log_exception(
+    logger: "logging.Logger", msg: str = "", exc: "BaseException | None" = None, level: int = logging.ERROR
+) -> None:
     """在 ``except Exception`` 处记录完整堆栈，便于排查（Phase B · 可维护性）。
 
     相比只记 ``str(e)``，本函数会输出 ``traceback.format_exception`` 全栈，
@@ -101,29 +102,30 @@ def log_exception(logger: "logging.Logger", msg: str = "",
     tb_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     logger.log(level, "%s: %s\n%s", msg, exc, tb_text)
 
+
 # ---------------- ANSI 彩色 ----------------
 
 
 class _Ansi:
-    RESET   = "\033[0m"
-    BOLD    = "\033[1m"
-    DIM     = "\033[2m"
-    GRAY    = "\033[38;5;246m"
-    WHITE   = "\033[38;5;255m"
-    GREEN   = "\033[38;2;14;162;136m"   # 极光绿
-    BLUE    = "\033[38;2;59;110;255m"   # 量子蓝
-    PURPLE  = "\033[38;2;139;92;246m"   # 分子紫
-    ORANGE  = "\033[38;2;255;138;61m"   # 火焰橙
-    RED     = "\033[38;2;229;72;77m"    # 红
-    RED_BG  = "\033[48;2;229;72;77m"    # 红底
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    GRAY = "\033[38;5;246m"
+    WHITE = "\033[38;5;255m"
+    GREEN = "\033[38;2;14;162;136m"  # 极光绿
+    BLUE = "\033[38;2;59;110;255m"  # 量子蓝
+    PURPLE = "\033[38;2;139;92;246m"  # 分子紫
+    ORANGE = "\033[38;2;255;138;61m"  # 火焰橙
+    RED = "\033[38;2;229;72;77m"  # 红
+    RED_BG = "\033[48;2;229;72;77m"  # 红底
 
 
 _LEVEL_STYLES: dict[int, str] = {
-    logging.DEBUG:    _Ansi.DIM + _Ansi.GRAY,
-    logging.INFO:     _Ansi.WHITE,
-    LEVEL_SUCCESS:    _Ansi.BOLD + _Ansi.GREEN,
-    logging.WARNING:  _Ansi.BOLD + _Ansi.ORANGE,
-    logging.ERROR:    _Ansi.BOLD + _Ansi.RED,
+    logging.DEBUG: _Ansi.DIM + _Ansi.GRAY,
+    logging.INFO: _Ansi.WHITE,
+    LEVEL_SUCCESS: _Ansi.BOLD + _Ansi.GREEN,
+    logging.WARNING: _Ansi.BOLD + _Ansi.ORANGE,
+    logging.ERROR: _Ansi.BOLD + _Ansi.RED,
     logging.CRITICAL: _Ansi.BOLD + _Ansi.RED_BG + _Ansi.WHITE,
 }
 
@@ -134,10 +136,12 @@ class ColorFormatter(logging.Formatter):
     def __init__(self, fmt: str, datefmt: str, use_color: bool | None = None):
         super().__init__(fmt=fmt, datefmt=datefmt)
         if use_color is None:
-            self._use = (sys.stderr is not None
-                         and hasattr(sys.stderr, "isatty")
-                         and bool(sys.stderr.isatty())
-                         and not bool(os.environ.get("NO_COLOR")))
+            self._use = (
+                sys.stderr is not None
+                and hasattr(sys.stderr, "isatty")
+                and bool(sys.stderr.isatty())
+                and not bool(os.environ.get("NO_COLOR"))
+            )
         else:
             self._use = use_color
 
@@ -186,7 +190,9 @@ class GzTimedRotatingFileHandler(logging.handlers.TimedRotatingFileHandler):
             for f in os.listdir(dir_name):
                 if f.startswith(prefix) and f.endswith(".gz"):
                     full = os.path.join(dir_name, f)
-                    if full not in result and os.path.getmtime(full) < (time.time() - self.interval * (self.backupCount + 2)):
+                    if full not in result and os.path.getmtime(full) < (
+                        time.time() - self.interval * (self.backupCount + 2)
+                    ):
                         result.append(full)
         except OSError:
             pass
@@ -204,12 +210,12 @@ class JsonLinesFormatter(logging.Formatter):
             except Exception:
                 record.session_id = "-"
         rec: dict[str, Any] = {
-            "ts":   datetime.fromtimestamp(record.created).isoformat(timespec="milliseconds"),
-            "lvl":  record.levelname,
+            "ts": datetime.fromtimestamp(record.created).isoformat(timespec="milliseconds"),
+            "lvl": record.levelname,
             "name": record.name,
-            "msg":  record.getMessage(),
-            "sid":  getattr(record, "session_id", "-"),
-            "t":    record.thread,
+            "msg": record.getMessage(),
+            "sid": getattr(record, "session_id", "-"),
+            "t": record.thread,
         }
         if record.exc_info:
             rec["exc"] = self.formatException(record.exc_info)
@@ -258,10 +264,14 @@ class LoggerContext:
     work_dir: str = ""
 
     def record_perf(self, name: str, seconds: float, meta: dict[str, Any] | None = None) -> None:
-        self._perf_records.append({
-            "name": name, "ms": round(seconds * 1000, 2), "meta": meta,
-            "ts": datetime.now().strftime(DATE_FORMAT),
-        })
+        self._perf_records.append(
+            {
+                "name": name,
+                "ms": round(seconds * 1000, 2),
+                "meta": meta,
+                "ts": datetime.now().strftime(DATE_FORMAT),
+            }
+        )
         if len(self._perf_records) > 128:
             self._perf_records.sort(key=lambda x: x["ms"], reverse=True)
             self._perf_records[:] = self._perf_records[:32]
@@ -284,16 +294,20 @@ def set_work_dir(path: str | os.PathLike[str]) -> None:
 
 # ---------- performance_timer ----------
 
-def performance_timer(name: str | None = None, logger: logging.Logger | None = None,
-                      level: int = logging.DEBUG, min_ms: float = 1.0,
-                      meta: dict[str, Any] | None = None) -> Callable[[Any], Any]:
+
+def performance_timer(
+    name: str | None = None,
+    logger: logging.Logger | None = None,
+    level: int = logging.DEBUG,
+    min_ms: float = 1.0,
+    meta: dict[str, Any] | None = None,
+) -> Callable[[Any], Any]:
     """
     装饰器 / 上下文管理器两用：性能计时。
     只记 >= min_ms 毫秒的调用，避免 DEBUG 噪音。
     """
     _lg = logger or default_logger
     _meta = meta or {}
-    is_ctx = False  # 是否作为上下文管理器被用
 
     class _Ctx:
         def __init__(self, label: str):
@@ -328,6 +342,7 @@ def performance_timer(name: str | None = None, logger: logging.Logger | None = N
                     _LOGGER_CONTEXT.record_perf(label, sec, _meta)
                     mstr = "" if not _meta else f"  {_meta}"
                     _lg.log(level, f"PERF {label}  →  {ms:,.2f} ms{mstr}")
+
         return _inner
 
     if callable(name) and meta is None and not isinstance(name, str):
@@ -370,8 +385,12 @@ class GuiLogHandler(logging.Handler):
         self._get_app = get_app_callable
         self._use_weakref = False
         self._active: dict[str, bool] = {
-            "DEBUG": True, "INFO": True, "SUCCESS": True,
-            "WARNING": True, "ERROR": True, "CRITICAL": True,
+            "DEBUG": True,
+            "INFO": True,
+            "SUCCESS": True,
+            "WARNING": True,
+            "ERROR": True,
+            "CRITICAL": True,
         }
         # _queue / _all_records 会被 emit（多线程）+ _flush/repaint/clear（主线程）同时读写，
         # 所有读写必须进入同一把 _lock，避免 list 内部结构被 race 破坏。
@@ -390,19 +409,22 @@ class GuiLogHandler(logging.Handler):
 
     def get_records_for_export(self) -> list[dict[str, Any]]:
         from datetime import datetime
+
         out = []
         with self._lock:
             snap = list(self._all_records)
         for rec in snap:
             lvl, lvl_name, msg = rec[0], rec[1], rec[2]
             raw = rec[3] if len(rec) >= 4 else msg
-            out.append({
-                "time": datetime.now().strftime(DATE_FORMAT),
-                "level": lvl_name,
-                "level_no": lvl,
-                "message": str(msg).rstrip("\n"),
-                "raw_message": str(raw).rstrip("\n"),
-            })
+            out.append(
+                {
+                    "time": datetime.now().strftime(DATE_FORMAT),
+                    "level": lvl_name,
+                    "level_no": lvl,
+                    "message": str(msg).rstrip("\n"),
+                    "raw_message": str(raw).rstrip("\n"),
+                }
+            )
         return out
 
     def count_all(self) -> int:
@@ -417,22 +439,25 @@ class GuiLogHandler(logging.Handler):
         供调用方流式写入，缓解大数据量导出时的卡顿。
         """
         from datetime import datetime
+
         if chunk <= 0:
             chunk = 1000
         with self._lock:
             snapshot = list(self._all_records)
         for start in range(0, len(snapshot), chunk):
             batch = []
-            for rec in snapshot[start:start + chunk]:
+            for rec in snapshot[start : start + chunk]:
                 lvl, lvl_name, msg = rec[0], rec[1], rec[2]
                 raw = rec[3] if len(rec) >= 4 else msg
-                batch.append({
-                    "time": datetime.now().strftime(DATE_FORMAT),
-                    "level": lvl_name,
-                    "level_no": lvl,
-                    "message": str(msg).rstrip("\n"),
-                    "raw_message": str(raw).rstrip("\n"),
-                })
+                batch.append(
+                    {
+                        "time": datetime.now().strftime(DATE_FORMAT),
+                        "level": lvl_name,
+                        "level_no": lvl,
+                        "message": str(msg).rstrip("\n"),
+                        "raw_message": str(raw).rstrip("\n"),
+                    }
+                )
             yield batch
 
     # ---------------- F15：过滤条（级别阈值 + 关键词）----------------
@@ -464,8 +489,7 @@ class GuiLogHandler(logging.Handler):
             self._filter_level = log_filter.LEVEL_ALL
             self._filter_keyword = ""
 
-    def _visible(self, rec: tuple, active_snap: dict[str, bool],
-                 level: str, keyword: str) -> bool:
+    def _visible(self, rec: tuple, active_snap: dict[str, bool], level: str, keyword: str) -> bool:
         """单条记录是否应显示：级别芯片 AND 过滤条。"""
         try:
             if not active_snap.get(rec[1], True):
@@ -525,7 +549,7 @@ class GuiLogHandler(logging.Handler):
             with self._lock:
                 self._all_records.append(rec)
                 if len(self._all_records) > self._max_records:
-                    self._all_records[:] = self._all_records[-self._max_records // 2:]
+                    self._all_records[:] = self._all_records[-self._max_records // 2 :]
                 if self._active.get(record.levelname, True):
                     self._queue.append(rec)
                     if len(self._queue) > 4000:
@@ -571,11 +595,16 @@ class GuiLogHandler(logging.Handler):
                 if not self._visible(rec, active_snap, f_level, f_keyword):
                     continue
                 tag = "info"
-                if lvl == logging.DEBUG:    tag = "debug"
-                elif lvl == LEVEL_SUCCESS:  tag = "success"
-                elif lvl == logging.WARNING: tag = "warning"
-                elif lvl == logging.ERROR:   tag = "error"
-                elif lvl >= logging.CRITICAL: tag = "critical"
+                if lvl == logging.DEBUG:
+                    tag = "debug"
+                elif lvl == LEVEL_SUCCESS:
+                    tag = "success"
+                elif lvl == logging.WARNING:
+                    tag = "warning"
+                elif lvl == logging.ERROR:
+                    tag = "error"
+                elif lvl >= logging.CRITICAL:
+                    tag = "critical"
                 block = f"[{lvl_name:^7s}] {msg}\n"
                 before_insert_line = int(log_text.index("end-1c linestart").split(".")[0])
                 log_text.insert(_TK_END, block)
@@ -645,11 +674,16 @@ class GuiLogHandler(logging.Handler):
                     continue
                 lvl, lvl_name, msg = rec[0], rec[1], rec[2]
                 tag = "info"
-                if lvl == logging.DEBUG:    tag = "debug"
-                elif lvl == LEVEL_SUCCESS:  tag = "success"
-                elif lvl == logging.WARNING: tag = "warning"
-                elif lvl == logging.ERROR:   tag = "error"
-                elif lvl >= logging.CRITICAL: tag = "critical"
+                if lvl == logging.DEBUG:
+                    tag = "debug"
+                elif lvl == LEVEL_SUCCESS:
+                    tag = "success"
+                elif lvl == logging.WARNING:
+                    tag = "warning"
+                elif lvl == logging.ERROR:
+                    tag = "error"
+                elif lvl >= logging.CRITICAL:
+                    tag = "critical"
                 block = f"[{lvl_name:^7s}] {msg}\n"
                 before_insert_line = int(log_text.index("end-1c linestart").split(".")[0])
                 log_text.insert(_TK_END, block)
@@ -687,8 +721,7 @@ _MAIN_LOGGER_NAME = "MolManager"
 def _make_console_handler() -> logging.Handler:
     h = logging.StreamHandler(stream=sys.stderr)
     h.setLevel(logging.INFO)
-    h.setFormatter(ColorFormatter(fmt="%(asctime)s  [%(levelname)-7s]  %(name)-20s  %(message)s",
-                                 datefmt=DATE_FORMAT))
+    h.setFormatter(ColorFormatter(fmt="%(asctime)s  [%(levelname)-7s]  %(name)-20s  %(message)s", datefmt=DATE_FORMAT))
     return h
 
 
@@ -704,11 +737,16 @@ def _make_file_handler() -> logging.Handler | None:
         if parent:
             os.makedirs(parent, exist_ok=True)
         h = GzTimedRotatingFileHandler(
-            filename=str(LOG_FILE), when="midnight", interval=1,
-            backupCount=14, encoding="utf-8", delay=True, utc=False,
+            filename=str(LOG_FILE),
+            when="midnight",
+            interval=1,
+            backupCount=14,
+            encoding="utf-8",
+            delay=True,
+            utc=False,
         )
     except Exception as _e:  # 目录不可写等极端情况
-        print(f"[logger] 无法创建日志文件 {LOG_FILE}：{_e}（已退化为仅控制台日志）")
+        print(f"[logger] 无法创建日志文件 {LOG_FILE}：{_e}（已退化为仅控制台日志）")  # noqa: T201
         return None
     h.setLevel(logging.DEBUG)
     h.setFormatter(VerboseFormatter(fmt=VERBOSE_FMT, datefmt=DATE_FORMAT))
@@ -719,8 +757,12 @@ def _make_json_handler() -> logging.Handler | None:
     if not bool(int(os.environ.get("MOLMAN_JSON_LOG", "0"))):
         return None
     h = GzTimedRotatingFileHandler(
-        filename=str(JSON_LOG_FILE), when="midnight", interval=1,
-        backupCount=7, encoding="utf-8", delay=True,
+        filename=str(JSON_LOG_FILE),
+        when="midnight",
+        interval=1,
+        backupCount=7,
+        encoding="utf-8",
+        delay=True,
     )
     h.setLevel(logging.DEBUG)
     h.setFormatter(JsonLinesFormatter())
@@ -730,7 +772,8 @@ def _make_json_handler() -> logging.Handler | None:
 def setup_logging() -> logging.Logger:
     root = logging.getLogger()
     for h in list(root.handlers):
-        root.removeHandler(h); h.close()
+        root.removeHandler(h)
+        h.close()
     root.setLevel(logging.DEBUG)
     root.addFilter(_CONTEXT_FILTER)
     # —— 问题二：日志空白修复 ——
@@ -751,8 +794,9 @@ def setup_logging() -> logging.Logger:
     logger_obj.setLevel(logging.DEBUG)
     # 启动就写 banner：方便定位 session
     logger_obj.debug("=" * 68)
-    logger_obj.info("🟢 启动新 Session sid=%s  work_dir=%s",
-                    _LOGGER_CONTEXT.session_id, _LOGGER_CONTEXT.work_dir or "(未设置)")
+    logger_obj.info(
+        "🟢 启动新 Session sid=%s  work_dir=%s", _LOGGER_CONTEXT.session_id, _LOGGER_CONTEXT.work_dir or "(未设置)"
+    )
     return logger_obj
 
 
@@ -791,7 +835,7 @@ class _StartupRecordCollector(logging.Handler):
         with _STARTUP_RECORDS_LOCK:
             _STARTUP_RECORDS.append(rec)
             if len(_STARTUP_RECORDS) > _STARTUP_COLLECTED_MAX:
-                _STARTUP_RECORDS[:] = _STARTUP_RECORDS[-_STARTUP_COLLECTED_MAX // 2:]
+                _STARTUP_RECORDS[:] = _STARTUP_RECORDS[-_STARTUP_COLLECTED_MAX // 2 :]
 
 
 def drain_startup_records() -> list[tuple[int, str, str, str]]:
@@ -828,7 +872,7 @@ def attach_gui_handler(app_ref: Callable[[], Any]) -> GuiLogHandler:
         with handler._lock:
             handler._all_records.extend(startup)
             if len(handler._all_records) > handler._max_records:
-                handler._all_records[:] = handler._all_records[-handler._max_records // 2:]
+                handler._all_records[:] = handler._all_records[-handler._max_records // 2 :]
             # 启动日志默认也按过滤芯片可见（active 默认全 True），所以直接入 queue 也行，
             # 但更稳的是走 repaint_all（已经包含可见性过滤逻辑），因此 queue 不塞也行。
     logging.getLogger().addHandler(handler)
@@ -884,13 +928,26 @@ def detach_gui_handler() -> None:
 
 
 __all__ = [
-    "APP_DATA_DIR", "LOG_DIR", "LOG_FILE", "JSON_LOG_FILE",
-    "DATE_FORMAT", "LEVEL_SUCCESS",
-    "ContextFilter", "ColorFormatter", "JsonLinesFormatter",
-    "GzTimedRotatingFileHandler", "GuiLogHandler",
-    "LoggerContext", "setup_logging", "default_logger",
-    "get_context", "set_work_dir", "performance_timer",
-    "attach_gui_handler", "get_gui_handler", "detach_gui_handler",
+    "APP_DATA_DIR",
+    "LOG_DIR",
+    "LOG_FILE",
+    "JSON_LOG_FILE",
+    "DATE_FORMAT",
+    "LEVEL_SUCCESS",
+    "ContextFilter",
+    "ColorFormatter",
+    "JsonLinesFormatter",
+    "GzTimedRotatingFileHandler",
+    "GuiLogHandler",
+    "LoggerContext",
+    "setup_logging",
+    "default_logger",
+    "get_context",
+    "set_work_dir",
+    "performance_timer",
+    "attach_gui_handler",
+    "get_gui_handler",
+    "detach_gui_handler",
     "drain_startup_records",
     "_HAS_TK",
 ]

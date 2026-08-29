@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 构象搜索模块 - OB Confab + MMFF94 预优化 + 可选 PSI4 高精度精修
 """
+
 import csv
 import logging
 import os
@@ -93,9 +93,14 @@ def conformer_search_ensemble(
 
     # 尝试 CLI 方式
     from .core import _run_process_with_timeout
+
     cmd = [
-        "obabel", input_file, "-O", confabsdf,
-        "--confab", "--confab_options",
+        "obabel",
+        input_file,
+        "-O",
+        confabsdf,
+        "--confab",
+        "--confab_options",
         f"--nconf {n_confs_total} --energy 50.0 --rmsd 0.5",
     ]
     rc = _run_process_with_timeout(cmd, cwd=str(out_dir), timeout=300)
@@ -122,7 +127,9 @@ def conformer_search_ensemble(
                 # P-05：分子无旋转键（刚性）。构象空间退化，只生成 1 个（MMFF 优化后的）构象，
                 # 不做无意义的重复采样与优化，也不虚构多样性（避免「假构象」污染下游 Boltzmann 加权）。
                 try:
-                    ff = ob_utils.ob.OBForceField.FindForceField("MMFF94") or ob_utils.ob.OBForceField.FindForceField("UFF")
+                    ff = ob_utils.ob.OBForceField.FindForceField("MMFF94") or ob_utils.ob.OBForceField.FindForceField(
+                        "UFF"
+                    )
                     if ff and ff.Setup(obmol):
                         try:
                             ff.ConjugateGradients(200, 1.0e-4)
@@ -141,9 +148,7 @@ def conformer_search_ensemble(
                 pm.Assign(obmol)
                 out_mols = [ob_utils.pybel.Molecule(pm)]
                 result["rotor_free"] = True
-                logger.info(
-                    "构象搜索：分子无旋转键（刚性），系综实际仅含 1 个唯一构象，已跳过重复采样。"
-                )
+                logger.info("构象搜索：分子无旋转键（刚性），系综实际仅含 1 个唯一构象，已跳过重复采样。")
             else:
                 # 去重改用 3D 构象 RMSD（重原子），而非 SMILES。
                 # 同一分子的不同构象 SMILES 相同 → 用 SMILES 去重会把所有构象合并成 1 个，
@@ -161,14 +166,16 @@ def conformer_search_ensemble(
                             rotor_bonds[0].SetTorsion(ang0)
                         except Exception:
                             pass
-                    for b in (rotor_bonds[1:] if systematic else rotor_bonds):
+                    for b in rotor_bonds[1:] if systematic else rotor_bonds:
                         ang = rng.uniform(0, 360)
                         try:
                             b.SetTorsion(ang)
                         except Exception:
                             continue
                     try:
-                        ff = ob_utils.ob.OBForceField.FindForceField("MMFF94") or ob_utils.ob.OBForceField.FindForceField("UFF")
+                        ff = ob_utils.ob.OBForceField.FindForceField(
+                            "MMFF94"
+                        ) or ob_utils.ob.OBForceField.FindForceField("UFF")
                         if ff and ff.Setup(obmol):
                             try:
                                 ff.ConjugateGradients(200, 1.0e-4)
@@ -206,7 +213,9 @@ def conformer_search_ensemble(
                     logger.warning(
                         "构象搜索回退分支仅生成 %d 个唯一构象（请求 %d）。若分子无旋转键或构象空间极小，"
                         "此属正常；但后续 Boltzmann 加权将仅基于这 %d 个构象，请注意结果代表性。",
-                        len(out_mols), n_confs_total, len(out_mols),
+                        len(out_mols),
+                        n_confs_total,
+                        len(out_mols),
                     )
             if out_mols:
                 result["n_conformers_found"] = len(out_mols)
@@ -274,9 +283,11 @@ def conformer_search_ensemble(
                     pass
         result["diversity_min_rmsd"] = min_r
         if len(top_mols) >= 2 and (min_r is None or min_r < 0.1):
-            note = (f"构象系综多样性极低（最小两两 RMSD "
-                    f"{min_r if min_r is not None else 'n/a'} Å），"
-                    "多数构象近乎重合，下游 Boltzmann 加权实际接近单构象。")
+            note = (
+                f"构象系综多样性极低（最小两两 RMSD "
+                f"{min_r if min_r is not None else 'n/a'} Å），"
+                "多数构象近乎重合，下游 Boltzmann 加权实际接近单构象。"
+            )
             result["diversity_note"] = note
             logger.warning("构象多样性诊断：%s", note)
     except Exception as _e_div:
@@ -310,23 +321,33 @@ def conformer_search_ensemble(
     psi4_results = []
     total_c = len(mmff_top)
     for i, c in enumerate(mmff_top, 1):
-        _report(10 + int(85 * (i - 1) / max(1, total_c)),
-                f"PSI4 optimize 构象 {i}/{total_c}  rank={c['rank']}")
+        _report(10 + int(85 * (i - 1) / max(1, total_c)), f"PSI4 optimize 构象 {i}/{total_c}  rank={c['rank']}")
         prefix = str(out_dir / f"conf_{c['rank']:02d}_psi4")
         r = run_psi4_task(
-            c["xyz"], "optimize", psi4_method, psi4_basis,
-            output_dir=str(out_dir), preset_name=psi4_preset_name,
-            solvent=solvent, d3=d3, charge=charge, multiplicity=multiplicity,
-            memory=memory, _progress_callback=None
+            c["xyz"],
+            "optimize",
+            psi4_method,
+            psi4_basis,
+            output_dir=str(out_dir),
+            preset_name=psi4_preset_name,
+            solvent=solvent,
+            d3=d3,
+            charge=charge,
+            multiplicity=multiplicity,
+            memory=memory,
+            base_name=prefix,
+            _progress_callback=None,
         )
         if r.get("success"):
-            psi4_results.append({
-                "rank_mmff": c["rank"],
-                "energy_h": r.get("energy"),
-                "opt_xyz": r.get("optimized_xyz"),
-                "fchk": r.get("fchk_file"),
-                "props": r.get("properties"),
-            })
+            psi4_results.append(
+                {
+                    "rank_mmff": c["rank"],
+                    "energy_h": r.get("energy"),
+                    "opt_xyz": r.get("optimized_xyz"),
+                    "fchk": r.get("fchk_file"),
+                    "props": r.get("properties"),
+                }
+            )
 
     # 按 PSI4 能量重排
     psi4_results.sort(key=lambda x: x["energy_h"] if isinstance(x["energy_h"], (int, float)) else 1e30)
@@ -338,7 +359,11 @@ def conformer_search_ensemble(
     with open(csv_path, "w", encoding="utf-8-sig", newline="") as f:
         wr = csv.writer(f)
         wr.writerow(["rank_psi4", "rank_mmff", "energy_Hartree", "rel_kcal_mol", "opt_xyz"])
-        base = psi4_results[0]["energy_h"] if psi4_results and isinstance(psi4_results[0]["energy_h"], (int, float)) else 0.0
+        base = (
+            psi4_results[0]["energy_h"]
+            if psi4_results and isinstance(psi4_results[0]["energy_h"], (int, float))
+            else 0.0
+        )
         H_to_KCAL = 627.5094740631
         for c in psi4_results:
             eh = c["energy_h"]
@@ -351,15 +376,21 @@ def conformer_search_ensemble(
         png_path = str(out_dir / "ensemble_relative_energy.png")
         xs = [c["rank_psi4"] for c in psi4_results]
         ys_rel = []
-        base = psi4_results[0]["energy_h"] if psi4_results and isinstance(psi4_results[0]["energy_h"], (int, float)) else 0.0
+        base = (
+            psi4_results[0]["energy_h"]
+            if psi4_results and isinstance(psi4_results[0]["energy_h"], (int, float))
+            else 0.0
+        )
         for c in psi4_results:
             eh = c["energy_h"]
             ys_rel.append((eh - base) * H_to_KCAL if isinstance(eh, (int, float)) else float("nan"))
 
         try:
             import matplotlib
+
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt
+
             try:
                 if os.name == "nt":
                     for _cand in ("Microsoft YaHei", "SimHei", "SimSun"):
@@ -373,9 +404,15 @@ def conformer_search_ensemble(
                 pass
             fig, ax = plt.subplots(figsize=(8, 4.5))
             bars = ax.bar([str(x) for x in xs], ys_rel, color="#7f7f7f", edgecolor="black")
-            for b, y in zip(bars, ys_rel):
-                ax.text(b.get_x() + b.get_width()/2, y + max(ys_rel or [0.0])*0.01,
-                        f"{y:.1f}", ha="center", va="bottom", fontsize=8)
+            for b, y in zip(bars, ys_rel, strict=False):
+                ax.text(
+                    b.get_x() + b.get_width() / 2,
+                    y + max(ys_rel or [0.0]) * 0.01,
+                    f"{y:.1f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                )
             ax.set_xlabel("Conformer / 构象 (rank by PSI4)")
             ax.set_ylabel("Relative Energy / 相对能量 (kcal/mol)")
             ax.set_title(f"Conformer Ensemble / 构象系综 (Top-{len(xs)})")
@@ -386,6 +423,7 @@ def conformer_search_ensemble(
         except Exception:
             try:
                 from PIL import Image, ImageDraw
+
                 W, H = 1200, 640
                 img = Image.new("RGB", (W, H), "white")
                 d = ImageDraw.Draw(img)

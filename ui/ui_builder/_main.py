@@ -40,22 +40,26 @@ def build_ui(app):
     except Exception as _e:
         # 字体计算失败不影响主流程，走系统默认
         import traceback as _tb
-        print("[ui_builder] resolve_font_specs failed:", _tb.format_exc())
+
+        print("[ui_builder] resolve_font_specs failed:", _tb.format_exc())  # noqa: T201
     apply_aurora_theme_if_available(app)
 
     # —— 双主题：先据持久化偏好设定当前主题，再应用（覆盖 aurora 的 Aurora.* 样式）——
     try:
         import ui.ui_theme as ui_theme
+
         ui_theme.set_current_theme(ui_theme.load_theme_preference())
         ui_theme.apply_theme(app, ui_theme.get_current_theme())
     except Exception as _te:
         import traceback as _tb
-        print("[ui_builder] apply_theme failed:", _tb.format_exc())
+
+        print("[ui_builder] apply_theme failed:", _tb.format_exc())  # noqa: T201
 
     # —— 设计落地 Phase 5：把 run_task→task_manager.submit 的所有后台任务接入统一任务队列 ——
     # 仅包装 submit（实例属性），不改动既有逻辑；on_task_done/error 负责把活动任务标记成功/失败。
     try:
         import time as _tm
+
         _tm_mgr = app.task_manager
         _orig_submit = _tm_mgr.submit
 
@@ -106,20 +110,22 @@ def build_ui(app):
         _tm_mgr.submit = _wrap_submit
     except Exception as _se:
         import traceback as _tb
-        print("[ui_builder] 任务队列接入失败（已跳过，不影响其余功能）:", _tb.format_exc())
+
+        print("[ui_builder] 任务队列接入失败（已跳过，不影响其余功能）:", _tb.format_exc())  # noqa: T201
 
     # —— 0. 顶部菜单栏（自绘 Menubutton，平台无关；字体完全可控）——
     try:
         build_menu_bar(app)
     except Exception as _me:
         import traceback as _tb
-        print("[ui_builder] build_menu_bar failed:", _tb.format_exc())
+
+        print("[ui_builder] build_menu_bar failed:", _tb.format_exc())  # noqa: T201
 
     main = tk.Frame(app, bg=COLORS["bg"])
     main.pack(fill=tk.BOTH, expand=True)
-    main.grid_rowconfigure(0, weight=0)   # toolbar
-    main.grid_rowconfigure(1, weight=1)   # notebook （拉伸占满）
-    main.grid_rowconfigure(2, weight=0)   # status bar
+    main.grid_rowconfigure(0, weight=0)  # toolbar
+    main.grid_rowconfigure(1, weight=1)  # notebook （拉伸占满）
+    main.grid_rowconfigure(2, weight=0)  # status bar
     main.grid_columnconfigure(0, weight=1)
 
     app.configure(bg=COLORS["bg"])
@@ -140,12 +146,14 @@ def build_ui(app):
     content.grid_columnconfigure(0, weight=1)
 
     app._pages = []
-    for _builder in (build_tab_dashboard,
-                     build_tab_file_management,
-                     build_tab_mapping,
-                     build_tab_compute_and_animation,
-                     build_tab_advanced_tools,
-                     build_tab_compute_queue):
+    for _builder in (
+        build_tab_dashboard,
+        build_tab_file_management,
+        build_tab_mapping,
+        build_tab_compute_and_animation,
+        build_tab_advanced_tools,
+        build_tab_compute_queue,
+    ):
         _sf, _inner = _make_scrolled_frame(content, COLORS["bg"])
         _sf.grid(row=0, column=0, sticky="nsew")
         _builder(app, _inner)
@@ -181,17 +189,20 @@ def build_ui(app):
                 app.refresh_mapping()
         except Exception:
             pass
+
     app._show_page = _show_page
 
     # 兼容旧代码（view._on_ctrl_f / 计算页「跳转到文件管理」按钮）对 main_notebook.select 的调用
     class _NavShim:
         def __init__(self, a):
             self._a = a
+
         def select(self, idx):
             try:
                 self._a._show_page(idx)
             except Exception:
                 pass
+
     app.main_notebook = _NavShim(app)
 
     # 左侧导航栏（在 _show_page / _update_nav 就绪后构建）

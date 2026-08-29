@@ -1,4 +1,5 @@
 """MolManager 模型基类：初始化 + 通用工具方法（由原 core/model.py 拆分而来）。"""
+
 from ._common import *  # noqa: F401,F403
 
 
@@ -66,7 +67,7 @@ class MolManagerModelBase:
     def set_log_callback(self, callback):
         self.log_callback = callback
 
-    def _log(self, msg, level='info'):
+    def _log(self, msg, level="info"):
         if self.log_callback:
             self.log_callback(msg, level)
         else:

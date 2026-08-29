@@ -25,35 +25,52 @@ def build_tab_dashboard(app, parent):
     f_small = F.get("SMALL", ("Microsoft YaHei", 12))
     f_num = ("Microsoft YaHei", 24, "bold")
 
-    tk.Label(parent, text="工作台", bg=COLORS["bg"], fg=COLORS["text"],
-             font=f_h1, anchor="w").pack(anchor="w", padx=20, pady=(18, 2))
-    tk.Label(parent, text="这里是你所有分子与计算任务的入口，一键直达高频操作。",
-             bg=COLORS["bg"], fg=COLORS["text_secondary"], font=f_base,
-             anchor="w").pack(anchor="w", padx=20, pady=(0, 14))
+    tk.Label(parent, text="工作台", bg=COLORS["bg"], fg=COLORS["text"], font=f_h1, anchor="w").pack(
+        anchor="w", padx=20, pady=(18, 2)
+    )
+    tk.Label(
+        parent,
+        text="这里是你所有分子与计算任务的入口，一键直达高频操作。",
+        bg=COLORS["bg"],
+        fg=COLORS["text_secondary"],
+        font=f_base,
+        anchor="w",
+    ).pack(anchor="w", padx=20, pady=(0, 14))
 
     # —— 统计卡（4 张，读 last_scan_result）——
     stats = tk.Frame(parent, bg=COLORS["bg"])
     stats.pack(fill="x", padx=20, pady=4)
     app._dash_vars = {}
-    cards = (("文件总数", "total", COLORS["text"]),
-             ("待重命名", "pending", COLORS["warning"]),
-             ("无映射", "unmapped", COLORS["danger"]),
-             ("已正确命名", "named", COLORS["success"]))
+    cards = (
+        ("文件总数", "total", COLORS["text"]),
+        ("待重命名", "pending", COLORS["warning"]),
+        ("无映射", "unmapped", COLORS["danger"]),
+        ("已正确命名", "named", COLORS["success"]),
+    )
     for idx, (label, key, color) in enumerate(cards):
-        card = tk.Frame(stats, bg=COLORS["surface"], bd=0, relief=tk.FLAT,
-                        highlightbackground=COLORS["border"], highlightthickness=1)
+        card = tk.Frame(
+            stats,
+            bg=COLORS["surface"],
+            bd=0,
+            relief=tk.FLAT,
+            highlightbackground=COLORS["border"],
+            highlightthickness=1,
+        )
         card.grid(row=0, column=idx, sticky="ew", padx=6)
         stats.grid_columnconfigure(idx, weight=1, uniform="dash")
-        tk.Label(card, text=label, bg=COLORS["surface"], fg=COLORS["text_secondary"],
-                 font=f_small).pack(anchor="w", padx=16, pady=(14, 2))
+        tk.Label(card, text=label, bg=COLORS["surface"], fg=COLORS["text_secondary"], font=f_small).pack(
+            anchor="w", padx=16, pady=(14, 2)
+        )
         var = tk.StringVar(value="0")
-        tk.Label(card, textvariable=var, bg=COLORS["surface"], fg=color,
-                 font=f_num).pack(anchor="w", padx=16, pady=(0, 14))
+        tk.Label(card, textvariable=var, bg=COLORS["surface"], fg=color, font=f_num).pack(
+            anchor="w", padx=16, pady=(0, 14)
+        )
         app._dash_vars[key] = var
 
     # —— 快捷操作 ——
-    tk.Label(parent, text="快捷操作", bg=COLORS["bg"], fg=COLORS["text"],
-             font=f_bold, anchor="w").pack(anchor="w", padx=20, pady=(20, 8))
+    tk.Label(parent, text="快捷操作", bg=COLORS["bg"], fg=COLORS["text"], font=f_bold, anchor="w").pack(
+        anchor="w", padx=20, pady=(20, 8)
+    )
     quick = tk.Frame(parent, bg=COLORS["bg"])
     quick.pack(fill="x", padx=20, pady=4)
 
@@ -71,7 +88,8 @@ def build_tab_dashboard(app, parent):
     )
     for idx, (label, cmd) in enumerate(actions):
         themed_button(quick, label, cmd, "primary" if idx == 0 else "secondary").grid(
-            row=0, column=idx, sticky="ew", padx=6, pady=4)
+            row=0, column=idx, sticky="ew", padx=6, pady=4
+        )
         quick.grid_columnconfigure(idx, weight=1, uniform="quick")
 
     # —— 统计刷新（scan 完成后 / 切到本页时调用）——
@@ -91,9 +109,9 @@ def build_tab_dashboard(app, parent):
                 var.set(str(counts.get(key, 0)))
         except Exception:
             pass
+
     app.refresh_dashboard = _refresh_dashboard
     _refresh_dashboard()
-
 
 
 def build_tab_file_management(app, parent):
@@ -106,7 +124,7 @@ def build_tab_file_management(app, parent):
     parent.grid_rowconfigure(2, weight=1)
     parent.grid_columnconfigure(0, weight=1)
 
-    F = getattr(app, '_fonts', {}) or {}
+    F = getattr(app, "_fonts", {}) or {}
 
     # 映射加载/编辑功能统一收敛到「分子映射」页（build_tab_molecular_mapping），
     # 此页不再放置重复的加载控件，避免双入口状态不一致。
@@ -116,7 +134,8 @@ def build_tab_file_management(app, parent):
     ops_card.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 6))
     ops_card.grid_columnconfigure(0, weight=1)
     section_title(ops_card, "⚡  常用文件操作（推荐：先按顺序点前 3 个）").grid(
-        row=0, column=0, sticky="w", padx=12, pady=(10, 4))
+        row=0, column=0, sticky="w", padx=12, pady=(10, 4)
+    )
 
     grid = tk.Frame(ops_card, bg=COLORS["surface"])
     grid.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 10))
@@ -133,37 +152,96 @@ def build_tab_file_management(app, parent):
         return b
 
     # 行 1：高确定性一键式操作
-    _ab("🔧 一键修复全部", app.controller.run_fix_by_mode, 0, 0, "success",
-        tip="依次执行：映射重命名→修复中文名→修复命名错误→修正中文内容（每项可预览取消）", width=18)
-    _ab("📂 按类型整理", app.controller.organize_by_type, 0, 1, "primary",
-        tip="按扩展名把文件移动到 mol_files/xyz_files/fchk_files 等子目录")
-    _ab("🧹 删除重复文件", app.controller.remove_duplicate_files, 0, 2, "warning",
-        tip="扫描内容完全相同的重复文件并删除（会先弹确认）")
+    _ab(
+        "🔧 一键修复全部",
+        app.controller.run_fix_by_mode,
+        0,
+        0,
+        "success",
+        tip="依次执行：映射重命名→修复中文名→修复命名错误→修正中文内容（每项可预览取消）",
+        width=18,
+    )
+    _ab(
+        "📂 按类型整理",
+        app.controller.organize_by_type,
+        0,
+        1,
+        "primary",
+        tip="按扩展名把文件移动到 mol_files/xyz_files/fchk_files 等子目录",
+    )
+    _ab(
+        "🧹 删除重复文件",
+        app.controller.remove_duplicate_files,
+        0,
+        2,
+        "warning",
+        tip="扫描内容完全相同的重复文件并删除（会先弹确认）",
+    )
     try:
-        _ab("📋 生成缺失映射表", app.controller.generate_missing, 0, 3, "secondary",
-            tip="把没有中文名的文件列表导出为 CSV 模板，方便批量填入后导入")
+        _ab(
+            "📋 生成缺失映射表",
+            app.controller.generate_missing,
+            0,
+            3,
+            "secondary",
+            tip="把没有中文名的文件列表导出为 CSV 模板，方便批量填入后导入",
+        )
     except Exception:
         pass
 
     # 行 2：仍常用但更具体的操作
-    _ab("🧪 补全 .mol 文件", app.controller.supplement_mol, 1, 0, "secondary",
-        tip="对有 .xyz 但缺 .mol 的文件，用 OpenBabel 自动生成 mol")
-    _ab("📁 按文件名分组", app.controller.organize_by_basename, 1, 1, "secondary",
-        tip="按基本名（无扩展名）相同，把 .mol/.xyz/.fchk/.out 等放入同名文件夹")
-    _ab("🏷️ 前缀重命名", app.controller.prefix_rename_dialog, 1, 2, "secondary",
-        tip="为选中的文件批量加前缀、改后缀（弹对话框配置）")
-    _ab("🗑️ 删除选中文件", app.controller.delete_selected, 1, 3, "danger",
-        tip="删除列表中当前勾选的文件（建议先预览选中项）")
+    _ab(
+        "🧪 补全 .mol 文件",
+        app.controller.supplement_mol,
+        1,
+        0,
+        "secondary",
+        tip="对有 .xyz 但缺 .mol 的文件，用 OpenBabel 自动生成 mol",
+    )
+    _ab(
+        "📁 按文件名分组",
+        app.controller.organize_by_basename,
+        1,
+        1,
+        "secondary",
+        tip="按基本名（无扩展名）相同，把 .mol/.xyz/.fchk/.out 等放入同名文件夹",
+    )
+    _ab(
+        "🏷️ 前缀重命名",
+        app.controller.prefix_rename_dialog,
+        1,
+        2,
+        "secondary",
+        tip="为选中的文件批量加前缀、改后缀（弹对话框配置）",
+    )
+    _ab(
+        "🗑️ 删除选中文件",
+        app.controller.delete_selected,
+        1,
+        3,
+        "danger",
+        tip="删除列表中当前勾选的文件（建议先预览选中项）",
+    )
 
     # 行 3：修复模式选择（高级）
     mode_row = tk.Frame(ops_card, bg=COLORS["surface"])
     mode_row.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 10))
-    tk.Label(mode_row, text="💡 修复模式（高级）：", bg=COLORS["surface"], fg=COLORS["text_secondary"],
-             font=F.get('BTN', ('Microsoft YaHei', 12, 'bold'))).pack(side=tk.LEFT, padx=(0, 8))
+    tk.Label(
+        mode_row,
+        text="💡 修复模式（高级）：",
+        bg=COLORS["surface"],
+        fg=COLORS["text_secondary"],
+        font=F.get("BTN", ("Microsoft YaHei", 12, "bold")),
+    ).pack(side=tk.LEFT, padx=(0, 8))
     app.fix_mode_var = tk.StringVar(value="一键修复（推荐）")
-    fix_menu = ttk.Combobox(mode_row, textvariable=app.fix_mode_var,
-                            values=["一键修复（推荐）", "映射重命名", "修复中文名", "修复命名错误", "修正中文内容"],
-                            width=24, state="readonly", font=F.get('BASE', ('Microsoft YaHei', 12)))
+    fix_menu = ttk.Combobox(
+        mode_row,
+        textvariable=app.fix_mode_var,
+        values=["一键修复（推荐）", "映射重命名", "修复中文名", "修复命名错误", "修正中文内容"],
+        width=24,
+        state="readonly",
+        font=F.get("BASE", ("Microsoft YaHei", 12)),
+    )
     fix_menu.pack(side=tk.LEFT, padx=3)
     add_tooltip(fix_menu, "如果你只需要单独执行某一步修复，可在此切换；否则推荐保持「一键修复」")
     themed_button(mode_row, "▶ 执行", app.controller.run_fix_by_mode, "success").pack(side=tk.LEFT, padx=6)
@@ -183,15 +261,24 @@ def build_tab_file_management(app, parent):
     _es_inner.grid(row=0, column=0, sticky="nsew", padx=24, pady=24)
     _es_inner.grid_columnconfigure(0, weight=1)
 
-    tk.Label(_es_inner, text="📭  工作目录还没有文件",
-             bg=COLORS["surface"], fg=COLORS["text"],
-             font=("Microsoft YaHei", 16, "bold"), anchor="w").grid(
-        row=0, column=0, sticky="w", pady=(0, 4))
-    tk.Label(_es_inner,
-             text="把分子 / 计算结果文件放进工作目录，或直接选择目录开始。三步即可上手：",
-             bg=COLORS["surface"], fg=COLORS["text_secondary"],
-             font=("Microsoft YaHei", 12), anchor="w", wraplength=560,
-             justify="left").grid(row=1, column=0, sticky="w", pady=(0, 14))
+    tk.Label(
+        _es_inner,
+        text="📭  工作目录还没有文件",
+        bg=COLORS["surface"],
+        fg=COLORS["text"],
+        font=("Microsoft YaHei", 16, "bold"),
+        anchor="w",
+    ).grid(row=0, column=0, sticky="w", pady=(0, 4))
+    tk.Label(
+        _es_inner,
+        text="把分子 / 计算结果文件放进工作目录，或直接选择目录开始。三步即可上手：",
+        bg=COLORS["surface"],
+        fg=COLORS["text_secondary"],
+        font=("Microsoft YaHei", 12),
+        anchor="w",
+        wraplength=560,
+        justify="left",
+    ).grid(row=1, column=0, sticky="w", pady=(0, 14))
 
     steps = [
         ("①", "选择工作目录", "点右上「📂 浏览…」或下方按钮，指定存放分子文件的文件夹"),
@@ -199,23 +286,38 @@ def build_tab_file_management(app, parent):
         ("③", "按类型整理", "按扩展名归档到 mol_files / xyz_files / fchk_files 等子目录"),
     ]
     for i, (num, title, desc) in enumerate(steps):
-        _sc = tk.Frame(_es_inner, bg=COLORS["elevated"], bd=0,
-                       highlightbackground=COLORS["card_border"], highlightthickness=1)
+        _sc = tk.Frame(
+            _es_inner, bg=COLORS["elevated"], bd=0, highlightbackground=COLORS["card_border"], highlightthickness=1
+        )
         _sc.grid(row=2 + i, column=0, sticky="ew", pady=5)
-        tk.Label(_sc, text=num, bg=COLORS["elevated"], fg=COLORS["accent"],
-                 font=("Microsoft YaHei", 18, "bold"), width=2, anchor="center").pack(
-            side=tk.LEFT, padx=12, pady=10)
+        tk.Label(
+            _sc,
+            text=num,
+            bg=COLORS["elevated"],
+            fg=COLORS["accent"],
+            font=("Microsoft YaHei", 18, "bold"),
+            width=2,
+            anchor="center",
+        ).pack(side=tk.LEFT, padx=12, pady=10)
         _txt = tk.Frame(_sc, bg=COLORS["elevated"])
         _txt.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 12), pady=10)
-        tk.Label(_txt, text=title, bg=COLORS["elevated"], fg=COLORS["text"],
-                 font=("Microsoft YaHei", 13, "bold"), anchor="w").pack(anchor="w")
-        tk.Label(_txt, text=desc, bg=COLORS["elevated"], fg=COLORS["text_secondary"],
-                 font=("Microsoft YaHei", 11), anchor="w", wraplength=520,
-                 justify="left").pack(anchor="w", pady=(2, 0))
+        tk.Label(
+            _txt, text=title, bg=COLORS["elevated"], fg=COLORS["text"], font=("Microsoft YaHei", 13, "bold"), anchor="w"
+        ).pack(anchor="w")
+        tk.Label(
+            _txt,
+            text=desc,
+            bg=COLORS["elevated"],
+            fg=COLORS["text_secondary"],
+            font=("Microsoft YaHei", 11),
+            anchor="w",
+            wraplength=520,
+            justify="left",
+        ).pack(anchor="w", pady=(2, 0))
 
     _es_btn = primary_button(
-        _es_inner, "📂  选择工作目录", app.controller.browse_work_dir,
-        tip="选择存放分子文件的文件夹")
+        _es_inner, "📂  选择工作目录", app.controller.browse_work_dir, tip="选择存放分子文件的文件夹"
+    )
     _es_btn.grid(row=2 + len(steps), column=0, sticky="w", pady=(14, 0))
 
     def refresh_empty_state():
@@ -258,16 +360,28 @@ def build_tab_file_management(app, parent):
 # 🧬 Tab：分子映射（设计落地：独立一级导航页）
 # ===========================================================
 
+
 def build_tab_mapping(app, parent):
     """🧬 分子映射页：映射文件加载 + 管理操作 + 映射条目列表（eng→chn 预览）。"""
     parent.grid_columnconfigure(0, weight=1)
-    F = getattr(app, '_fonts', {}) or {}
+    F = getattr(app, "_fonts", {}) or {}
 
-    tk.Label(parent, text="分子映射", bg=COLORS["bg"], fg=COLORS["text"],
-             font=F.get("H1", ("Microsoft YaHei", 20, "bold")), anchor="w").pack(anchor="w", padx=20, pady=(18, 2))
-    tk.Label(parent, text="管理「英文名 / 编号 → 中文名」的映射关系，让文件列表自动显示中文名。",
-             bg=COLORS["bg"], fg=COLORS["text_secondary"], font=F.get("BASE", ("Microsoft YaHei", 13)),
-             anchor="w").pack(anchor="w", padx=20, pady=(0, 14))
+    tk.Label(
+        parent,
+        text="分子映射",
+        bg=COLORS["bg"],
+        fg=COLORS["text"],
+        font=F.get("H1", ("Microsoft YaHei", 20, "bold")),
+        anchor="w",
+    ).pack(anchor="w", padx=20, pady=(18, 2))
+    tk.Label(
+        parent,
+        text="管理「英文名 / 编号 → 中文名」的映射关系，让文件列表自动显示中文名。",
+        bg=COLORS["bg"],
+        fg=COLORS["text_secondary"],
+        font=F.get("BASE", ("Microsoft YaHei", 13)),
+        anchor="w",
+    ).pack(anchor="w", padx=20, pady=(0, 14))
 
     # —— 卡片 1：映射文件加载 ——
     load_card = dark_card(parent)
@@ -276,10 +390,16 @@ def build_tab_mapping(app, parent):
 
     path_row = tk.Frame(load_card, bg=COLORS["surface"])
     path_row.pack(fill="x", padx=12, pady=(0, 8))
-    tk.Label(path_row, text="映射文件路径:", bg=COLORS["surface"], fg=COLORS["text"],
-             font=F.get('BASE', ('Microsoft YaHei', 12))).pack(side=tk.LEFT, padx=(0, 6))
-    app.mapping_entry = ttk.Entry(path_row, textvariable=app.mapping_file_var,
-                                  font=F.get('BASE', ('Microsoft YaHei', 12)))
+    tk.Label(
+        path_row,
+        text="映射文件路径:",
+        bg=COLORS["surface"],
+        fg=COLORS["text"],
+        font=F.get("BASE", ("Microsoft YaHei", 12)),
+    ).pack(side=tk.LEFT, padx=(0, 6))
+    app.mapping_entry = ttk.Entry(
+        path_row, textvariable=app.mapping_file_var, font=F.get("BASE", ("Microsoft YaHei", 12))
+    )
     app.mapping_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
 
     btn_row = tk.Frame(load_card, bg=COLORS["surface"])
@@ -292,28 +412,39 @@ def build_tab_mapping(app, parent):
             add_tooltip(b, tip)
         return b
 
-    _btn("📂 浏览", app.controller.browse_mapping, "secondary",
-         tip="选择要加载的映射文件(.txt/.csv)")
-    _btn("📥 加载", app.controller.load_mapping_file, "success",
-         tip="读取映射文件，立刻生效到列表")
+    _btn("📂 浏览", app.controller.browse_mapping, "secondary", tip="选择要加载的映射文件(.txt/.csv)")
+    _btn("📥 加载", app.controller.load_mapping_file, "success", tip="读取映射文件，立刻生效到列表")
     try:
-        _btn("✏️ 编辑映射", app.controller.show_mapping_editor_dialog, "secondary",
-             tip="打开映射编辑器：增删改中英文条目")
-        _btn("📊 映射管理器", app.controller.show_mapping_manager_dialog, "secondary",
-             tip="映射批量导入/导出/补全工具")
+        _btn(
+            "✏️ 编辑映射", app.controller.show_mapping_editor_dialog, "secondary", tip="打开映射编辑器：增删改中英文条目"
+        )
+        _btn("📊 映射管理器", app.controller.show_mapping_manager_dialog, "secondary", tip="映射批量导入/导出/补全工具")
     except Exception:
         pass
     try:
-        _btn("📋 生成缺失CSV", app.controller.generate_missing, "secondary",
-             tip="扫描工作目录，把找不到中文名的文件名导出为 CSV 模板")
-        _btn("⬇ 导入CSV", app.controller.show_mapping_manager_dialog, "secondary",
-             tip="从 CSV 导入中英文映射")
+        _btn(
+            "📋 生成缺失CSV",
+            app.controller.generate_missing,
+            "secondary",
+            tip="扫描工作目录，把找不到中文名的文件名导出为 CSV 模板",
+        )
+        _btn("⬇ 导入CSV", app.controller.show_mapping_manager_dialog, "secondary", tip="从 CSV 导入中英文映射")
     except Exception:
         pass
-    tk.Label(btn_row, text="  已加载:", bg=COLORS["surface"], fg=COLORS["text_secondary"],
-             font=F.get('BASE', ('Microsoft YaHei', 12))).pack(side=tk.RIGHT, padx=(10, 2))
-    tk.Label(btn_row, textvariable=app.mapping_count, bg=COLORS["surface"], fg=COLORS["accent"],
-             font=F.get('BOLD', ('Microsoft YaHei', 14, 'bold'))).pack(side=tk.RIGHT, padx=(0, 6))
+    tk.Label(
+        btn_row,
+        text="  已加载:",
+        bg=COLORS["surface"],
+        fg=COLORS["text_secondary"],
+        font=F.get("BASE", ("Microsoft YaHei", 12)),
+    ).pack(side=tk.RIGHT, padx=(10, 2))
+    tk.Label(
+        btn_row,
+        textvariable=app.mapping_count,
+        bg=COLORS["surface"],
+        fg=COLORS["accent"],
+        font=F.get("BOLD", ("Microsoft YaHei", 14, "bold")),
+    ).pack(side=tk.RIGHT, padx=(0, 6))
 
     # —— 卡片 2：映射条目列表（eng → chn 预览）——
     list_card = dark_card(parent)
@@ -321,12 +452,17 @@ def build_tab_mapping(app, parent):
     list_card.grid_columnconfigure(0, weight=1)
     list_card.grid_rowconfigure(1, weight=1)
     section_title(list_card, "📋  已加载映射条目（双击打开编辑器）").grid(
-        row=0, column=0, sticky="w", padx=12, pady=(10, 4))
+        row=0, column=0, sticky="w", padx=12, pady=(10, 4)
+    )
 
     app.mapping_list_count = tk.StringVar(value="共 0 条")
-    tk.Label(list_card, textvariable=app.mapping_list_count, bg=COLORS["surface"],
-             fg=COLORS["text_secondary"], font=F.get("SMALL", ("Microsoft YaHei", 12))).grid(
-        row=0, column=0, sticky="e", padx=12, pady=(10, 4))
+    tk.Label(
+        list_card,
+        textvariable=app.mapping_list_count,
+        bg=COLORS["surface"],
+        fg=COLORS["text_secondary"],
+        font=F.get("SMALL", ("Microsoft YaHei", 12)),
+    ).grid(row=0, column=0, sticky="e", padx=12, pady=(10, 4))
 
     tree_frame = tk.Frame(list_card, bg=COLORS["surface"])
     tree_frame.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 10))
@@ -344,7 +480,7 @@ def build_tab_mapping(app, parent):
     mvsb.grid(row=0, column=1, sticky="ns")
 
     style = ttk.Style()
-    style.configure("Treeview", font=F.get('BASE', ('Microsoft YaHei', 12)), rowheight=28)
+    style.configure("Treeview", font=F.get("BASE", ("Microsoft YaHei", 12)), rowheight=28)
 
     def _on_map_dbl(_event):
         try:
@@ -383,6 +519,7 @@ def build_tab_mapping(app, parent):
 # 🔬 Tab2：计算与动画
 # ===========================================================
 
+
 def build_tab_compute_and_animation(app, parent):
     """
     计算与动画页（深色卡片化）：
@@ -394,17 +531,19 @@ def build_tab_compute_and_animation(app, parent):
     """
     parent.grid_rowconfigure(4, weight=1)
     parent.grid_columnconfigure(0, weight=1)
-    F = getattr(app, '_fonts', {}) or {}
+    F = getattr(app, "_fonts", {}) or {}
 
     # —— 卡片 1：快速计算预设 ——
     preset_card = dark_card(parent)
     preset_card.grid(row=0, column=0, sticky="ew", padx=8, pady=(10, 6))
     preset_card.grid_columnconfigure(2, weight=1)
     section_title(preset_card, "⚡  快速计算预设（选一个直接运行，无需了解方法/基组细节）").grid(
-        row=0, column=0, columnspan=4, sticky="w", padx=12, pady=(10, 4))
+        row=0, column=0, columnspan=4, sticky="w", padx=12, pady=(10, 4)
+    )
 
     try:
         from utils.constants import RUN_PRESETS
+
         preset_names = list(RUN_PRESETS.keys())
     except Exception:
         RUN_PRESETS = {}
@@ -414,13 +553,23 @@ def build_tab_compute_and_animation(app, parent):
     row1.grid(row=1, column=0, columnspan=4, sticky="ew", padx=12, pady=(0, 10))
     row1.grid_columnconfigure(2, weight=1)
 
-    tk.Label(row1, text="🎯 选择预设:", bg=COLORS["surface"], fg=COLORS["text"],
-             font=F.get('BOLD', ('Microsoft YaHei', 13, 'bold'))).grid(row=0, column=0, padx=(0, 8), pady=8, sticky="w")
+    tk.Label(
+        row1,
+        text="🎯 选择预设:",
+        bg=COLORS["surface"],
+        fg=COLORS["text"],
+        font=F.get("BOLD", ("Microsoft YaHei", 13, "bold")),
+    ).grid(row=0, column=0, padx=(0, 8), pady=8, sticky="w")
 
     app.quick_preset_var = tk.StringVar(value=(preset_names[0] if preset_names else "请先定义 RUN_PRESETS"))
-    preset_cb = ttk.Combobox(row1, textvariable=app.quick_preset_var,
-                             values=preset_names, state="readonly", width=40,
-                             font=F.get('BASE', ('Microsoft YaHei', 12)))
+    preset_cb = ttk.Combobox(
+        row1,
+        textvariable=app.quick_preset_var,
+        values=preset_names,
+        state="readonly",
+        width=40,
+        font=F.get("BASE", ("Microsoft YaHei", 12)),
+    )
     preset_cb.grid(row=0, column=1, padx=4, pady=8, sticky="w")
 
     def _on_preset_change(_e=None):
@@ -468,50 +617,83 @@ def build_tab_compute_and_animation(app, parent):
             add_tooltip(b, tip)
         return b
 
-    _qa("🎬 制作反应动画", (lambda: (
-        hasattr(app.controller, "show_reaction_animation_dialog")
-        and app.controller.show_reaction_animation_dialog())
-        or app.controller.show_advanced_tools_dialog()),
-        "primary", tip="多反应物+多产物 → 插值生成反应轨迹/能量图/动画 GIF")
-    _qa("⚡ 打开完整 PSI4 面板", app.controller.show_psi4_dialog,
-        "secondary", tip="完整 PSI4 设置：任务/方法/基组/溶剂/D3/电荷/内存/扫描 等全部可调")
-    _qa("📊 反应能垒/能垒图", (lambda: (
-        hasattr(app.controller, "show_advanced_tools_dialog")
-        and app.controller.show_advanced_tools_dialog())),
-        "secondary", tip="打开高级工具 → 反应能垒图 / pKa / NMR 等")
-    _qa("📈 构象搜索 / NMR / pKa / IRC", (lambda: (
-        hasattr(app.controller, "show_advanced_tools_dialog")
-        and app.controller.show_advanced_tools_dialog())),
-        "secondary", tip="构象搜索、过渡态 IRC、pKa 预测、Boltzmann 加权 NMR")
+    _qa(
+        "🎬 制作反应动画",
+        (
+            lambda: (
+                (
+                    hasattr(app.controller, "show_reaction_animation_dialog")
+                    and app.controller.show_reaction_animation_dialog()
+                )
+                or app.controller.show_advanced_tools_dialog()
+            )
+        ),
+        "primary",
+        tip="多反应物+多产物 → 插值生成反应轨迹/能量图/动画 GIF",
+    )
+    _qa(
+        "⚡ 打开完整 PSI4 面板",
+        app.controller.show_psi4_dialog,
+        "secondary",
+        tip="完整 PSI4 设置：任务/方法/基组/溶剂/D3/电荷/内存/扫描 等全部可调",
+    )
+    _qa(
+        "📊 反应能垒/能垒图",
+        (lambda: hasattr(app.controller, "show_advanced_tools_dialog") and app.controller.show_advanced_tools_dialog()),
+        "secondary",
+        tip="打开高级工具 → 反应能垒图 / pKa / NMR 等",
+    )
+    _qa(
+        "📈 构象搜索 / NMR / pKa / IRC",
+        (lambda: hasattr(app.controller, "show_advanced_tools_dialog") and app.controller.show_advanced_tools_dialog()),
+        "secondary",
+        tip="构象搜索、过渡态 IRC、pKa 预测、Boltzmann 加权 NMR",
+    )
 
     # —— 卡片 3：高级计算参数（可折叠，默认收起）——
-    adv = CollapsibleFrame(parent, title="⚙️ 高级计算参数（专家使用，包含所有任务类型/扫描/方法/基组/溶剂/电荷/内存）",
-                            collapsed=True)
+    adv = CollapsibleFrame(
+        parent, title="⚙️ 高级计算参数（专家使用，包含所有任务类型/扫描/方法/基组/溶剂/电荷/内存）", collapsed=True
+    )
     adv.grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 6))
 
-    tk.Label(adv.body, text="  完整 PSI4 对话框包含：任务类型下拉 (单点/优化/频率/扫描/过渡态/激发态/SAPT/热化学)、方法/基组、\n"
-                            "  溶剂(PCM/SMD)、D3 色散、电荷/多重度、内存(GB)、步数/收敛限、线性/刚性扫描参数 等 —— 所有原功能全部可用。",
-             wraplength=900, justify="left",
-             bg=COLORS["surface"], fg=COLORS["text_secondary"],
-             font=F.get('SMALL', ('Microsoft YaHei', 11))).pack(anchor="w", padx=8, pady=6)
+    tk.Label(
+        adv.body,
+        text="  完整 PSI4 对话框包含：任务类型下拉 (单点/优化/频率/扫描/过渡态/激发态/SAPT/热化学)、方法/基组、\n"
+        "  溶剂(PCM/SMD)、D3 色散、电荷/多重度、内存(GB)、步数/收敛限、线性/刚性扫描参数 等 —— 所有原功能全部可用。",
+        wraplength=900,
+        justify="left",
+        bg=COLORS["surface"],
+        fg=COLORS["text_secondary"],
+        font=F.get("SMALL", ("Microsoft YaHei", 11)),
+    ).pack(anchor="w", padx=8, pady=6)
     row_b = tk.Frame(adv.body, bg=COLORS["surface"])
     row_b.pack(fill="x", padx=8, pady=(0, 8))
-    themed_button(row_b, "⚡ 打开 PSI4 完整设置对话框", app.controller.show_psi4_dialog, "primary").pack(side=tk.LEFT, padx=4)
+    themed_button(row_b, "⚡ 打开 PSI4 完整设置对话框", app.controller.show_psi4_dialog, "primary").pack(
+        side=tk.LEFT, padx=4
+    )
     try:
-        themed_button(row_b, "🛠 高级扫描（线性/刚性）", app.controller.show_advanced_tools_dialog, "warning").pack(side=tk.LEFT, padx=4)
+        themed_button(row_b, "🛠 高级扫描（线性/刚性）", app.controller.show_advanced_tools_dialog, "warning").pack(
+            side=tk.LEFT, padx=4
+        )
     except Exception:
         pass
 
     # —— 卡片 4：扫描参数（可折叠）+ 说明 ——
     scan_adv = CollapsibleFrame(parent, title="📈 线性/刚性扫描参数（用于势能面 PES 扫描）", collapsed=True)
     scan_adv.grid(row=3, column=0, sticky="ew", padx=8, pady=(0, 6))
-    tk.Label(scan_adv.body, text="  线性扫描：两个端点结构 → 线性插值 N 帧 → 每帧跑单点能 → 能垒 CSV/图；\n"
-                                "  刚性扫描：固定某个二面角/键长/键角步进，其他自由优化（完整 PSI4 对话框里可配置）。",
-             wraplength=900, justify="left",
-             bg=COLORS["surface"], fg=COLORS["text_secondary"],
-             font=F.get('SMALL', ('Microsoft YaHei', 11))).pack(anchor="w", padx=8, pady=6)
-    themed_button(scan_adv.body, "📊 打开高级扫描/能垒图工具", app.controller.show_advanced_tools_dialog, "primary"
-                  ).pack(anchor="w", padx=8, pady=(0, 8))
+    tk.Label(
+        scan_adv.body,
+        text="  线性扫描：两个端点结构 → 线性插值 N 帧 → 每帧跑单点能 → 能垒 CSV/图；\n"
+        "  刚性扫描：固定某个二面角/键长/键角步进，其他自由优化（完整 PSI4 对话框里可配置）。",
+        wraplength=900,
+        justify="left",
+        bg=COLORS["surface"],
+        fg=COLORS["text_secondary"],
+        font=F.get("SMALL", ("Microsoft YaHei", 11)),
+    ).pack(anchor="w", padx=8, pady=6)
+    themed_button(
+        scan_adv.body, "📊 打开高级扫描/能垒图工具", app.controller.show_advanced_tools_dialog, "primary"
+    ).pack(anchor="w", padx=8, pady=(0, 8))
 
     # —— 文件列表 + 日志（tab2 占位）——
     _build_paned_file_and_log(app, parent, row=4, column=0, show_in_tab2=True)
@@ -520,6 +702,7 @@ def build_tab_compute_and_animation(app, parent):
 # ===========================================================
 # ⚙️ Tab3：高级工具（子 Notebook 4 页）
 # ===========================================================
+
 
 def build_tab_advanced_tools(app, parent):
     """
@@ -537,81 +720,178 @@ def build_tab_advanced_tools(app, parent):
     # —— 子页 1：分子工具（OB 全家桶 + 分子式） ——
     t1 = tk.Frame(nb, bg=COLORS["bg"])
     nb.add(t1, text="  🧪  分子工具 (OB)  ")
-    _adv_grid_of_buttons(t1, [
-        ("🔬 OpenBabel 工具（全功能）", app.controller.show_openbabel_dialog, True,
-         "格式转换/SMILES生成/描述符/叠加/2D预览/手性/pH加氢/SDF拆分/InChIKey"),
-        ("🧮 分子式/分子量/元素分析", lambda: app.dialogs.show_formula_dialog()
-         if hasattr(app, "dialogs") and hasattr(app.dialogs, "show_formula_dialog") else None, False,
-         "从 XYZ/MOL/INP 等解析分子式、精确质量、元素百分比"),
-        ("🔎 最近工作目录", app.controller.show_recent_dirs_dialog, False,
-         "快速切换到之前打开过的工作目录"),
-        ("📐 导出几何参数 CSV", lambda: app.controller.export_geometry_csv()
-         if hasattr(app.controller, "export_geometry_csv") else None, False,
-         "把文件列表里分子的键长/键角/二面角批量导出 CSV"),
-    ])
+    _adv_grid_of_buttons(
+        t1,
+        [
+            (
+                "🔬 OpenBabel 工具（全功能）",
+                app.controller.show_openbabel_dialog,
+                True,
+                "格式转换/SMILES生成/描述符/叠加/2D预览/手性/pH加氢/SDF拆分/InChIKey",
+            ),
+            (
+                "🧮 分子式/分子量/元素分析",
+                lambda: (
+                    app.dialogs.show_formula_dialog()
+                    if hasattr(app, "dialogs") and hasattr(app.dialogs, "show_formula_dialog")
+                    else None
+                ),
+                False,
+                "从 XYZ/MOL/INP 等解析分子式、精确质量、元素百分比",
+            ),
+            ("🔎 最近工作目录", app.controller.show_recent_dirs_dialog, False, "快速切换到之前打开过的工作目录"),
+            (
+                "📐 导出几何参数 CSV",
+                lambda: (
+                    app.controller.export_geometry_csv() if hasattr(app.controller, "export_geometry_csv") else None
+                ),
+                False,
+                "把文件列表里分子的键长/键角/二面角批量导出 CSV",
+            ),
+        ],
+    )
 
     # —— 子页 2：波函数与分析（PSI4 所有高级 + NMR/pKa/IRC） ——
     t2 = tk.Frame(nb, bg=COLORS["bg"])
     nb.add(t2, text="  🧠  波函数 / NMR / pKa  ")
-    _adv_grid_of_buttons(t2, [
-        ("⚡ PSI4 完整计算（所有任务类型）", app.controller.show_psi4_dialog, True,
-         "单点/优化/频率/过渡态/激发态/SAPT/热化学 + 溶剂/D3/内存/电荷"),
-        ("📊 高级扫描（线性/刚性/能垒图）", app.controller.show_advanced_tools_dialog, True,
-         "势能面 PES 线性扫描、刚性扫描、能垒曲线"),
-        ("🎞️ IRC + 反应路径动画", app.controller.show_advanced_tools_dialog, False,
-         "从 TS 结构跑 IRC 前向/反向，导出动画帧"),
-        ("🧪 Boltzmann 加权 ¹H NMR 模拟", app.controller.show_advanced_tools_dialog, False,
-         "OB 构象搜索 + PSI4 CPHF NMR σ + TMS 参考 → δ + Lorentz 展宽 PNG"),
-        ("⚗️ pKa 热力学循环预测", app.controller.show_advanced_tools_dialog, False,
-         "SMD/water 水相单点 + H+(aq) 经验值 → pKa 估算 ±2"),
-        ("🧩 构象搜索（OB MMFF + PSI4 高精度）", app.controller.show_advanced_tools_dialog, False,
-         "多构象搜索 + Boltzmann 权重"),
-        ("🧬 反应路径能垒图", app.controller.show_advanced_tools_dialog, False,
-         "多步反应路径 Ea/ΔG 能垒图 + CSV 导出"),
-    ])
+    _adv_grid_of_buttons(
+        t2,
+        [
+            (
+                "⚡ PSI4 完整计算（所有任务类型）",
+                app.controller.show_psi4_dialog,
+                True,
+                "单点/优化/频率/过渡态/激发态/SAPT/热化学 + 溶剂/D3/内存/电荷",
+            ),
+            (
+                "📊 高级扫描（线性/刚性/能垒图）",
+                app.controller.show_advanced_tools_dialog,
+                True,
+                "势能面 PES 线性扫描、刚性扫描、能垒曲线",
+            ),
+            (
+                "🎞️ IRC + 反应路径动画",
+                app.controller.show_advanced_tools_dialog,
+                False,
+                "从 TS 结构跑 IRC 前向/反向，导出动画帧",
+            ),
+            (
+                "🧪 Boltzmann 加权 ¹H NMR 模拟",
+                app.controller.show_advanced_tools_dialog,
+                False,
+                "OB 构象搜索 + PSI4 CPHF NMR σ + TMS 参考 → δ + Lorentz 展宽 PNG",
+            ),
+            (
+                "⚗️ pKa 热力学循环预测",
+                app.controller.show_advanced_tools_dialog,
+                False,
+                "SMD/water 水相单点 + H+(aq) 经验值 → pKa 估算 ±2",
+            ),
+            (
+                "🧩 构象搜索（OB MMFF + PSI4 高精度）",
+                app.controller.show_advanced_tools_dialog,
+                False,
+                "多构象搜索 + Boltzmann 权重",
+            ),
+            (
+                "🧬 反应路径能垒图",
+                app.controller.show_advanced_tools_dialog,
+                False,
+                "多步反应路径 Ea/ΔG 能垒图 + CSV 导出",
+            ),
+        ],
+    )
 
     # —— 子页 3：动画与分子可视化 ——
     t3 = tk.Frame(nb, bg=COLORS["bg"])
     nb.add(t3, text="  🎬  动画 / 反应路径  ")
-    _adv_grid_of_buttons(t3, [
-        ("🎬 反应动画生成器", (lambda: (
-            hasattr(app.controller, "show_reaction_animation_dialog")
-            and app.controller.show_reaction_animation_dialog())), True,
-         "多反应物+多产物 → 自动对齐原子 → 插值 N 帧轨迹 → 能量 CSV + SDF/XYZ"),
-        ("🛠 高级工具箱（反应动画/NMR/pKa/IRC 综合入口）", app.controller.show_advanced_tools_dialog, False,
-         "综合高级功能单页入口"),
-        ("🎞 结果浏览器 / 轨迹播放", (lambda: (
-            hasattr(app.controller, "show_results_browser_dialog")
-            and app.controller.show_results_browser_dialog())), False,
-         "浏览 PSI4 .out/.fchk、动画轨迹、NMR PNG/CSV 等产物"),
-    ])
+    _adv_grid_of_buttons(
+        t3,
+        [
+            (
+                "🎬 反应动画生成器",
+                (
+                    lambda: (
+                        hasattr(app.controller, "show_reaction_animation_dialog")
+                        and app.controller.show_reaction_animation_dialog()
+                    )
+                ),
+                True,
+                "多反应物+多产物 → 自动对齐原子 → 插值 N 帧轨迹 → 能量 CSV + SDF/XYZ",
+            ),
+            (
+                "🛠 高级工具箱（反应动画/NMR/pKa/IRC 综合入口）",
+                app.controller.show_advanced_tools_dialog,
+                False,
+                "综合高级功能单页入口",
+            ),
+            (
+                "🎞 结果浏览器 / 轨迹播放",
+                (
+                    lambda: (
+                        hasattr(app.controller, "show_results_browser_dialog")
+                        and app.controller.show_results_browser_dialog()
+                    )
+                ),
+                False,
+                "浏览 PSI4 .out/.fchk、动画轨迹、NMR PNG/CSV 等产物",
+            ),
+        ],
+    )
 
     # —— 子页 4：数据管理（历史/结果/目录同步/映射编辑器） ——
     t4 = tk.Frame(nb, bg=COLORS["bg"])
     nb.add(t4, text="  🗂️  数据管理 / 历史  ")
-    _adv_grid_of_buttons(t4, [
-        ("📜 操作历史（撤销/重做列表）", (lambda: (
-            hasattr(app.controller, "show_history_dialog")
-            and app.controller.show_history_dialog())), False,
-         "查看所有已执行文件操作，支持逐条撤销/重做"),
-        ("🔍 结果浏览器（PSI4 输出/谱图）", (lambda: (
-            hasattr(app.controller, "show_results_browser_dialog")
-            and app.controller.show_results_browser_dialog())), False,
-         "按工作目录浏览计算输出 .out/.fchk/.log、NMR 图、反应 CSV"),
-        ("🔄 目录同步 / 差异比对", (lambda: (
-            hasattr(app.controller, "show_diff_sync_dialog")
-            and app.controller.show_diff_sync_dialog())), False,
-         "两个目录间双向 diff：缺失项、同名不同内容，选择同步方向"),
-        ("✏️ 映射编辑器", (lambda: (
-            hasattr(app.controller, "show_mapping_editor_dialog")
-            and app.controller.show_mapping_editor_dialog())), False,
-         "逐条增删改中英文映射条目（即时生效）"),
-        ("📊 映射管理器（导入/导出/补全）", (lambda: (
-            hasattr(app.controller, "show_mapping_manager_dialog")
-            and app.controller.show_mapping_manager_dialog())), False,
-         "批量导入 CSV / 导出模板 / 从现有文件补全"),
-    ])
-
+    _adv_grid_of_buttons(
+        t4,
+        [
+            (
+                "📜 操作历史（撤销/重做列表）",
+                (lambda: hasattr(app.controller, "show_history_dialog") and app.controller.show_history_dialog()),
+                False,
+                "查看所有已执行文件操作，支持逐条撤销/重做",
+            ),
+            (
+                "🔍 结果浏览器（PSI4 输出/谱图）",
+                (
+                    lambda: (
+                        hasattr(app.controller, "show_results_browser_dialog")
+                        and app.controller.show_results_browser_dialog()
+                    )
+                ),
+                False,
+                "按工作目录浏览计算输出 .out/.fchk/.log、NMR 图、反应 CSV",
+            ),
+            (
+                "🔄 目录同步 / 差异比对",
+                (lambda: hasattr(app.controller, "show_diff_sync_dialog") and app.controller.show_diff_sync_dialog()),
+                False,
+                "两个目录间双向 diff：缺失项、同名不同内容，选择同步方向",
+            ),
+            (
+                "✏️ 映射编辑器",
+                (
+                    lambda: (
+                        hasattr(app.controller, "show_mapping_editor_dialog")
+                        and app.controller.show_mapping_editor_dialog()
+                    )
+                ),
+                False,
+                "逐条增删改中英文映射条目（即时生效）",
+            ),
+            (
+                "📊 映射管理器（导入/导出/补全）",
+                (
+                    lambda: (
+                        hasattr(app.controller, "show_mapping_manager_dialog")
+                        and app.controller.show_mapping_manager_dialog()
+                    )
+                ),
+                False,
+                "批量导入 CSV / 导出模板 / 从现有文件补全",
+            ),
+        ],
+    )
 
 
 def _adv_grid_of_buttons(parent, buttons_spec):
@@ -626,7 +906,7 @@ def _adv_grid_of_buttons(parent, buttons_spec):
         _F = getattr(parent.winfo_toplevel(), "_fonts", {}) or {}
     except Exception:
         _F = {}
-    _SMALL_FONT = _F.get('SMALL', ('Microsoft YaHei', 11))
+    _SMALL_FONT = _F.get("SMALL", ("Microsoft YaHei", 11))
 
     container = tk.Frame(parent, bg=COLORS["bg"])
     container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -646,15 +926,21 @@ def _adv_grid_of_buttons(parent, buttons_spec):
         if tip:
             add_tooltip(btn, tip)
             # tooltip 文字也同时显示在卡片下方（避免用户不知道要悬停）
-            tk.Label(card, text="💡 " + (tip if len(tip) <= 96 else tip[:94] + "…"),
-                     wraplength=360, justify="left",
-                     bg=COLORS["surface"], fg=COLORS["text_secondary"],
-                     font=_SMALL_FONT).grid(row=1, column=0, sticky="nw", padx=10, pady=(0, 10))
+            tk.Label(
+                card,
+                text="💡 " + (tip if len(tip) <= 96 else tip[:94] + "…"),
+                wraplength=360,
+                justify="left",
+                bg=COLORS["surface"],
+                fg=COLORS["text_secondary"],
+                font=_SMALL_FONT,
+            ).grid(row=1, column=0, sticky="nw", padx=10, pady=(0, 10))
 
 
 # ===========================================================
 # 📊 公共：文件列表 + 日志（垂直分割）
 # ===========================================================
+
 
 def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = False):
     """
@@ -668,13 +954,24 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
         # Tab2 版本：显示一个友好的占位卡片，提示当前文件列表在 Tab1；右侧放常用按钮直通 Tab1
         placeholder = tk.Frame(parent, bg=COLORS["bg"])
         placeholder.grid(row=row, column=column, sticky="nsew", pady=(0, 4))
-        card = tk.Frame(placeholder, bg=COLORS["card_bg"], bd=1, relief=tk.SOLID,
-                        highlightbackground=COLORS["card_border"], highlightthickness=1)
+        card = tk.Frame(
+            placeholder,
+            bg=COLORS["card_bg"],
+            bd=1,
+            relief=tk.SOLID,
+            highlightbackground=COLORS["card_border"],
+            highlightthickness=1,
+        )
         card.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
-        tk.Label(card, text="\n   💡 提示：当前选中的文件列表、日志输出请在左侧「📁 文件管理」标签页查看。\n"
-                            "   在这里选择预设并点「运行」后，会自动打开 PSI4 对话框。\n",
-                 bg=COLORS["card_bg"], fg=COLORS["text_light"],
-                 font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 12)), justify="left").pack(padx=16, pady=20, anchor="w")
+        tk.Label(
+            card,
+            text="\n   💡 提示：当前选中的文件列表、日志输出请在左侧「📁 文件管理」标签页查看。\n"
+            "   在这里选择预设并点「运行」后，会自动打开 PSI4 对话框。\n",
+            bg=COLORS["card_bg"],
+            fg=COLORS["text_light"],
+            font=getattr(app, "_fonts", {}).get("BASE", ("Microsoft YaHei", 12)),
+            justify="left",
+        ).pack(padx=16, pady=20, anchor="w")
 
         def _jump_tab1():
             try:
@@ -684,12 +981,30 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
 
         row_b = tk.Frame(card, bg=COLORS["card_bg"])
         row_b.pack(anchor="w", padx=16, pady=(0, 20))
-        tk.Button(row_b, text="跳转到 📁 文件管理页", command=_jump_tab1,
-                  font=getattr(app, '_fonts', {}).get('BTN', ('Microsoft YaHei', 12, 'bold')), relief=tk.RAISED, bd=1, padx=12, pady=5,
-                  cursor="hand2", bg=COLORS["btn_info_bg"], fg=COLORS["btn_text"]).pack(side=tk.LEFT, padx=4)
-        tk.Button(row_b, text="🔍 立刻扫描文件列表", command=app.controller.scan_files,
-                  font=getattr(app, '_fonts', {}).get('BTN', ('Microsoft YaHei', 12, 'bold')), relief=tk.RAISED, bd=1, padx=12, pady=5,
-                  cursor="hand2").pack(side=tk.LEFT, padx=4)
+        tk.Button(
+            row_b,
+            text="跳转到 📁 文件管理页",
+            command=_jump_tab1,
+            font=getattr(app, "_fonts", {}).get("BTN", ("Microsoft YaHei", 12, "bold")),
+            relief=tk.RAISED,
+            bd=1,
+            padx=12,
+            pady=5,
+            cursor="hand2",
+            bg=COLORS["btn_info_bg"],
+            fg=COLORS["btn_text"],
+        ).pack(side=tk.LEFT, padx=4)
+        tk.Button(
+            row_b,
+            text="🔍 立刻扫描文件列表",
+            command=app.controller.scan_files,
+            font=getattr(app, "_fonts", {}).get("BTN", ("Microsoft YaHei", 12, "bold")),
+            relief=tk.RAISED,
+            bd=1,
+            padx=12,
+            pady=5,
+            cursor="hand2",
+        ).pack(side=tk.LEFT, padx=4)
         return
 
     paned = ttk.PanedWindow(parent, orient=tk.VERTICAL)
@@ -699,50 +1014,68 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
     app._file_log_paned_built = True
 
     # ---------- 文件列表 ----------
-    list_frame = tk.LabelFrame(paned, text="📄 文件列表（勾选多选 · 双击编辑中文名 · 右键删除勾选）", bg=COLORS["card_bg"],
-                               font=getattr(app, '_fonts', {}).get('H1', ('Microsoft YaHei', 14, 'bold')), relief=tk.GROOVE, bd=2)
+    list_frame = tk.LabelFrame(
+        paned,
+        text="📄 文件列表（勾选多选 · 双击编辑中文名 · 右键删除勾选）",
+        bg=COLORS["card_bg"],
+        font=getattr(app, "_fonts", {}).get("H1", ("Microsoft YaHei", 14, "bold")),
+        relief=tk.GROOVE,
+        bd=2,
+    )
     paned.add(list_frame, weight=2)
 
     # 🔎 关键词过滤条（输入即搜）
     filter_row = tk.Frame(list_frame, bg=COLORS["card_bg"])
     filter_row.pack(fill=tk.X, padx=8, pady=6)
-    tk.Label(filter_row, text="🔎 关键词:", bg=COLORS["card_bg"],
-             fg=COLORS["text"], font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 13))).pack(side=tk.LEFT, padx=(0, 6))
+    tk.Label(
+        filter_row,
+        text="🔎 关键词:",
+        bg=COLORS["card_bg"],
+        fg=COLORS["text"],
+        font=getattr(app, "_fonts", {}).get("BASE", ("Microsoft YaHei", 13)),
+    ).pack(side=tk.LEFT, padx=(0, 6))
     app.filter_keyword_var = getattr(app, "filter_keyword_var", None) or tk.StringVar()
     app.filter_keyword_entry = ttk.Entry(
-        filter_row, textvariable=app.filter_keyword_var, width=30,
-        font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 13)),
+        filter_row,
+        textvariable=app.filter_keyword_var,
+        width=30,
+        font=getattr(app, "_fonts", {}).get("BASE", ("Microsoft YaHei", 13)),
     )
     app.filter_keyword_entry.pack(side=tk.LEFT, padx=(0, 8))
     app.filter_keyword_entry.bind("<KeyRelease>", lambda e: app.helpers.apply_filter())
-    ttk.Button(filter_row, text="清除",
-               command=lambda: (app.filter_keyword_var.set(""), app.helpers.apply_filter()),
-               width=8).pack(side=tk.LEFT)
+    ttk.Button(
+        filter_row, text="清除", command=lambda: (app.filter_keyword_var.set(""), app.helpers.apply_filter()), width=8
+    ).pack(side=tk.LEFT)
 
     def _toggle_bar():
         # 重新展开底部浮动批量条（标签随选中数变化）
         app.batch_bar_open = True
         _tree_update_check_state()
+
     app.batch_toggle_btn = ttk.Button(filter_row, text="批量操作 ▾", command=_toggle_bar, width=12)
     app.batch_toggle_btn.pack(side=tk.LEFT, padx=(10, 0))
     if not getattr(app, "filter_count_var", None):
         app.filter_count_var = tk.StringVar(value="共 0 / 0 个")
-    tk.Label(filter_row, textvariable=app.filter_count_var,
-             bg=COLORS["card_bg"], fg=COLORS["primary"],
-             font=getattr(app, '_fonts', {}).get('BOLD', ('Microsoft YaHei', 14, 'bold'))).pack(side=tk.LEFT, padx=(16, 0))
+    tk.Label(
+        filter_row,
+        textvariable=app.filter_count_var,
+        bg=COLORS["card_bg"],
+        fg=COLORS["primary"],
+        font=getattr(app, "_fonts", {}).get("BOLD", ("Microsoft YaHei", 14, "bold")),
+    ).pack(side=tk.LEFT, padx=(16, 0))
 
     # ---------- 批量操作条（复选框联动） ----------
     app.selection_count_var = getattr(app, "selection_count_var", None) or tk.StringVar(value="已选 0 项")
 
     def _run_checked():
         if not getattr(app, "checked_names", None):
-            app.helpers.on_log("⚠️ 请先在左侧勾选要计算的文件的复选框", 'warning')
+            app.helpers.on_log("⚠️ 请先在左侧勾选要计算的文件的复选框", "warning")
             return
         app.controller.show_psi4_dialog()
 
     def _delete_checked():
         if not getattr(app, "checked_names", None):
-            app.helpers.on_log("⚠️ 请先勾选要删除的文件的复选框", 'warning')
+            app.helpers.on_log("⚠️ 请先勾选要删除的文件的复选框", "warning")
             return
         app.controller.delete_selected()
 
@@ -841,9 +1174,11 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
             pass
         # 计算按钮联动（文件页批量条 + 计算页运行按钮）
         enabled = n > 0
-        for btn in (getattr(app, "batch_run_btn", None),
-                    getattr(app, "batch_del_btn", None),
-                    getattr(app, "run_selected_btn", None)):
+        for btn in (
+            getattr(app, "batch_run_btn", None),
+            getattr(app, "batch_del_btn", None),
+            getattr(app, "run_selected_btn", None),
+        ):
             if btn is not None:
                 try:
                     btn.config(state="normal" if enabled else "disabled")
@@ -905,13 +1240,24 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
             pass
         frm = tk.Frame(top, bg=COLORS["bg"], padx=14, pady=12)
         frm.pack(fill=tk.BOTH, expand=True)
-        tk.Label(frm, text=f"文件：{name}", bg=COLORS["bg"], fg=COLORS["text_secondary"],
-                 font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 11))).pack(anchor="w")
-        tk.Label(frm, text="中文名（显示）：", bg=COLORS["bg"], fg=COLORS["text"],
-                 font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 12))).pack(anchor="w", pady=(8, 2))
+        tk.Label(
+            frm,
+            text=f"文件：{name}",
+            bg=COLORS["bg"],
+            fg=COLORS["text_secondary"],
+            font=getattr(app, "_fonts", {}).get("BASE", ("Microsoft YaHei", 11)),
+        ).pack(anchor="w")
+        tk.Label(
+            frm,
+            text="中文名（显示）：",
+            bg=COLORS["bg"],
+            fg=COLORS["text"],
+            font=getattr(app, "_fonts", {}).get("BASE", ("Microsoft YaHei", 12)),
+        ).pack(anchor="w", pady=(8, 2))
         var = tk.StringVar(value=chn or "")
-        ent = ttk.Entry(frm, textvariable=var, width=42,
-                        font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 12)))
+        ent = ttk.Entry(
+            frm, textvariable=var, width=42, font=getattr(app, "_fonts", {}).get("BASE", ("Microsoft YaHei", 12))
+        )
         ent.pack(fill=tk.X, pady=(0, 10))
         ent.focus_set()
         ent.select_range(0, tk.END)
@@ -928,7 +1274,7 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
             except Exception:
                 pass
             try:
-                app.helpers.on_log(f"✏️ 已更新「{name}」的中文名为：{new or '（空）'}", 'info')
+                app.helpers.on_log(f"✏️ 已更新「{name}」的中文名为：{new or '（空）'}", "info")
             except Exception:
                 pass
 
@@ -983,6 +1329,7 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
     columns = ("select", "文件名", "状态", "英文名", "中文名")
     app.tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=18)
     import ui.ui_theme as _ut
+
     _ut.bind_treeview_hover(app.tree)
     app.tree.heading("select", text=CHECK_GLYPH["off"], command=_tree_toggle_all)
     app.tree.heading("文件名", text="文件名")
@@ -998,8 +1345,8 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
     app.tree.bind("<Button-1>", _tree_on_click)
 
     style = ttk.Style()
-    style.configure("Treeview", font=getattr(app, '_fonts', {}).get('BASE', ('Microsoft YaHei', 12)), rowheight=30)
-    style.configure("Treeview.Heading", font=getattr(app, '_fonts', {}).get('BOLD', ('Microsoft YaHei', 14, 'bold')))
+    style.configure("Treeview", font=getattr(app, "_fonts", {}).get("BASE", ("Microsoft YaHei", 12)), rowheight=30)
+    style.configure("Treeview.Heading", font=getattr(app, "_fonts", {}).get("BOLD", ("Microsoft YaHei", 14, "bold")))
 
     vsb = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=app.tree.yview)
     app.tree.configure(yscrollcommand=vsb.set)
@@ -1009,20 +1356,39 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
     # ---------- 批量操作浮动条（复选框联动，可隐藏） ----------
     # 浮动覆盖在文件列表底部左侧（避开右侧滚动条）；选中≥1 自动浮现，点 ✕ 收起；
     # 过滤条「批量操作 ▾」按钮可重新展开，标签随选中数变化。
-    batch_bar = tk.Frame(list_frame, bg=COLORS["card_bg"], relief=tk.RAISED, bd=2,
-                         highlightbackground=COLORS["card_border"], highlightthickness=1)
+    batch_bar = tk.Frame(
+        list_frame,
+        bg=COLORS["card_bg"],
+        relief=tk.RAISED,
+        bd=2,
+        highlightbackground=COLORS["card_border"],
+        highlightthickness=1,
+    )
     app.batch_bar = batch_bar
-    tk.Label(batch_bar, textvariable=app.selection_count_var,
-             bg=COLORS["card_bg"], fg=COLORS["accent"],
-             font=getattr(app, '_fonts', {}).get('BOLD', ('Microsoft YaHei', 12, 'bold'))).pack(side=tk.LEFT, padx=(10, 8))
+    tk.Label(
+        batch_bar,
+        textvariable=app.selection_count_var,
+        bg=COLORS["card_bg"],
+        fg=COLORS["accent"],
+        font=getattr(app, "_fonts", {}).get("BOLD", ("Microsoft YaHei", 12, "bold")),
+    ).pack(side=tk.LEFT, padx=(10, 8))
     app.batch_run_btn = themed_button(batch_bar, "▶ 计算所选", _run_checked, "success")
     app.batch_run_btn.pack(side=tk.LEFT, padx=4)
     app.batch_del_btn = themed_button(batch_bar, "🗑 删除所选", _delete_checked, "danger")
     app.batch_del_btn.pack(side=tk.LEFT, padx=4)
-    close_btn = tk.Button(batch_bar, text="✕", command=_tree_hide_bar,
-                          relief=tk.FLAT, bd=0, cursor="hand2", padx=6, pady=2,
-                          bg=COLORS["card_bg"], fg=COLORS["text_secondary"],
-                          font=getattr(app, '_fonts', {}).get('BOLD', ('Microsoft YaHei', 12, 'bold')))
+    close_btn = tk.Button(
+        batch_bar,
+        text="✕",
+        command=_tree_hide_bar,
+        relief=tk.FLAT,
+        bd=0,
+        cursor="hand2",
+        padx=6,
+        pady=2,
+        bg=COLORS["card_bg"],
+        fg=COLORS["text_secondary"],
+        font=getattr(app, "_fonts", {}).get("BOLD", ("Microsoft YaHei", 12, "bold")),
+    )
     close_btn.pack(side=tk.LEFT, padx=(4, 8))
     # 主题刷新时同步浮动条 / 关闭按钮配色
     _ut._register(batch_bar, lambda w: w.config(bg=COLORS["card_bg"], highlightbackground=COLORS["card_border"]))
@@ -1039,32 +1405,44 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
     _tree_update_check_state()
 
     # ---------- 日志 ----------
-    log_frame = tk.LabelFrame(paned, text="📋 日志（所有操作/错误实时显示）", bg=COLORS["card_bg"],
-                              font=getattr(app, '_fonts', {}).get('H1', ('Microsoft YaHei', 14, 'bold')), relief=tk.GROOVE, bd=2)
+    log_frame = tk.LabelFrame(
+        paned,
+        text="📋 日志（所有操作/错误实时显示）",
+        bg=COLORS["card_bg"],
+        font=getattr(app, "_fonts", {}).get("H1", ("Microsoft YaHei", 14, "bold")),
+        relief=tk.GROOVE,
+        bd=2,
+    )
     paned.add(log_frame, weight=1)
 
     log_toolbar = tk.Frame(log_frame, bg=COLORS["card_bg"])
     log_toolbar.pack(fill=tk.X, padx=8, pady=6)
-    ttk.Button(log_toolbar, text="🗑️ 清空日志", command=app.helpers.clear_log,
-               width=12).pack(side=tk.LEFT)
+    ttk.Button(log_toolbar, text="🗑️ 清空日志", command=app.helpers.clear_log, width=12).pack(side=tk.LEFT)
 
     # ---------- F15 日志过滤条（T06 挂载点）----------
     # 放在「清空日志」工具条下面、日志正文上面，形成 [工具条] / [过滤条] / [正文] 三层。
     # 采用局部导入：过滤条是增值功能，模块导入失败也不能让整个 build_ui 崩掉。
     try:
         from ui.log_filter_bar import build_log_filter_bar
+
         build_log_filter_bar(app, log_frame, COLORS)
     except Exception as _e_filter_bar:
         try:
             from utils.logger import default_logger as _log
+
             _log.warning("⚠️ 日志过滤条挂载失败（日志面板仍可用）: %s", _e_filter_bar)
         except Exception:
             pass
 
     # 日志台始终深色（科学工具约定：深色控制台 + 浅色工作区，护眼且突出输出）
-    app.log_text = scrolledtext.ScrolledText(log_frame, height=10, wrap=tk.WORD,
-                                             font=getattr(app, '_fonts', {}).get('LOG', ('Consolas', 13)),
-                                             bg="#0F172A", fg="#C8D3E0")
+    app.log_text = scrolledtext.ScrolledText(
+        log_frame,
+        height=10,
+        wrap=tk.WORD,
+        font=getattr(app, "_fonts", {}).get("LOG", ("Consolas", 13)),
+        bg="#0F172A",
+        fg="#C8D3E0",
+    )
     app.log_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
 
     app.log_text.tag_config("info", foreground="#8AB4F8")
@@ -1077,10 +1455,11 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
 # 📊 Tab4：任务队列（设计落地 Phase 5）
 # ===========================================================
 
-def _status_cn(st):
-    return {"running": "运行中", "success": "成功", "failed": "失败",
-            "cancelled": "已取消", "queued": "排队"}.get(st, st)
 
+def _status_cn(st):
+    return {"running": "运行中", "success": "成功", "failed": "失败", "cancelled": "已取消", "queued": "排队"}.get(
+        st, st
+    )
 
 
 def _open_queue_log_drawer(app, job):
@@ -1116,10 +1495,16 @@ def _open_queue_log_drawer(app, job):
     # 头部
     head = tk.Frame(dlg, bg=P["surface"], bd=0)
     head.pack(fill=tk.X, padx=1, pady=1)
-    tk.Label(head, text="📜 任务日志 · %s" % job.get("name", ""),
-             bg=P["surface"], fg=P["text"],
-             font=("Microsoft YaHei", 12, "bold"), anchor="w",
-             padx=12, pady=8).pack(side=tk.LEFT, fill=tk.X, expand=True)
+    tk.Label(
+        head,
+        text="📜 任务日志 · %s" % job.get("name", ""),
+        bg=P["surface"],
+        fg=P["text"],
+        font=("Microsoft YaHei", 12, "bold"),
+        anchor="w",
+        padx=12,
+        pady=8,
+    ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def _close():
         try:
@@ -1127,21 +1512,31 @@ def _open_queue_log_drawer(app, job):
         except Exception:
             pass
 
-    tk.Button(head, text="✕", command=_close, relief=tk.FLAT, bd=0,
-              bg=P["surface"], fg=P["text_secondary"],
-              activebackground=P["border"], activeforeground=P["accent"],
-              font=("Microsoft YaHei", 12), cursor="hand2",
-              width=3, padx=6, pady=4).pack(side=tk.RIGHT, padx=6, pady=4)
+    tk.Button(
+        head,
+        text="✕",
+        command=_close,
+        relief=tk.FLAT,
+        bd=0,
+        bg=P["surface"],
+        fg=P["text_secondary"],
+        activebackground=P["border"],
+        activeforeground=P["accent"],
+        font=("Microsoft YaHei", 12),
+        cursor="hand2",
+        width=3,
+        padx=6,
+        pady=4,
+    ).pack(side=tk.RIGHT, padx=6, pady=4)
 
     # 日志正文
-    body = tk.Frame(dlg, bg=P["input"], bd=1, relief=tk.SOLID,
-                    highlightbackground=P["border"], highlightthickness=1)
+    body = tk.Frame(dlg, bg=P["input"], bd=1, relief=tk.SOLID, highlightbackground=P["border"], highlightthickness=1)
     body.pack(fill=tk.BOTH, expand=True, padx=1, pady=(0, 1))
-    txt = tk.Text(body, bg=P["input"], fg=P["text"], relief=tk.FLAT, bd=0,
-                  font=("Consolas", 10), wrap=tk.WORD, state=tk.DISABLED)
+    txt = tk.Text(
+        body, bg=P["input"], fg=P["text"], relief=tk.FLAT, bd=0, font=("Consolas", 10), wrap=tk.WORD, state=tk.DISABLED
+    )
     txt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=8, pady=8)
-    sb = tk.Scrollbar(body, command=txt.yview, bg=P["surface"],
-                      troughcolor=P["bg"], bd=0, relief=tk.FLAT)
+    sb = tk.Scrollbar(body, command=txt.yview, bg=P["surface"], troughcolor=P["bg"], bd=0, relief=tk.FLAT)
     sb.pack(side=tk.RIGHT, fill=tk.Y)
     txt.config(yscrollcommand=sb.set)
     logs = job.get("log") or []
@@ -1154,7 +1549,6 @@ def _open_queue_log_drawer(app, job):
     txt.configure(state=tk.DISABLED)
 
     dlg.bind("<Escape>", lambda e: _close())
-
 
 
 def build_tab_compute_queue(app, parent):
@@ -1171,8 +1565,14 @@ def build_tab_compute_queue(app, parent):
     F = getattr(app, "_fonts", {}) or {}
 
     # —— 工具条 ——
-    tool = tk.Frame(parent, bg=COLORS["card_bg"], bd=1, relief=tk.SOLID,
-                    highlightbackground=COLORS["card_border"], highlightthickness=1)
+    tool = tk.Frame(
+        parent,
+        bg=COLORS["card_bg"],
+        bd=1,
+        relief=tk.SOLID,
+        highlightbackground=COLORS["card_border"],
+        highlightthickness=1,
+    )
     tool.grid(row=0, column=0, sticky="ew", padx=8, pady=(10, 6))
     tool.grid_columnconfigure(5, weight=1)
 
@@ -1186,26 +1586,36 @@ def build_tab_compute_queue(app, parent):
     def _clear_finished():
         try:
             with app.task_manager._jobs_lock:
-                app.task_manager.jobs = [j for j in app.task_manager.jobs
-                                         if j.get("status") == "running"]
+                app.task_manager.jobs = [j for j in app.task_manager.jobs if j.get("status") == "running"]
             refresh_queue()
             app.helpers.on_log("🧹 已清除已完成任务", "info")
         except Exception:
             pass
 
-    themed_button(tool, "⏹ 取消当前任务", _cancel_current, "warning",
-                  tip="请求取消正在运行的任务（协作式，下次进度上报时中止）").pack(
-        side=tk.LEFT, padx=4, pady=6)
-    themed_button(tool, "🧹 清除已完成", _clear_finished, "secondary",
-                  tip="从列表中移除成功 / 失败 / 已取消的任务").pack(
-        side=tk.LEFT, padx=4, pady=6)
+    themed_button(
+        tool, "⏹ 取消当前任务", _cancel_current, "warning", tip="请求取消正在运行的任务（协作式，下次进度上报时中止）"
+    ).pack(side=tk.LEFT, padx=4, pady=6)
+    themed_button(
+        tool, "🧹 清除已完成", _clear_finished, "secondary", tip="从列表中移除成功 / 失败 / 已取消的任务"
+    ).pack(side=tk.LEFT, padx=4, pady=6)
 
     # 并发度下拉（持久化；当前常驻 worker 串行执行，此值为规划档位）
-    tk.Label(tool, text="并发度:", bg=COLORS["card_bg"], fg=COLORS["text_light"],
-             font=F.get("SMALL", ("Microsoft YaHei", 11))).pack(side=tk.LEFT, padx=(16, 4), pady=6)
+    tk.Label(
+        tool,
+        text="并发度:",
+        bg=COLORS["card_bg"],
+        fg=COLORS["text_light"],
+        font=F.get("SMALL", ("Microsoft YaHei", 11)),
+    ).pack(side=tk.LEFT, padx=(16, 4), pady=6)
     _conc_var = tk.StringVar(value=str(int(app.config_data.get("queue_concurrency", 2) or 2)))
-    _conc = ttk.Combobox(tool, textvariable=_conc_var, values=["1", "2", "4", "8"],
-                         width=5, state="readonly", font=F.get("BASE", ("Microsoft YaHei", 12)))
+    _conc = ttk.Combobox(
+        tool,
+        textvariable=_conc_var,
+        values=["1", "2", "4", "8"],
+        width=5,
+        state="readonly",
+        font=F.get("BASE", ("Microsoft YaHei", 12)),
+    )
     _conc.pack(side=tk.LEFT, padx=2, pady=6)
     add_tooltip(_conc, "同时运行的任务数（1=串行，2/4/8=并行）。实时生效并保存到配置。")
 
@@ -1214,6 +1624,7 @@ def build_tab_compute_queue(app, parent):
             v = int(_conc_var.get())
             app.config_data["queue_concurrency"] = v
             from utils.config import save_config
+
             save_config(app.config_data)
             # 实时驱动常驻 worker 池并发度（无需重启）
             tm = getattr(app, "task_manager", None)
@@ -1233,10 +1644,9 @@ def build_tab_compute_queue(app, parent):
 
     cols = ("#", "名称", "类型", "方法-基组", "状态", "进度", "耗时", "操作")
     tree = ttk.Treeview(tbl_card, columns=cols, show="headings", height=14)
-    for c, w in zip(cols, (4, 22, 12, 18, 10, 10, 10, 22)):
+    for c, w in zip(cols, (4, 22, 12, 18, 10, 10, 10, 22), strict=False):
         tree.heading(c, text=c)
-        tree.column(c, width=w,
-                    anchor=tk.W if c in ("名称", "类型", "方法-基组") else tk.CENTER)
+        tree.column(c, width=w, anchor=tk.W if c in ("名称", "类型", "方法-基组") else tk.CENTER)
     tree.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
     vsb = ttk.Scrollbar(tbl_card, command=tree.yview)
     vsb.grid(row=0, column=1, sticky="ns", pady=10)
@@ -1255,12 +1665,18 @@ def build_tab_compute_queue(app, parent):
     es = tk.Frame(tbl_card, bg=COLORS["surface"])
     es.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
     es.grid_remove()
-    tk.Label(es, text="📭  暂无任务", bg=COLORS["surface"], fg=COLORS["text"],
-             font=("Microsoft YaHei", 15, "bold")).pack(anchor="center", pady=(40, 6))
-    tk.Label(es, text="去「计算与动画」提交 PSI4 计算，或运行文件整理 / OpenBabel 工具，\n"
-                       "任务会自动出现在这里并实时显示进度与日志。",
-             bg=COLORS["surface"], fg=COLORS["text_secondary"],
-             font=("Microsoft YaHei", 11), justify="center").pack(anchor="center")
+    tk.Label(
+        es, text="📭  暂无任务", bg=COLORS["surface"], fg=COLORS["text"], font=("Microsoft YaHei", 15, "bold")
+    ).pack(anchor="center", pady=(40, 6))
+    tk.Label(
+        es,
+        text="去「计算与动画」提交 PSI4 计算，或运行文件整理 / OpenBabel 工具，\n"
+        "任务会自动出现在这里并实时显示进度与日志。",
+        bg=COLORS["surface"],
+        fg=COLORS["text_secondary"],
+        font=("Microsoft YaHei", 11),
+        justify="center",
+    ).pack(anchor="center")
     app._queue_empty = es
 
     def _fmt_dur(j):
@@ -1272,8 +1688,7 @@ def build_tab_compute_queue(app, parent):
 
     def _open_diag(job):
         try:
-            app.show_error_diagnosis(job.get("error", ""),
-                                     summary="任务失败：%s" % job.get("name", ""))
+            app.show_error_diagnosis(job.get("error", ""), summary="任务失败：%s" % job.get("name", ""))
         except Exception:
             pass
 
@@ -1307,12 +1722,23 @@ def build_tab_compute_queue(app, parent):
         es.grid_remove()
         for j in snapshot:
             st = j.get("status", "running")
-            tag = {"running": "st_running", "success": "st_success",
-                   "failed": "st_failed", "cancelled": "st_cancelled"}.get(st, "st_running")
+            tag = {
+                "running": "st_running",
+                "success": "st_success",
+                "failed": "st_failed",
+                "cancelled": "st_cancelled",
+            }.get(st, "st_running")
             op = "日志 · 诊断" if st == "failed" else "日志"
-            vals = (j.get("id", ""), j.get("name", ""), j.get("kind", ""),
-                    j.get("spec", "—"), _status_cn(st), "%d%%" % j.get("progress", 0),
-                    _fmt_dur(j), op)
+            vals = (
+                j.get("id", ""),
+                j.get("name", ""),
+                j.get("kind", ""),
+                j.get("spec", "—"),
+                _status_cn(st),
+                "%d%%" % j.get("progress", 0),
+                _fmt_dur(j),
+                op,
+            )
             iid = tree.insert("", tk.END, values=vals, tags=(tag,))
             tree._job_map[iid] = j
 
@@ -1338,11 +1764,13 @@ def build_tab_compute_queue(app, parent):
 # 📊 底部状态栏（新版：状态 + 进度 + 操作提示 + OB 指示灯）
 # ===========================================================
 
+
 def _inject_action_tips(app):
     """
     把常见 controller 动作包一层「动作完成后写提示到 action_tip_var」。
     非侵入式：用 try/except，失败不影响功能。
     """
+
     def _tip(msg: str):
         try:
             app.action_tip_var.set("💡 " + msg)
@@ -1374,7 +1802,9 @@ def _inject_action_tips(app):
                         except Exception:
                             pass
                     return ret
+
                 return _w
+
             setattr(app.controller, name, _wrap(original, tip))
         except Exception:
             pass

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 F17 备份管理对话框（T11 / Phase 1）
 ──────────────────────────────────
@@ -21,6 +20,7 @@ F17 备份管理对话框（T11 / Phase 1）
   - 回滚前会自动生成 prerestore 保险快照（由 BackupManager 内部完成），
     用户回滚错版本仍有退路。
 """
+
 from __future__ import annotations
 
 import tkinter as tk
@@ -103,8 +103,9 @@ def _build_dialog(app: Any, controller: Any) -> None:
     setting_row = ttk.LabelFrame(dialog, text="⚙️ 备份设置", padding=8)
     setting_row.pack(fill=tk.X, padx=10, pady=(10, 4))
 
-    ttk.Checkbutton(setting_row, text="启用自动备份（保存映射表 / 导出 / 改配置前自动快照）",
-                    variable=enabled_var).pack(side=tk.LEFT)
+    ttk.Checkbutton(
+        setting_row, text="启用自动备份（保存映射表 / 导出 / 改配置前自动快照）", variable=enabled_var
+    ).pack(side=tk.LEFT)
     ttk.Label(setting_row, text="  每类保留").pack(side=tk.LEFT, padx=(16, 2))
     ttk.Spinbox(setting_row, from_=1, to=100, width=5, textvariable=keep_var).pack(side=tk.LEFT)
     ttk.Label(setting_row, text="份").pack(side=tk.LEFT, padx=(2, 10))
@@ -125,6 +126,7 @@ def _build_dialog(app: Any, controller: Any) -> None:
             section["enabled"] = bool(enabled_var.get())
             section["keep_per_type"] = keep
             from utils.config import save_config
+
             save_config(cfg)
             model.configure_backup(section)
             _log(app, f"🗂️ 备份设置已保存：{'启用' if section['enabled'] else '停用'}，每类保留 {keep} 份", "success")
@@ -141,7 +143,10 @@ def _build_dialog(app: Any, controller: Any) -> None:
     filter_row.pack(fill=tk.X, padx=10, pady=(0, 4))
     ttk.Label(filter_row, text="类型：").pack(side=tk.LEFT)
     filter_combo = ttk.Combobox(
-        filter_row, textvariable=filter_var, state="readonly", width=14,
+        filter_row,
+        textvariable=filter_var,
+        state="readonly",
+        width=14,
         values=[name for name, _v in _TRIGGER_FILTER_ITEMS],
     )
     filter_combo.pack(side=tk.LEFT, padx=(0, 12))
@@ -189,8 +194,9 @@ def _build_dialog(app: Any, controller: Any) -> None:
     detail.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     path_var = tk.StringVar(value="选中左侧快照可查看其包含的文件。")
-    ttk.Label(dialog, textvariable=path_var, foreground="#7A8699",
-              anchor=tk.W, wraplength=940).pack(fill=tk.X, padx=12, pady=(0, 2))
+    ttk.Label(dialog, textvariable=path_var, foreground="#7A8699", anchor=tk.W, wraplength=940).pack(
+        fill=tk.X, padx=12, pady=(0, 2)
+    )
 
     # ---------------------------------------------------------- 数据操作
     def _manager():
@@ -264,9 +270,16 @@ def _build_dialog(app: Any, controller: Any) -> None:
         for idx, meta in enumerate(snapshots):
             try:
                 tree.insert(
-                    "", tk.END, iid=str(idx),
-                    values=(meta.display_time(), meta.trigger_label,
-                            meta.description or "-", meta.file_count, meta.size_text),
+                    "",
+                    tk.END,
+                    iid=str(idx),
+                    values=(
+                        meta.display_time(),
+                        meta.trigger_label,
+                        meta.description or "-",
+                        meta.file_count,
+                        meta.size_text,
+                    ),
                 )
             except Exception:
                 continue
@@ -301,8 +314,9 @@ def _build_dialog(app: Any, controller: Any) -> None:
             if not row.get("stored_exists"):
                 mark = "备份缺失"
             try:
-                detail.insert("", tk.END, iid=str(i),
-                              values=(row.get("orig_name", "?"), row.get("size_text", "-"), mark))
+                detail.insert(
+                    "", tk.END, iid=str(i), values=(row.get("orig_name", "?"), row.get("size_text", "-"), mark)
+                )
             except Exception:
                 continue
         try:
@@ -422,8 +436,7 @@ def _build_dialog(app: Any, controller: Any) -> None:
             return
         if not messagebox.askyesno(
             "确认删除",
-            f"确定删除快照【{meta.display_time()} · {meta.trigger_label}】吗？\n"
-            f"删除后该版本将无法恢复。",
+            f"确定删除快照【{meta.display_time()} · {meta.trigger_label}】吗？\n删除后该版本将无法恢复。",
             parent=dialog,
         ):
             return

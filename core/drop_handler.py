@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 拖放路径路由（T17 / F06 · Phase 1 批次二）
 ──────────────────────────────────────────
@@ -22,6 +21,7 @@
   - 本模块**不 import requests**、**不 import chem.psi4**；
   - 本模块**只读不写**：不复制、不移动任何文件（落盘交给 model.import_external_files）。
 """
+
 from __future__ import annotations
 
 import os
@@ -34,7 +34,13 @@ from typing import Any
 
 #: 默认扩展名白名单（与 utils/config.DEFAULT_CONFIG["dnd"]["extensions"] 保持一致）。
 DEFAULT_EXTENSIONS: tuple[str, ...] = (
-    ".xyz", ".mol", ".sdf", ".pdb", ".cif", ".log", ".out",
+    ".xyz",
+    ".mol",
+    ".sdf",
+    ".pdb",
+    ".cif",
+    ".log",
+    ".out",
 )
 
 #: 🔴 受保护目录名单。必须与 core/model.PROTECTED_DIR_NAMES 一致。
@@ -64,6 +70,7 @@ REASON_INVALID = "无效路径"
 
 # ---------------------------------------------------------------- 数据结构
 
+
 @dataclass(frozen=True)
 class RejectedItem:
     """一条被拒绝的路径 + 原因。`detail` 给出可选的补充说明。"""
@@ -73,7 +80,7 @@ class RejectedItem:
     detail: str = ""
 
     def describe(self) -> str:
-        """"<文件名>（原因）" 形式的一行说明。"""
+        """ "<文件名>（原因）" 形式的一行说明。"""
         name = os.path.basename(self.path.rstrip("\\/")) or self.path
         text = f"{name}（{self.reason}"
         if self.detail:
@@ -88,7 +95,7 @@ class DropResult:
     accepted: list[Path] = field(default_factory=list)
     rejected: list[RejectedItem] = field(default_factory=list)
     scanned_dirs: int = 0
-    truncated: bool = False   # 是否因为触达 max_files 上限而截断
+    truncated: bool = False  # 是否因为触达 max_files 上限而截断
 
     @property
     def accepted_count(self) -> int:
@@ -142,6 +149,7 @@ class DropResult:
 
 # ---------------------------------------------------------------- 工具函数
 
+
 def normalize_extensions(extensions: Any) -> tuple[str, ...]:
     """
     规范化扩展名白名单：统一小写、统一补前导点、去空去重。
@@ -156,7 +164,7 @@ def normalize_extensions(extensions: Any) -> tuple[str, ...]:
         return DEFAULT_EXTENSIONS
     if isinstance(extensions, str):
         # 允许 ".xyz,.mol" 这种逗号分隔的写法
-        extensions = [seg for seg in extensions.replace(";", ",").split(",")]
+        extensions = list(extensions.replace(";", ",").split(","))
     try:
         items = list(extensions)
     except TypeError:
@@ -223,6 +231,7 @@ def parse_drop_data(data: Any) -> list[str]:
     # 避免手写状态机把文件名内的花括号误当分隔符）。失败时回退到原有手写逻辑。
     try:
         from tkinterdnd2 import TkinterDnD
+
         parts = TkinterDnD.splitlist(text)
         if parts:
             if isinstance(parts, str):
@@ -254,11 +263,11 @@ def parse_drop_data(data: Any) -> list[str]:
             end = text.find("}", i + 1)
             if end < 0:
                 # 花括号未闭合：把剩余部分整体当成一个路径，别丢数据
-                token = text[i + 1:].strip()
+                token = text[i + 1 :].strip()
                 if token:
                     tokens.append(token)
                 break
-            token = text[i + 1:end].strip()
+            token = text[i + 1 : end].strip()
             if token:
                 tokens.append(token)
             i = end + 1
@@ -313,6 +322,7 @@ def assert_protected_names_in_sync(other: Iterable[str]) -> bool:
 
 
 # ---------------------------------------------------------------- 主类
+
 
 class DropHandler:
     """
@@ -462,9 +472,7 @@ class DropHandler:
         for raw in candidates:
             if result.accepted_count >= self.max_files:
                 result.truncated = True
-                result.rejected.append(
-                    RejectedItem(str(raw), REASON_LIMIT, f"最多 {self.max_files} 个")
-                )
+                result.rejected.append(RejectedItem(str(raw), REASON_LIMIT, f"最多 {self.max_files} 个"))
                 continue
             self._process_one(raw, result, seen)
         return result
@@ -524,6 +532,7 @@ class DropHandler:
             # tkdnd 在部分平台会给出 file:// URI
             try:
                 from urllib.parse import unquote, urlparse
+
                 parsed = urlparse(text)
                 local = unquote(parsed.path)
                 # Windows: "/C:/x/y" -> "C:/x/y"
@@ -563,15 +572,10 @@ class DropHandler:
         text = os.fspath(path)
         if result.accepted_count >= self.max_files:
             result.truncated = True
-            result.rejected.append(
-                RejectedItem(text, REASON_LIMIT, f"最多 {self.max_files} 个")
-            )
+            result.rejected.append(RejectedItem(text, REASON_LIMIT, f"最多 {self.max_files} 个"))
             return
         if not self.is_allowed_ext(path):
-            result.rejected.append(
-                RejectedItem(text, REASON_EXTENSION,
-                             os.path.splitext(text)[1] or "无扩展名")
-            )
+            result.rejected.append(RejectedItem(text, REASON_EXTENSION, os.path.splitext(text)[1] or "无扩展名"))
             return
         key = _norm_key(path)
         if key in seen:
@@ -646,9 +650,7 @@ class DropHandler:
                 continue
         if result.accepted_count == before:
             hint = "白名单：" + "、".join(self.extensions) if self.extensions else ""
-            result.rejected.append(
-                RejectedItem(os.fspath(root), REASON_EMPTY_DIR, hint)
-            )
+            result.rejected.append(RejectedItem(os.fspath(root), REASON_EMPTY_DIR, hint))
 
 
 __all__ = [

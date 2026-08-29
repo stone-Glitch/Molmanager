@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 后台任务管理器 - 使用队列与主线程事件循环通信
 
@@ -15,6 +14,7 @@
         tm.run_async(func, on_done=cb, on_error=cb, progress_callback=cb2)
         # 使用共享的 ThreadPoolExecutor，避免无限开线程；on_done/on_error 自动 after(0) 回主线程
 """
+
 import atexit
 import os
 import queue
@@ -49,9 +49,7 @@ def _get_executor() -> ThreadPoolExecutor:
     global _global_executor
     with _global_executor_lock:
         if _global_executor is None or getattr(_global_executor, "_shutdown", False):
-            _global_executor = ThreadPoolExecutor(
-                max_workers=_MAX_WORKERS, thread_name_prefix="TmPool"
-            )
+            _global_executor = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="TmPool")
         return _global_executor
 
 
@@ -134,7 +132,9 @@ class TaskManager:
         self._running = True
         self._stop_event.clear()
         try:
-            self._concurrency = max(1, int((getattr(self.app, "config_data", {}) or {}).get("queue_concurrency", 2) or 2))
+            self._concurrency = max(
+                1, int((getattr(self.app, "config_data", {}) or {}).get("queue_concurrency", 2) or 2)
+            )
         except Exception:
             self._concurrency = 2
         self._desired_workers = self._concurrency
@@ -249,9 +249,11 @@ class TaskManager:
         with self._workers_lock:
             if self._stop_event.is_set():
                 return False
-            if (self._workers_alive > self._desired_workers
-                    and self._scale_down_pending < (self._workers_alive - self._desired_workers)
-                    and self._task_queue.empty()):
+            if (
+                self._workers_alive > self._desired_workers
+                and self._scale_down_pending < (self._workers_alive - self._desired_workers)
+                and self._task_queue.empty()
+            ):
                 self._scale_down_pending += 1
                 return True
         return False
@@ -286,7 +288,7 @@ class TaskManager:
                 try:
                     if progress_callback:
                         kwargs = dict(kwargs)
-                        kwargs['_progress_callback'] = progress_callback
+                        kwargs["_progress_callback"] = progress_callback
                     with self._active_lock:
                         self._active_count += 1
                     try:
@@ -294,13 +296,13 @@ class TaskManager:
                         # 若用户请求取消，progress_callback 会抛 InterruptedError，
                         # 这里捕获后把结果标记为 'cancelled'（而非 error）。
                         result = func(*args, **kwargs)
-                        self._result_queue.put((tid, 'success', result, None))
+                        self._result_queue.put((tid, "success", result, None))
                     except InterruptedError:
                         # 协作式取消：用户点了「取消」，任务主动中止
-                        self._result_queue.put((tid, 'cancelled', None, None))
+                        self._result_queue.put((tid, "cancelled", None, None))
                     except Exception as e:
                         logger.exception("常驻任务失败: %s", e)
-                        self._result_queue.put((tid, 'error', None, str(e)))
+                        self._result_queue.put((tid, "error", None, str(e)))
                     finally:
                         with self._active_lock:
                             self._active_count -= 1
@@ -331,9 +333,9 @@ class TaskManager:
                 tid, typ, result, error = self._result_queue.get_nowait()
                 job = self._pop_job(tid)
                 try:
-                    if typ == 'success':
+                    if typ == "success":
                         self.app.after(0, lambda r=result, j=job: self._safe_dispatch_done(r, j))
-                    elif typ == 'cancelled':
+                    elif typ == "cancelled":
                         self.app.after(0, lambda j=job: self._safe_dispatch_cancelled(j))
                     else:
                         self.app.after(0, lambda e=error, j=job: self._safe_dispatch_error(e, j))
@@ -359,7 +361,7 @@ class TaskManager:
             return self._pending_jobs.pop(tid, None)
 
     def _safe_dispatch_done(self, result, job=None):
-        cb = getattr(self.app, 'on_task_done', None)
+        cb = getattr(self.app, "on_task_done", None)
         if callable(cb):
             try:
                 cb(result, job=job)
@@ -373,7 +375,7 @@ class TaskManager:
                 logger.exception("on_task_done 异常: %s", e)
 
     def _safe_dispatch_error(self, error, job=None):
-        cb = getattr(self.app, 'on_task_error', None)
+        cb = getattr(self.app, "on_task_error", None)
         if callable(cb):
             try:
                 cb(error, job=job)
@@ -386,7 +388,7 @@ class TaskManager:
                 logger.exception("on_task_error 异常: %s", e)
 
     def _safe_dispatch_cancelled(self, job=None):
-        cb = getattr(self.app, 'on_task_cancelled', None)
+        cb = getattr(self.app, "on_task_cancelled", None)
         if callable(cb):
             try:
                 cb(job=job)
@@ -434,8 +436,8 @@ class TaskManager:
             if on_progress is None:
                 return
             try:
-                hlp = getattr(self.app, 'helpers', None)
-                up = getattr(hlp, 'update_progress', None)
+                hlp = getattr(self.app, "helpers", None)
+                up = getattr(hlp, "update_progress", None)
                 if callable(up):
                     try:
                         up(float(percent), str(message))
@@ -446,9 +448,9 @@ class TaskManager:
             except Exception as e:
                 logger.debug("progress wrapper 异常: %s", e)
 
-        def _log_wrapper(message: str, level: str = 'info'):
-            hlp = getattr(self.app, 'helpers', None)
-            on_log = getattr(hlp, 'on_log', None)
+        def _log_wrapper(message: str, level: str = "info"):
+            hlp = getattr(self.app, "helpers", None)
+            on_log = getattr(hlp, "on_log", None)
             if callable(on_log):
                 try:
                     on_log(str(message), str(level))
@@ -467,9 +469,9 @@ class TaskManager:
         def _dispatch_cancelled() -> None:
             cb = on_cancelled
             if cb is None:
-                cb = getattr(getattr(self.app, 'helpers', None), 'on_task_cancelled', None)
+                cb = getattr(getattr(self.app, "helpers", None), "on_task_cancelled", None)
             if cb is None:
-                cb = getattr(self.app, 'on_task_cancelled', None)
+                cb = getattr(self.app, "on_task_cancelled", None)
             if callable(cb):
                 try:
                     self.app.after(0, cb)
@@ -477,8 +479,8 @@ class TaskManager:
                 except Exception as e:
                     logger.debug("调度 on_cancelled 失败: %s", e)
             # 没有任何取消回调时，至少给用户一条日志，避免「点了取消没反应」
-            hlp = getattr(self.app, 'helpers', None)
-            on_log = getattr(hlp, 'on_log', None)
+            hlp = getattr(self.app, "helpers", None)
+            on_log = getattr(hlp, "on_log", None)
             if callable(on_log):
                 try:
                     on_log("任务已取消", "warning")
@@ -525,9 +527,9 @@ class TaskManager:
                 except Exception as e2:
                     logger.debug("调度 on_error 失败: %s", e2)
             elif on_done is None:
-                hlp = getattr(self.app, 'helpers', None)
+                hlp = getattr(self.app, "helpers", None)
                 if hlp is not None:
-                    on_log = getattr(hlp, 'on_log', None)
+                    on_log = getattr(hlp, "on_log", None)
                     if callable(on_log):
                         try:
                             on_log(f"后台任务失败：{err_msg}", "error")
@@ -543,16 +545,20 @@ class TaskManager:
             try:
                 _on_future_done_result: Any = None
                 _on_future_done_exc: BaseException | None = None
+
                 class _FakeFuture:
                     def __init__(self):
                         self._r = None
                         self._e: BaseException | None = None
+
                     def exception(self):
                         return self._e
+
                     def result(self):
                         if self._e is not None:
                             raise self._e
                         return self._r
+
                 ff = _FakeFuture()
                 try:
                     ff._r = _pool_body()
@@ -584,7 +590,8 @@ class TaskManager:
                     self._future_submitted_at.pop(id(f), None)
                 logger.warning(
                     "一次性后台任务挂起数超过上限 %d，放弃跟踪最早的 %d 个（其回调仍会触发）",
-                    _FUTURE_MAX_PENDING, len(dropped),
+                    _FUTURE_MAX_PENDING,
+                    len(dropped),
                 )
             self._one_shot_futures = kept
         fut.add_done_callback(_on_future_done)

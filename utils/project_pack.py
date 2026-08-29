@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 E-05 项目打包器 .molproj（纯逻辑层）
 
@@ -9,6 +8,7 @@ E-05 项目打包器 .molproj（纯逻辑层）
 
 纯 zipfile + json，无 tkinter 依赖，可在沙箱单测（用临时目录）。
 """
+
 import json
 import os
 import zipfile
@@ -54,11 +54,13 @@ def pack_project(
         if p.name in extra:
             continue
         st = p.stat()
-        entries.append({
-            "path": rel,
-            "size": st.st_size,
-            "mtime": int(st.st_mtime),
-        })
+        entries.append(
+            {
+                "path": rel,
+                "size": st.st_size,
+                "mtime": int(st.st_mtime),
+            }
+        )
     manifest = {
         "format": "molproj",
         "version": 1,
@@ -114,5 +116,4 @@ def unpack_project(zip_path: str, dest_dir: str, overwrite: bool = False) -> dic
     return {"extracted": extracted, "skipped": skipped, "manifest": manifest}
 
 
-__all__ = ["MANIFEST_NAME", "DEFAULT_EXCLUDE_EXTS",
-           "pack_project", "read_manifest", "unpack_project"]
+__all__ = ["MANIFEST_NAME", "DEFAULT_EXCLUDE_EXTS", "pack_project", "read_manifest", "unpack_project"]

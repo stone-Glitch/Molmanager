@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 高级工具箱 - 所有高级功能集中入口
 包括：分子工具(SMILES搜索/手性/pH加氢/SDF拆分合并/InChIKey)、
 波函数性质(HOMO/LUMO/偶极)、构象搜索、二面角扫描、批量属性、
 IRC、反应能垒图、Eyring计算、pKa预测、NMR模拟
 """
+
 import csv
 import os
 import sys
@@ -32,13 +32,16 @@ def show_advanced_tools_dialog(app, controller):
     tk.Label(
         banner,
         text="🛠️  高级工具箱｜Advanced Tools  （仅 PSI4 + OpenBabel 实现，无需额外依赖）",
-        bg="#161B22", font=("Microsoft YaHei UI", 11, "bold"), fg="#9DA7B3",
+        bg="#161B22",
+        font=("Microsoft YaHei UI", 11, "bold"),
+        fg="#9DA7B3",
     ).pack(anchor=tk.W)
     tk.Label(
         banner,
-        text="· 左侧选择文件（单选/多选），点击对应卡片按钮即可运行。\n"
-             "· 每个功能右上角都有 小问号「？」说明。",
-        bg="#161B22", fg="#9DA7B3", justify=tk.LEFT,
+        text="· 左侧选择文件（单选/多选），点击对应卡片按钮即可运行。\n· 每个功能右上角都有 小问号「？」说明。",
+        bg="#161B22",
+        fg="#9DA7B3",
+        justify=tk.LEFT,
     ).pack(anchor=tk.W, pady=(2, 0))
 
     nb = ttk.Notebook(dialog)
@@ -50,9 +53,16 @@ def show_advanced_tools_dialog(app, controller):
     progress_var = tk.DoubleVar(value=0.0)
     progress_bar = ttk.Progressbar(bottom, variable=progress_var, maximum=100)
     progress_bar.pack(fill=tk.X, pady=(0, 4))
-    log_text = scrolledtext.ScrolledText(bottom, height=10, font=("Consolas", 9),
-                                          bg="#1e1e1e", fg="#d4d4d4",
-                                          insertbackground="white", relief=tk.SOLID, borderwidth=1)
+    log_text = scrolledtext.ScrolledText(
+        bottom,
+        height=10,
+        font=("Consolas", 9),
+        bg="#1e1e1e",
+        fg="#d4d4d4",
+        insertbackground="white",
+        relief=tk.SOLID,
+        borderwidth=1,
+    )
     log_text.pack(fill=tk.BOTH, expand=True)
     log_text.tag_configure("ok", foreground="#4ade80")
     log_text.tag_configure("warn", foreground="#fbbf24")
@@ -61,12 +71,14 @@ def show_advanced_tools_dialog(app, controller):
     # 日志处理器
     import logging as _logging
     import uuid as _uuid
+
     adv_logger_name = f"adv_tools.{_uuid.uuid4().hex[:8]}"
     adv_logger = _logging.getLogger(adv_logger_name)
     adv_logger.setLevel(_logging.DEBUG)
     adv_logger.propagate = False
 
     from utils.logger import default_logger as _dflt
+
     for _h in list(_dflt.handlers):
         try:
             handler_type_name = type(_h).__name__
@@ -110,7 +122,7 @@ def show_advanced_tools_dialog(app, controller):
                         app_r.after(0, lambda: self._write(msg, tag))
                     except Exception:
                         try:
-                            print(msg)
+                            print(msg)  # noqa: T201
                         except Exception:
                             pass
             except Exception:
@@ -119,6 +131,7 @@ def show_advanced_tools_dialog(app, controller):
         def _write(self, text, tag):
             try:
                 import datetime as _dt
+
                 ts = _dt.datetime.now().strftime("%H:%M:%S")
             except Exception:
                 ts = ""
@@ -200,7 +213,7 @@ def show_advanced_tools_dialog(app, controller):
             adv_logger.log(level, msg)
         except Exception:
             try:
-                print(f"[ADV_TOOLS] {msg}")
+                print(f"[ADV_TOOLS] {msg}")  # noqa: T201
             except Exception:
                 pass
 
@@ -241,14 +254,17 @@ def show_advanced_tools_dialog(app, controller):
                 os.startfile(p)
             elif sys.platform == "darwin":
                 import subprocess
+
                 subprocess.Popen(["open", p])
             else:
                 import subprocess
+
                 subprocess.Popen(["xdg-open", p])
         except Exception as e:
             _log(f"打开目录失败：{e}", "warn")
 
     from core.task_manager import TaskManager
+
     _tm = TaskManager(app, controller=None)
 
     def _submit_work(fn, on_done=None):
@@ -303,6 +319,7 @@ def show_advanced_tools_dialog(app, controller):
     def _wrap_throwaway_task(fn):
         def _inner(*, _progress_callback=None, _log=None):
             return fn()
+
         return _inner
 
     def _help(title, body):
@@ -315,22 +332,23 @@ def show_advanced_tools_dialog(app, controller):
     nb.add(tab1, text="🧪 分子工具（OB）")
 
     def _row(parent, title, desc, btn_text, help_text, cmd):
-        frame = tk.LabelFrame(parent, text=title, padx=8, pady=6,
-                              font=("Microsoft YaHei UI", 10, "bold"), fg="#0f4c81")
+        frame = tk.LabelFrame(parent, text=title, padx=8, pady=6, font=("Microsoft YaHei UI", 10, "bold"), fg="#0f4c81")
         frame.pack(fill=tk.X, padx=6, pady=6)
         toprow = tk.Frame(frame)
         toprow.pack(fill=tk.X)
-        tk.Label(toprow, text=desc, fg="#333", justify=tk.LEFT, wraplength=780).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Button(toprow, text="？", width=2, relief=tk.GROOVE,
-                  command=lambda: _help(title, help_text)).pack(side=tk.RIGHT, padx=4)
-        tk.Button(frame, text=btn_text, width=28, bg="#2563eb", fg="white",
-                  activebackground="#1d4ed8", command=cmd).pack(anchor=tk.W, pady=(4, 0))
+        tk.Label(toprow, text=desc, fg="#333", justify=tk.LEFT, wraplength=780).pack(
+            side=tk.LEFT, fill=tk.X, expand=True
+        )
+        tk.Button(toprow, text="？", width=2, relief=tk.GROOVE, command=lambda: _help(title, help_text)).pack(
+            side=tk.RIGHT, padx=4
+        )
+        tk.Button(
+            frame, text=btn_text, width=28, bg="#2563eb", fg="white", activebackground="#1d4ed8", command=cmd
+        ).pack(anchor=tk.W, pady=(4, 0))
 
     # A1-1: SMILES → 相似结构搜索
     def _smiles_search():
-        smi = simpledialog.askstring("SMILES 搜索",
-                                     "输入要查找的 SMILES（例如 CC(=O)O）：",
-                                     parent=dialog)
+        smi = simpledialog.askstring("SMILES 搜索", "输入要查找的 SMILES（例如 CC(=O)O）：", parent=dialog)
         if not smi:
             return
         _log(f"🔎 搜索 SMILES：{smi}")
@@ -344,7 +362,7 @@ def show_advanced_tools_dialog(app, controller):
             _log(f"🧬 目标 InChIKey 前缀：{target_prefix}")
             files = app.helpers.get_selected_files() or []
             _log(f"📚 计算 {len(files)} 个分子的 InChIKey...")
-            batch = ob_utils.batch_inchikey([f for f in files])
+            batch = ob_utils.batch_inchikey(list(files))
             hits = []
             for path, key in batch.items():
                 if not key:
@@ -370,13 +388,15 @@ def show_advanced_tools_dialog(app, controller):
 
         _submit_work(_work, on_done=_done)
 
-    _row(tab1,
-         "① SMILES 结构相似搜索",
-         "输入一个 SMILES → 算出 InChIKey → 在当前分子库里按 InChIKey 前缀（构型前 14 位）命中相似结构。",
-         "🔎 运行 SMILES 搜索",
-         "用途：你只知道一个分子的名字，想在本地库里找同结构。\n"
-         "算法：OBabel SMILES → InChIKey（27 位）。按前 14 位（骨架层）匹配 = 同连接性；完全一致 = 立体化学也相同。",
-         _smiles_search)
+    _row(
+        tab1,
+        "① SMILES 结构相似搜索",
+        "输入一个 SMILES → 算出 InChIKey → 在当前分子库里按 InChIKey 前缀（构型前 14 位）命中相似结构。",
+        "🔎 运行 SMILES 搜索",
+        "用途：你只知道一个分子的名字，想在本地库里找同结构。\n"
+        "算法：OBabel SMILES → InChIKey（27 位）。按前 14 位（骨架层）匹配 = 同连接性；完全一致 = 立体化学也相同。",
+        _smiles_search,
+    )
 
     # A1-2: 手性标注 + 生成对映体
     def _chirality():
@@ -387,8 +407,7 @@ def show_advanced_tools_dialog(app, controller):
 
         def _work():
             res = ob_utils.analyze_chirality(fp)
-            inv_out = os.path.join(os.path.dirname(fp),
-                                   os.path.splitext(os.path.basename(fp))[0] + "_enantiomer.xyz")
+            inv_out = os.path.join(os.path.dirname(fp), os.path.splitext(os.path.basename(fp))[0] + "_enantiomer.xyz")
             res2 = ob_utils.invert_enantiomer(fp, inv_out)
             return res, res2, inv_out
 
@@ -400,35 +419,41 @@ def show_advanced_tools_dialog(app, controller):
                 for c in d["centers"]:
                     _log(f"     - 原子 idx {c['atom_idx']}  {c['symbol']}  构型: {c['rs_label']}")
             else:
-                _log(f"⚠ {chir_res.get('message','手性分析失败')}", "warn")
+                _log(f"⚠ {chir_res.get('message', '手性分析失败')}", "warn")
             if inv_res.get("success"):
                 _log(f"🧭 对映体已写入：{inv_out}  → 可在 IQmol 里直接对比", "ok")
                 controller.scan_files()
             else:
-                _log(f"⚠ 对映体生成失败：{inv_res.get('message','')}", "warn")
+                _log(f"⚠ 对映体生成失败：{inv_res.get('message', '')}", "warn")
 
         _submit_work(_work, on_done=_done)
 
-    _row(tab1,
-         "② 手性中心识别（R/S）+ 对映体生成",
-         "自动列出所有手性中心并标注 R/S；一键生成镜像对映体，输出同目录下的 *_enantiomer.xyz。",
-         "🔬 标注手性并生成对映体",
-         "用途：你做出来的手性配体/催化剂要分清哪一个对映体，或想生成另一对映体结构跑过渡态。\n"
-         "实现：OBabel OBStereoFacade 查 OBTetrahedralStereo → R/S 标记；OBMol Stereo 翻转为逆构型后输出 XYZ。",
-         _chirality)
+    _row(
+        tab1,
+        "② 手性中心识别（R/S）+ 对映体生成",
+        "自动列出所有手性中心并标注 R/S；一键生成镜像对映体，输出同目录下的 *_enantiomer.xyz。",
+        "🔬 标注手性并生成对映体",
+        "用途：你做出来的手性配体/催化剂要分清哪一个对映体，或想生成另一对映体结构跑过渡态。\n"
+        "实现：OBabel OBStereoFacade 查 OBTetrahedralStereo → R/S 标记；OBMol Stereo 翻转为逆构型后输出 XYZ。",
+        _chirality,
+    )
 
     # A1-3: pH 加氢
     def _ph_protonate():
         fp = _sel_path()
         if not fp:
             return
-        ph_val = simpledialog.askfloat("pH 加氢",
-                                       "请输入目标 pH（常用 7.4 生理 pH / 1.0 强酸 / 13.0 强碱）：",
-                                       parent=dialog, minvalue=0.0, maxvalue=14.0, initialvalue=7.4)
+        ph_val = simpledialog.askfloat(
+            "pH 加氢",
+            "请输入目标 pH（常用 7.4 生理 pH / 1.0 强酸 / 13.0 强碱）：",
+            parent=dialog,
+            minvalue=0.0,
+            maxvalue=14.0,
+            initialvalue=7.4,
+        )
         if ph_val is None:
             return
-        out = os.path.join(os.path.dirname(fp),
-                           os.path.splitext(os.path.basename(fp))[0] + f"_pH{ph_val:.1f}.xyz")
+        out = os.path.join(os.path.dirname(fp), os.path.splitext(os.path.basename(fp))[0] + f"_pH{ph_val:.1f}.xyz")
         _log(f"🧪 pH={ph_val:.1f} 加氢：{os.path.basename(fp)} → {os.path.basename(out)}")
 
         def _work():
@@ -447,14 +472,16 @@ def show_advanced_tools_dialog(app, controller):
 
         _submit_work(_work, on_done=_done)
 
-    _row(tab1,
-         "③ pH 依赖质子化（-p）",
-         "在指定 pH 下给分子加/去质子（例如 pH=7.4 生理条件、pH=1.0 强酸条件）。\n"
-         "会正确把 COOH → COO⁻ / 胺 → 胺正离子 / 咪唑 → 质子化等。",
-         "🧪 加氢到指定 pH",
-         "用途：做 pKa / NMR / 反应预测时，初始结构要是「溶液里真实存在的质子化状态」，否则算出来不准。\n"
-         "实现：OBabel -p <pH>（内置 pKa 规则库）。注意：对于金属配合物、特殊官能团需要人工核对。",
-         _ph_protonate)
+    _row(
+        tab1,
+        "③ pH 依赖质子化（-p）",
+        "在指定 pH 下给分子加/去质子（例如 pH=7.4 生理条件、pH=1.0 强酸条件）。\n"
+        "会正确把 COOH → COO⁻ / 胺 → 胺正离子 / 咪唑 → 质子化等。",
+        "🧪 加氢到指定 pH",
+        "用途：做 pKa / NMR / 反应预测时，初始结构要是「溶液里真实存在的质子化状态」，否则算出来不准。\n"
+        "实现：OBabel -p <pH>（内置 pKa 规则库）。注意：对于金属配合物、特殊官能团需要人工核对。",
+        _ph_protonate,
+    )
 
     # A1-4: SDF 拆分 + 合并
     def _split_sdf():
@@ -467,8 +494,7 @@ def show_advanced_tools_dialog(app, controller):
 
         def _work():
             for s in sdfs:
-                outdir = os.path.join(os.path.dirname(s),
-                                      os.path.splitext(os.path.basename(s))[0] + "_split")
+                outdir = os.path.join(os.path.dirname(s), os.path.splitext(os.path.basename(s))[0] + "_split")
                 r = ob_utils.split_multi_sdf(s, outdir)
                 out_all.append((s, r))
             return out_all
@@ -483,7 +509,7 @@ def show_advanced_tools_dialog(app, controller):
                     except Exception:
                         pass
                 else:
-                    _log(f"✖ {os.path.basename(s)} 失败：{r.get('message','')}", "err")
+                    _log(f"✖ {os.path.basename(s)} 失败：{r.get('message', '')}", "err")
             controller.scan_files()
 
         _submit_work(_work, on_done=_done)
@@ -493,10 +519,13 @@ def show_advanced_tools_dialog(app, controller):
         if len(files) < 2:
             _log("⚠️ 请至少选中 2 个分子文件（可混合 xyz/mol/sdf 等）", "warn")
             return
-        out = filedialog.asksaveasfilename(parent=dialog,
-            defaultextension=".sdf", filetypes=[("SDF 多分子库", "*.sdf")],
+        out = filedialog.asksaveasfilename(
+            parent=dialog,
+            defaultextension=".sdf",
+            filetypes=[("SDF 多分子库", "*.sdf")],
             title="保存合并后的 SDF 到：",
-            initialfile="library_merged.sdf")
+            initialfile="library_merged.sdf",
+        )
         if not out:
             return
         _log(f"📚 合并 {len(files)} 个分子 → {os.path.basename(out)}")
@@ -516,24 +545,42 @@ def show_advanced_tools_dialog(app, controller):
 
         _submit_work(_work, on_done=_done)
 
-    frame_sdf = tk.LabelFrame(tab1, text="④ SDF 多分子文件 / 拆分 & 合并",
-                              padx=8, pady=6, font=("Microsoft YaHei UI", 10, "bold"), fg="#0f4c81")
+    frame_sdf = tk.LabelFrame(
+        tab1,
+        text="④ SDF 多分子文件 / 拆分 & 合并",
+        padx=8,
+        pady=6,
+        font=("Microsoft YaHei UI", 10, "bold"),
+        fg="#0f4c81",
+    )
     frame_sdf.pack(fill=tk.X, padx=6, pady=6)
-    tk.Label(frame_sdf,
-             text="拆分：把一个大的 SDF（多构象 / 虚拟库 / ZINC 下载）拆成单个分子，方便逐一看。\n"
-                  "合并：把多个 xyz / mol / sdf 合回一个 SDF，方便发文章或导入 KNIME。",
-             fg="#333", justify=tk.LEFT, wraplength=780).pack(anchor=tk.W)
+    tk.Label(
+        frame_sdf,
+        text="拆分：把一个大的 SDF（多构象 / 虚拟库 / ZINC 下载）拆成单个分子，方便逐一看。\n"
+        "合并：把多个 xyz / mol / sdf 合回一个 SDF，方便发文章或导入 KNIME。",
+        fg="#333",
+        justify=tk.LEFT,
+        wraplength=780,
+    ).pack(anchor=tk.W)
     r_btns = tk.Frame(frame_sdf)
     r_btns.pack(anchor=tk.W, pady=(4, 0))
-    tk.Button(r_btns, text="✂️ 拆分选中的 SDF", width=24, bg="#16a34a", fg="white",
-              command=_split_sdf).pack(side=tk.LEFT, padx=(0, 8))
-    tk.Button(r_btns, text="📦 合并选中分子为 SDF 库", width=28, bg="#15803d", fg="white",
-              command=_merge_sdf).pack(side=tk.LEFT, padx=4)
-    tk.Button(frame_sdf, text="？", relief=tk.GROOVE, width=2,
-              command=lambda: _help("SDF 拆分 / 合并",
-                                    "拆分：逐分子写单个 xyz/sdf。\n合并：按选中顺序合并成一个多分子 SDF。\n"
-                                    "OB 支持自动格式转换（xyz→sdf 是写入 OB mol block + 标题）。")
-              ).pack(anchor=tk.E)
+    tk.Button(r_btns, text="✂️ 拆分选中的 SDF", width=24, bg="#16a34a", fg="white", command=_split_sdf).pack(
+        side=tk.LEFT, padx=(0, 8)
+    )
+    tk.Button(r_btns, text="📦 合并选中分子为 SDF 库", width=28, bg="#15803d", fg="white", command=_merge_sdf).pack(
+        side=tk.LEFT, padx=4
+    )
+    tk.Button(
+        frame_sdf,
+        text="？",
+        relief=tk.GROOVE,
+        width=2,
+        command=lambda: _help(
+            "SDF 拆分 / 合并",
+            "拆分：逐分子写单个 xyz/sdf。\n合并：按选中顺序合并成一个多分子 SDF。\n"
+            "OB 支持自动格式转换（xyz→sdf 是写入 OB mol block + 标题）。",
+        ),
+    ).pack(anchor=tk.E)
 
     # A1-5: InChIKey 批量生成
     def _gen_inchikeys():
@@ -569,9 +616,11 @@ def show_advanced_tools_dialog(app, controller):
 
         _submit_work(_work, on_done=_done)
 
-    _row(tab1,
-         "⑤ 批量生成 InChIKey + CSV",
-         "给所有选中分子生成 InChIKey（骨架层 + 立体层），并导出 CSV。",
-         "🔑 批量算 InChIKey",
-         "用途：多轮实验/不同电脑之间批量精确比对结构是否相同（比文件名靠谱得多）。",
-         _gen_inchikeys)
+    _row(
+        tab1,
+        "⑤ 批量生成 InChIKey + CSV",
+        "给所有选中分子生成 InChIKey（骨架层 + 立体层），并导出 CSV。",
+        "🔑 批量算 InChIKey",
+        "用途：多轮实验/不同电脑之间批量精确比对结构是否相同（比文件名靠谱得多）。",
+        _gen_inchikeys,
+    )

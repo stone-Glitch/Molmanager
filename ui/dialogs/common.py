@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 通用对话框 - 文件类型选择、字体大小、环境诊断、OB路径设置、最近目录
 """
+
 import os
 import subprocess
 import sys
@@ -78,7 +78,7 @@ def show_ext_filter_dialog(app, controller):
     dialog.grab_set()
 
     all_exts = sorted(SUPPORTED_EXTS)
-    current_exts = {e.strip() for e in app.ext_filter_var.get().split(',') if e.strip()}
+    current_exts = {e.strip() for e in app.ext_filter_var.get().split(",") if e.strip()}
     if not current_exts:
         current_exts = set(all_exts)
 
@@ -104,14 +104,16 @@ def show_ext_filter_dialog(app, controller):
 
     canvas.create_window((0, 0), window=frame, anchor="nw")
 
-    ttk.Checkbutton(frame, text="全选", variable=select_all_var, command=on_select_all_change).grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+    ttk.Checkbutton(frame, text="全选", variable=select_all_var, command=on_select_all_change).grid(
+        row=0, column=0, sticky=tk.W, padx=5, pady=5
+    )
 
     for i, ext in enumerate(all_exts, start=1):
         var = tk.BooleanVar(value=ext in current_exts)
         ext_vars[ext] = var
         chk = ttk.Checkbutton(frame, text=ext, variable=var)
         chk.grid(row=i, column=0, sticky=tk.W, padx=20, pady=2)
-        var.trace('w', lambda *args: update_select_all())
+        var.trace("w", lambda *args: update_select_all())
 
     update_select_all()
 
@@ -124,7 +126,7 @@ def show_ext_filter_dialog(app, controller):
     def on_ok():
         selected = [ext for ext, var in ext_vars.items() if var.get()]
         if not selected:
-            app.helpers.on_log("⚠️ 未选择任何文件类型，将显示所有支持的类型", 'warning')
+            app.helpers.on_log("⚠️ 未选择任何文件类型，将显示所有支持的类型", "warning")
             app.ext_filter_var.set("")
         else:
             app.ext_filter_var.set(",".join(selected))
@@ -156,7 +158,7 @@ def show_recent_dirs_dialog(app, controller):
     list_frame = ttk.Frame(dialog)
     list_frame.pack(fill=tk.BOTH, expand=True, padx=10)
 
-    listbox = tk.Listbox(list_frame, height=12, font=('Consolas', 10))
+    listbox = tk.Listbox(list_frame, height=12, font=("Consolas", 10))
     scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=listbox.yview)
     listbox.configure(yscrollcommand=scrollbar.set)
     listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -212,7 +214,7 @@ def show_font_size_dialog(app, parent=None):
         pass
 
     F = getattr(app, "_fonts", {})
-    BASE = F.get("BASE", ("Microsoft YaHei", 12))
+    F.get("BASE", ("Microsoft YaHei", 12))
     BOLD = F.get("BOLD", ("Microsoft YaHei", 12, "bold"))
     SMALL = F.get("SMALL", ("Microsoft YaHei", 11))
     H1 = F.get("H1", ("Microsoft YaHei", 14, "bold"))
@@ -229,56 +231,89 @@ def show_font_size_dialog(app, parent=None):
     main = tk.Frame(dialog, bg="#161B22")
     main.pack(fill=tk.BOTH, expand=True, padx=20, pady=18)
 
-    tk.Label(main, text="🔤  界面字体大小",
-             bg="#161B22", fg="#E6EDF3",
-             font=H1).pack(anchor="w", pady=(0, 2))
-    tk.Label(main,
-             text="调整后会保存到配置文件。由于 Tkinter 已创建控件的字体不会被全局 option_add 自动刷新，\n"
-                  "保存后建议按提示「立即重启」，即可让全部界面完整使用新字号。",
-             bg="#161B22", fg="#9DA7B3", font=SMALL, justify="left"
-             ).pack(anchor="w", pady=(0, 14))
+    tk.Label(main, text="🔤  界面字体大小", bg="#161B22", fg="#E6EDF3", font=H1).pack(anchor="w", pady=(0, 2))
+    tk.Label(
+        main,
+        text="调整后会保存到配置文件。由于 Tkinter 已创建控件的字体不会被全局 option_add 自动刷新，\n"
+        "保存后建议按提示「立即重启」，即可让全部界面完整使用新字号。",
+        bg="#161B22",
+        fg="#9DA7B3",
+        font=SMALL,
+        justify="left",
+    ).pack(anchor="w", pady=(0, 14))
 
     row = tk.Frame(main, bg="#161B22")
     row.pack(fill=tk.X, pady=(0, 6))
-    tk.Label(row, text="字号（pt）：", bg="#161B22", fg="#E6EDF3",
-             font=BOLD).pack(side=tk.LEFT)
+    tk.Label(row, text="字号（pt）：", bg="#161B22", fg="#E6EDF3", font=BOLD).pack(side=tk.LEFT)
     val_var = tk.IntVar(value=cur)
-    spin = tk.Spinbox(row, from_=8, to=24, textvariable=val_var, width=4,
-                      font=BOLD, justify="center", bd=2, relief=tk.SOLID,
-                      bg="#161B22", fg="#E6EDF3")
+    spin = tk.Spinbox(
+        row,
+        from_=8,
+        to=24,
+        textvariable=val_var,
+        width=4,
+        font=BOLD,
+        justify="center",
+        bd=2,
+        relief=tk.SOLID,
+        bg="#161B22",
+        fg="#E6EDF3",
+    )
     spin.pack(side=tk.LEFT, padx=(6, 0))
 
     slider_row = tk.Frame(main, bg="#161B22")
     slider_row.pack(fill=tk.X, pady=(4, 10))
-    scale = tk.Scale(slider_row, from_=8, to=24, orient=tk.HORIZONTAL,
-                     variable=val_var, showvalue=False,
-                     font=SMALL, bg="#161B22", fg="#E6EDF3")
+    scale = tk.Scale(
+        slider_row,
+        from_=8,
+        to=24,
+        orient=tk.HORIZONTAL,
+        variable=val_var,
+        showvalue=False,
+        font=SMALL,
+        bg="#161B22",
+        fg="#E6EDF3",
+    )
     scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
-    tk.Label(slider_row, textvariable=val_var, bg="#161B22", fg="#58A6FF",
-             font=BOLD, width=3, anchor="center").pack(side=tk.LEFT, padx=(8, 0))
+    tk.Label(slider_row, textvariable=val_var, bg="#161B22", fg="#58A6FF", font=BOLD, width=3, anchor="center").pack(
+        side=tk.LEFT, padx=(8, 0)
+    )
 
-    prev = tk.LabelFrame(main, text="  🧿 实时预览（仅预览 Label/Button 字体）  ",
-                         bg="#161B22", fg="#E6EDF3", font=BOLD,
-                         relief=tk.GROOVE, bd=2)
+    prev = tk.LabelFrame(
+        main,
+        text="  🧿 实时预览（仅预览 Label/Button 字体）  ",
+        bg="#161B22",
+        fg="#E6EDF3",
+        font=BOLD,
+        relief=tk.GROOVE,
+        bd=2,
+    )
     prev.pack(fill=tk.BOTH, expand=True, pady=(4, 10))
     prev_inner = tk.Frame(prev, bg="#161B22")
     prev_inner.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-    preview_base_label = tk.Label(prev_inner,
-                                  text="普通文字 Label：ABC 中文 English 123",
-                                  bg="#161B22", fg="#E6EDF3")
+    preview_base_label = tk.Label(prev_inner, text="普通文字 Label：ABC 中文 English 123", bg="#161B22", fg="#E6EDF3")
     preview_base_label.pack(anchor="w", pady=(0, 4))
-    preview_bold_label = tk.Label(prev_inner,
-                                  text="加粗文字 Label：粗体中文 / Bold English",
-                                  bg="#161B22", fg="#58A6FF")
+    preview_bold_label = tk.Label(
+        prev_inner, text="加粗文字 Label：粗体中文 / Bold English", bg="#161B22", fg="#58A6FF"
+    )
     preview_bold_label.pack(anchor="w", pady=(0, 6))
-    preview_btn = tk.Button(prev_inner, text="示例按钮 Button", relief=tk.RAISED, bd=1,
-                            bg="#2DD4BF", fg="#E6EDF3", cursor="hand2")
+    preview_btn = tk.Button(
+        prev_inner, text="示例按钮 Button", relief=tk.RAISED, bd=1, bg="#2DD4BF", fg="#E6EDF3", cursor="hand2"
+    )
     preview_btn.pack(anchor="w", pady=(0, 4))
-    preview_code = tk.Label(prev_inner,
-                            text='Consolas 日志字体预览：log.info("hello world")',
-                            bg="#1C2330", fg="#E6EDF3", relief=tk.SUNKEN, bd=1,
-                            justify="left", anchor="w", padx=8, pady=4)
+    preview_code = tk.Label(
+        prev_inner,
+        text='Consolas 日志字体预览：log.info("hello world")',
+        bg="#1C2330",
+        fg="#E6EDF3",
+        relief=tk.SUNKEN,
+        bd=1,
+        justify="left",
+        anchor="w",
+        padx=8,
+        pady=4,
+    )
     preview_code.pack(anchor="w", fill=tk.X, pady=(2, 0))
 
     def _apply_preview(*_a):
@@ -328,12 +363,14 @@ def show_font_size_dialog(app, parent=None):
             logger.warning("写 font_size 到内存 config_data 失败：%s", _e1)
         try:
             from utils.config import save_config
+
             save_config(app.config_data)
         except Exception as _e2:
             messagebox.showerror("保存失败", f"写入配置文件失败：\n{_e2}", parent=dialog)
             return
         try:
             from ui.ui_builder import resolve_font_specs
+
             resolve_font_specs(app, force_pt=pt)
         except Exception as _e3:
             logger.debug("resolve_font_specs 热更新失败：%s", _e3)
@@ -354,28 +391,27 @@ def show_font_size_dialog(app, parent=None):
     def _reset_default():
         val_var.set(14)
 
-    ttk.Button(btns, text="↺ 恢复默认 14pt", command=_reset_default,
-               style="Aurora.TButton").pack(side=tk.LEFT, padx=4)
-    ttk.Button(btns, text="取消", command=dialog.destroy,
-               style="Aurora.TButton").pack(side=tk.RIGHT, padx=4)
-    ttk.Button(btns, text="💾 保存并应用（建议重启）",
-               command=_save_and_maybe_restart,
-               style="Aurora.BigAccent.TButton").pack(side=tk.RIGHT, padx=4)
+    ttk.Button(btns, text="↺ 恢复默认 14pt", command=_reset_default, style="Aurora.TButton").pack(side=tk.LEFT, padx=4)
+    ttk.Button(btns, text="取消", command=dialog.destroy, style="Aurora.TButton").pack(side=tk.RIGHT, padx=4)
+    ttk.Button(
+        btns, text="💾 保存并应用（建议重启）", command=_save_and_maybe_restart, style="Aurora.BigAccent.TButton"
+    ).pack(side=tk.RIGHT, padx=4)
 
 
 def _restart_app(app) -> None:
     """用当前 Python 解释器重跑当前主脚本。"""
     try:
         import subprocess as _sp
+
         argv0 = sys.argv[0] if sys.argv else os.path.abspath("main.py")
         try:
             work_d = os.path.dirname(os.path.abspath(argv0)) or os.getcwd()
         except Exception:
             work_d = os.getcwd()
-        _sp.Popen([sys.executable, argv0, *sys.argv[1:]],
-                  cwd=work_d, close_fds=True)
+        _sp.Popen([sys.executable, argv0, *sys.argv[1:]], cwd=work_d, close_fds=True)
     except Exception as _e:
         from tkinter import messagebox as _mb
+
         _mb.showerror("自动重启失败", f"请手动关闭后重新打开：\n{_e}")
         return
     try:
@@ -419,58 +455,82 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
     main = tk.Frame(dialog, bg="#161B22")
     main.pack(fill=tk.BOTH, expand=True, padx=18, pady=18)
 
-    tk.Label(main, text="🧪  环境诊断（依赖与建议）",
-             bg="#161B22", fg="#E6EDF3",
-             font=H1).pack(anchor="w", pady=(0, 6))
-    tk.Label(main, text="如果某项为红色，可直接点击对应「修复」按钮尝试解决。",
-             bg="#161B22", fg="#9DA7B3",
-             font=SMALL, justify="left").pack(anchor="w", pady=(0, 14))
+    tk.Label(main, text="🧪  环境诊断（依赖与建议）", bg="#161B22", fg="#E6EDF3", font=H1).pack(anchor="w", pady=(0, 6))
+    tk.Label(
+        main,
+        text="如果某项为红色，可直接点击对应「修复」按钮尝试解决。",
+        bg="#161B22",
+        fg="#9DA7B3",
+        font=SMALL,
+        justify="left",
+    ).pack(anchor="w", pady=(0, 14))
 
     # OB 区
-    ob_card = tk.Frame(main, bg="#161B22", bd=0,
-                       highlightbackground="#D7E2FF", highlightthickness=1)
+    ob_card = tk.Frame(main, bg="#161B22", bd=0, highlightbackground="#D7E2FF", highlightthickness=1)
     ob_card.pack(fill=tk.X, pady=(0, 10))
     hdr = tk.Frame(ob_card, bg="#161B22")
     hdr.pack(fill=tk.X, padx=14, pady=(12, 4))
-    tk.Label(hdr, text="OpenBabel 状态", bg="#161B22", fg="#E6EDF3",
-             font=BOLD).pack(side=tk.LEFT)
+    tk.Label(hdr, text="OpenBabel 状态", bg="#161B22", fg="#E6EDF3", font=BOLD).pack(side=tk.LEFT)
     ob_status_var = tk.StringVar(value="检测中…")
-    ob_status_lbl = tk.Label(hdr, textvariable=ob_status_var, bg="#161B22", fg="#E6EDF3",
-                             font=BOLD, anchor="e")
+    ob_status_lbl = tk.Label(hdr, textvariable=ob_status_var, bg="#161B22", fg="#E6EDF3", font=BOLD, anchor="e")
     ob_status_lbl.pack(side=tk.RIGHT)
     ob_text_var = tk.StringVar(value="")
-    tk.Label(ob_card, textvariable=ob_text_var, bg="#161B22", fg="#E6EDF3",
-             font=BASE, justify="left", anchor="w",
-             wraplength=820).pack(fill=tk.X, padx=14, pady=(2, 6))
+    tk.Label(
+        ob_card,
+        textvariable=ob_text_var,
+        bg="#161B22",
+        fg="#E6EDF3",
+        font=BASE,
+        justify="left",
+        anchor="w",
+        wraplength=820,
+    ).pack(fill=tk.X, padx=14, pady=(2, 6))
     ob_diag_text = scrolledtext.ScrolledText(
-        ob_card, height=7, font=F.get("LOG", ("Consolas", 11)),
-        bg="#1C2330", fg="#E6EDF3", wrap=tk.WORD, bd=1, relief=tk.SOLID
+        ob_card,
+        height=7,
+        font=F.get("LOG", ("Consolas", 11)),
+        bg="#1C2330",
+        fg="#E6EDF3",
+        wrap=tk.WORD,
+        bd=1,
+        relief=tk.SOLID,
     )
     ob_diag_text.pack(fill=tk.X, padx=14, pady=(2, 10))
     ob_btn_row = tk.Frame(ob_card, bg="#161B22")
     ob_btn_row.pack(fill=tk.X, padx=14, pady=(0, 14))
 
     # PSI4 区
-    psi_card = tk.Frame(main, bg="#161B22", bd=0,
-                        highlightbackground="#D7E2FF", highlightthickness=1)
+    psi_card = tk.Frame(main, bg="#161B22", bd=0, highlightbackground="#D7E2FF", highlightthickness=1)
     psi_card.pack(fill=tk.X, pady=(0, 10))
     hdr2 = tk.Frame(psi_card, bg="#161B22")
     hdr2.pack(fill=tk.X, padx=14, pady=(12, 4))
-    tk.Label(hdr2, text="PSI4 状态", bg="#161B22", fg="#E6EDF3",
-             font=BOLD).pack(side=tk.LEFT)
+    tk.Label(hdr2, text="PSI4 状态", bg="#161B22", fg="#E6EDF3", font=BOLD).pack(side=tk.LEFT)
     psi_status_var = tk.StringVar(value="检测中…")
-    tk.Label(hdr2, textvariable=psi_status_var, bg="#161B22", fg="#E6EDF3",
-             font=BOLD, anchor="e").pack(side=tk.RIGHT)
+    tk.Label(hdr2, textvariable=psi_status_var, bg="#161B22", fg="#E6EDF3", font=BOLD, anchor="e").pack(side=tk.RIGHT)
     psi_text_var = tk.StringVar(value="")
-    tk.Label(psi_card, textvariable=psi_text_var, bg="#161B22", fg="#E6EDF3",
-             font=BASE, justify="left", anchor="w",
-             wraplength=820).pack(fill=tk.X, padx=14, pady=(2, 6))
+    tk.Label(
+        psi_card,
+        textvariable=psi_text_var,
+        bg="#161B22",
+        fg="#E6EDF3",
+        font=BASE,
+        justify="left",
+        anchor="w",
+        wraplength=820,
+    ).pack(fill=tk.X, padx=14, pady=(2, 6))
 
     # PSI4 快速测试：真实跑一次极小 HF/sto-3g 单点能，验证计算引擎可用
     psi_test_var = tk.StringVar(value="")
-    psi_test_lbl = tk.Label(psi_card, textvariable=psi_test_var, bg="#161B22",
-                            fg="#9DA7B3", font=SMALL, justify="left", anchor="w",
-                            wraplength=820)
+    psi_test_lbl = tk.Label(
+        psi_card,
+        textvariable=psi_test_var,
+        bg="#161B22",
+        fg="#9DA7B3",
+        font=SMALL,
+        justify="left",
+        anchor="w",
+        wraplength=820,
+    )
     psi_test_lbl.pack(fill=tk.X, padx=14, pady=(0, 4))
     psi_btn_row = tk.Frame(psi_card, bg="#161B22")
     psi_btn_row.pack(fill=tk.X, padx=14, pady=(0, 14))
@@ -492,7 +552,10 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
                 psi_test_var.set(msg)
                 try:
                     from ui.ui_theme import COLORS
-                    psi_test_lbl.configure(fg=(COLORS.get("success", "#0EA288") if ok else COLORS.get("danger", "#E5484D")))
+
+                    psi_test_lbl.configure(
+                        fg=(COLORS.get("success", "#0EA288") if ok else COLORS.get("danger", "#E5484D"))
+                    )
                 except Exception:
                     psi_test_lbl.configure(fg=("#0EA288" if ok else "#E5484D"))
             except Exception:
@@ -502,6 +565,7 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
 
         def _do():
             import time as _time
+
             try:
                 import chem.psi4_compute as _pc
             except Exception as _imp_err:
@@ -513,6 +577,7 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
             _tdir = None
             try:
                 from utils.path_utils import make_temp_dir
+
                 _tdir = make_temp_dir("psi4_qtest_")
                 _xyz = os.path.join(_tdir, "h2o_quick.xyz")
                 with open(_xyz, "w", encoding="utf-8") as _f:
@@ -524,7 +589,10 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
                     )
                 t0 = _time.time()
                 res = _pc.run_psi4_task(
-                    _xyz, task_type="energy", method="hf", basis="sto-3g",
+                    _xyz,
+                    task_type="energy",
+                    method="hf",
+                    basis="sto-3g",
                     memory="1 GB",
                 )
                 elapsed = _time.time() - t0
@@ -535,33 +603,39 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
             if res.get("success"):
                 e = res.get("energy")
                 if e is not None:
-                    msg = (f"✅ 快速测试通过（HF/sto-3g 单点能）\n"
-                           f"    能量 = {e:.6f} Hartree（参考 ≈ -74.96）\n"
-                           f"    耗时 = {elapsed:.1f} 秒")
+                    msg = (
+                        f"✅ 快速测试通过（HF/sto-3g 单点能）\n"
+                        f"    能量 = {e:.6f} Hartree（参考 ≈ -74.96）\n"
+                        f"    耗时 = {elapsed:.1f} 秒"
+                    )
                 else:
-                    msg = (f"⚠️ 任务成功但能量为空，请检查 PSI4 输出\n"
-                           f"    耗时 = {elapsed:.1f} 秒")
+                    msg = f"⚠️ 任务成功但能量为空，请检查 PSI4 输出\n    耗时 = {elapsed:.1f} 秒"
                 dialog.after(0, lambda: _finish_test(msg, e is not None))
             else:
-                msg = (f"❌ 快速测试失败\n    错误：{res.get('error', '未知')}")
+                msg = f"❌ 快速测试失败\n    错误：{res.get('error', '未知')}"
                 dialog.after(0, lambda: _finish_test(msg, False))
 
         _t = threading.Thread(target=_do, daemon=True)
         _t.start()
 
     psi_test_btn = ttk.Button(
-        psi_btn_row, text="▶ 运行 PSI4 快速测试", command=_run_psi4_quick_test,
-        style="Aurora.Primary.TButton")
+        psi_btn_row, text="▶ 运行 PSI4 快速测试", command=_run_psi4_quick_test, style="Aurora.Primary.TButton"
+    )
     psi_test_btn.pack(side=tk.LEFT, padx=4)
 
     # 安装指引
-    guide_card = tk.LabelFrame(main, text="  📘 OpenBabel 安装指引 / 故障排查  ",
-                               bg="#161B22", fg="#E6EDF3", font=BOLD,
-                               relief=tk.GROOVE, bd=2)
+    guide_card = tk.LabelFrame(
+        main, text="  📘 OpenBabel 安装指引 / 故障排查  ", bg="#161B22", fg="#E6EDF3", font=BOLD, relief=tk.GROOVE, bd=2
+    )
     guide_card.pack(fill=tk.BOTH, expand=True, pady=(0, 12))
     guide_text = scrolledtext.ScrolledText(
-        guide_card, height=12, font=F.get("LOG", ("Consolas", 11)),
-        bg="#1C2330", fg="#E6EDF3", wrap=tk.WORD, bd=0,
+        guide_card,
+        height=12,
+        font=F.get("LOG", ("Consolas", 11)),
+        bg="#1C2330",
+        fg="#E6EDF3",
+        wrap=tk.WORD,
+        bd=0,
     )
     guide_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
     guide_text.configure(state="normal")
@@ -578,7 +652,10 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
             try:
                 try:
                     from ui.ui_theme import COLORS
-                    ob_status_lbl.configure(fg=(COLORS.get("success", "#0EA288") if ob_ok else COLORS.get("danger", "#E5484D")))
+
+                    ob_status_lbl.configure(
+                        fg=(COLORS.get("success", "#0EA288") if ob_ok else COLORS.get("danger", "#E5484D"))
+                    )
                 except Exception:
                     ob_status_lbl.configure(fg=("#0EA288" if ob_ok else "#E5484D"))
             except Exception:
@@ -592,9 +669,9 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
                 parts.append(f"  CLI 版本：{det['cli_version']}")
             ob_text_var.set("\n".join(parts))
             diags = []
-            for w in (det.get("warnings") or []):
+            for w in det.get("warnings") or []:
                 diags.append(f"[WARN]  {w}")
-            for d in (det.get("diagnosis") or []):
+            for d in det.get("diagnosis") or []:
                 diags.append(f"[TIP]   {d}")
             if not diags:
                 diags.append("[OK]   未发现异常。")
@@ -612,6 +689,7 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
             # 只用 find_spec 探测是否安装；已加载过才读版本号。
             import importlib.util as _ilu
             import sys as _sys
+
             _mod = _sys.modules.get("psi4")
             if _mod is not None:
                 v = getattr(_mod, "__version__", None)
@@ -643,12 +721,13 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
         except Exception as _e:
             messagebox.showerror("打开失败", f"无法打开 OpenBabel 路径设置对话框：{_e}")
 
-    ttk.Button(btns, text="🔁 重新检测", command=lambda: (_fill_ob(), _fill_psi4()),
-               style="Aurora.Primary.TButton").pack(side=tk.LEFT, padx=4)
-    ttk.Button(btns, text="🧭 手动选择 obabel 路径…", command=_open_manual_path,
-               style="Aurora.BigAccent.TButton").pack(side=tk.LEFT, padx=4)
-    ttk.Button(btns, text="关闭", command=dialog.destroy,
-               style="Aurora.TButton").pack(side=tk.RIGHT, padx=4)
+    ttk.Button(
+        btns, text="🔁 重新检测", command=lambda: (_fill_ob(), _fill_psi4()), style="Aurora.Primary.TButton"
+    ).pack(side=tk.LEFT, padx=4)
+    ttk.Button(btns, text="🧭 手动选择 obabel 路径…", command=_open_manual_path, style="Aurora.BigAccent.TButton").pack(
+        side=tk.LEFT, padx=4
+    )
+    ttk.Button(btns, text="关闭", command=dialog.destroy, style="Aurora.TButton").pack(side=tk.RIGHT, padx=4)
 
     try:
         dialog.after(80, _fill_ob)
@@ -683,38 +762,58 @@ def show_obabel_path_dialog(app, parent=None, on_saved_callback=None):
     main = tk.Frame(dialog, bg="#161B22")
     main.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
 
-    tk.Label(main, text="🧭  OpenBabel 可执行文件路径设置",
-             bg="#161B22", fg="#E6EDF3",
-             font=F.get("H1", ("Microsoft YaHei", 14, "bold"))
-             ).pack(anchor="w", pady=(0, 10))
+    tk.Label(
+        main,
+        text="🧭  OpenBabel 可执行文件路径设置",
+        bg="#161B22",
+        fg="#E6EDF3",
+        font=F.get("H1", ("Microsoft YaHei", 14, "bold")),
+    ).pack(anchor="w", pady=(0, 10))
 
-    tip = ("如果自动找不到 obabel 命令行，可在这里手动选择它的可执行文件\n"
-           "  Windows：obabel.exe（一般在 C:\\Program Files\\OpenBabel-3.1.1\\）\n"
-           "  Linux/macOS：一般在 /usr/bin/obabel、~/anaconda3/bin/obabel")
-    tk.Label(main, text=tip, bg="#161B22", fg="#9DA7B3",
-             font=SMALL, justify="left").pack(anchor="w", pady=(0, 12))
+    tip = (
+        "如果自动找不到 obabel 命令行，可在这里手动选择它的可执行文件\n"
+        "  Windows：obabel.exe（一般在 C:\\Program Files\\OpenBabel-3.1.1\\）\n"
+        "  Linux/macOS：一般在 /usr/bin/obabel、~/anaconda3/bin/obabel"
+    )
+    tk.Label(main, text=tip, bg="#161B22", fg="#9DA7B3", font=SMALL, justify="left").pack(anchor="w", pady=(0, 12))
 
     row_cur = tk.Frame(main, bg="#161B22")
     row_cur.pack(fill=tk.X, pady=(0, 8))
-    tk.Label(row_cur, text="当前解析到的路径：", bg="#161B22", fg="#E6EDF3",
-             font=BOLD).pack(side=tk.LEFT)
+    tk.Label(row_cur, text="当前解析到的路径：", bg="#161B22", fg="#E6EDF3", font=BOLD).pack(side=tk.LEFT)
     cur_var = tk.StringVar(value="(请先点「重新检测」)")
-    cur_label = tk.Label(row_cur, textvariable=cur_var, bg="#161B22", fg="#58A6FF",
-                         font=SMALL, relief=tk.SUNKEN, padx=8, pady=4, justify="left")
+    cur_label = tk.Label(
+        row_cur,
+        textvariable=cur_var,
+        bg="#161B22",
+        fg="#58A6FF",
+        font=SMALL,
+        relief=tk.SUNKEN,
+        padx=8,
+        pady=4,
+        justify="left",
+    )
     cur_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
     row_path = tk.Frame(main, bg="#161B22")
     row_path.pack(fill=tk.X, pady=(6, 8))
-    tk.Label(row_path, text="手动指定路径：", bg="#161B22", fg="#E6EDF3",
-             font=BOLD, width=14, anchor="w").pack(side=tk.LEFT)
+    tk.Label(row_path, text="手动指定路径：", bg="#161B22", fg="#E6EDF3", font=BOLD, width=14, anchor="w").pack(
+        side=tk.LEFT
+    )
     path_var = tk.StringVar(value=str((getattr(app, "config_data", {}) or {}).get("obabel_path", "") or ""))
     entry = ttk.Entry(row_path, textvariable=path_var, font=BASE)
     entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 6))
 
     def _browse():
-        filetypes = [("OpenBabel 可执行文件", "*.exe"), ("所有文件", "*.*")] \
-            if sys.platform == "win32" else [("所有文件", "*.*")]
-        initdir = str(Path(path_var.get()).parent) if path_var.get() and os.path.exists(path_var.get()) else os.path.expanduser("~")
+        filetypes = (
+            [("OpenBabel 可执行文件", "*.exe"), ("所有文件", "*.*")]
+            if sys.platform == "win32"
+            else [("所有文件", "*.*")]
+        )
+        initdir = (
+            str(Path(path_var.get()).parent)
+            if path_var.get() and os.path.exists(path_var.get())
+            else os.path.expanduser("~")
+        )
         selected = filedialog.askopenfilename(
             parent=dialog,
             title="选择 obabel 可执行文件",
@@ -733,8 +832,9 @@ def show_obabel_path_dialog(app, parent=None, on_saved_callback=None):
     ttk.Button(row_path, text="使用自动查找", command=_auto).pack(side=tk.LEFT, padx=2)
 
     result_var = tk.StringVar(value="")
-    res_label = tk.Label(main, textvariable=result_var, bg="#161B22", fg="#E6EDF3",
-                         font=BASE, justify="left", anchor="w")
+    res_label = tk.Label(
+        main, textvariable=result_var, bg="#161B22", fg="#E6EDF3", font=BASE, justify="left", anchor="w"
+    )
     res_label.pack(fill=tk.X, pady=(4, 8))
 
     def _detect():
@@ -744,15 +844,20 @@ def show_obabel_path_dialog(app, parent=None, on_saved_callback=None):
         else:
             ob_utils.set_manual_obabel_path(None)
         ok, msg, det = ob_utils.check_openbabel()
-        cur_var.set(str(det.get("resolved_cli_path") or "(未解析到)")
-                    + ("   （手动路径）" if det.get("manual_path_used") else "   （自动）"))
+        cur_var.set(
+            str(det.get("resolved_cli_path") or "(未解析到)")
+            + ("   （手动路径）" if det.get("manual_path_used") else "   （自动）")
+        )
         result_var.set(("✅ " + msg) if ok else ("❌ " + msg))
         return ok, msg, det
 
     def _test():
         ok, msg, det = _detect()
         if ok:
-            messagebox.showinfo("OpenBabel 检测通过", f"{msg}\n\n诊断：\n" + "\n  • ".join([""] + (det.get("diagnosis") or ["未发现问题"])))
+            messagebox.showinfo(
+                "OpenBabel 检测通过",
+                f"{msg}\n\n诊断：\n" + "\n  • ".join([""] + (det.get("diagnosis") or ["未发现问题"])),
+            )
         else:
             lines = [msg]
             if det.get("diagnosis"):
@@ -773,6 +878,7 @@ def show_obabel_path_dialog(app, parent=None, on_saved_callback=None):
             app.config_data = cfg
             try:
                 from utils.config import save_config
+
                 save_config(cfg)
             except Exception as _se:
                 logger.warning("保存 obabel_path 到配置失败：%s", _se)

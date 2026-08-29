@@ -13,38 +13,39 @@ from ui.ui_theme import (
 
 # ------------------------- 🎨 主题颜色常量 -------------------------
 
+
 class AuroraTheme:
     # 已切换为深色（与主窗口 ui_theme.DARK 一致），所有引用 AuroraTheme.* 的对话框自动转深色
-    BG_START     = "#0F1419"
-    BG_END       = "#161B22"
-    CARD_BG      = "#161B22"
-    CARD_BORDER  = "#232B3A"
-    CARD_HL      = "#2DD4BF"
-    CARD_SHADE   = "#1C2330"
-    TEXT_MAIN    = "#E6EDF3"
-    TEXT_MUTED   = "#9DA7B3"
-    TEXT_BADGE   = "#0F1419"
-    BRAND_BLUE   = "#2DD4BF"
-    BRAND_GREEN  = "#3FB950"
+    BG_START = "#0F1419"
+    BG_END = "#161B22"
+    CARD_BG = "#161B22"
+    CARD_BORDER = "#232B3A"
+    CARD_HL = "#2DD4BF"
+    CARD_SHADE = "#1C2330"
+    TEXT_MAIN = "#E6EDF3"
+    TEXT_MUTED = "#9DA7B3"
+    TEXT_BADGE = "#0F1419"
+    BRAND_BLUE = "#2DD4BF"
+    BRAND_GREEN = "#3FB950"
     BRAND_PURPLE = "#8B5CF6"
     BRAND_ORANGE = "#D29922"
-    BRAND_RED    = "#F85149"
-    STEP_1       = "#2DD4BF"
-    STEP_2       = "#8B5CF6"
-    STEP_3       = "#3FB950"
-    TOOLTIP_BG   = "#1C2330"
-    TOOLTIP_FG   = "#E6EDF3"
-    TREE_EVEN    = "#161B22"
-    TREE_ODD     = "#1C2330"
-    TREE_SEL_BG  = "#2DD4BF"
-    TREE_SEL_FG  = "#1A2142"
-    LOG_BG       = "#F8FAFF"
-    LOG_SEL      = "#3B6EFF"
+    BRAND_RED = "#F85149"
+    STEP_1 = "#2DD4BF"
+    STEP_2 = "#8B5CF6"
+    STEP_3 = "#3FB950"
+    TOOLTIP_BG = "#1C2330"
+    TOOLTIP_FG = "#E6EDF3"
+    TREE_EVEN = "#161B22"
+    TREE_ODD = "#1C2330"
+    TREE_SEL_BG = "#2DD4BF"
+    TREE_SEL_FG = "#1A2142"
+    LOG_BG = "#F8FAFF"
+    LOG_SEL = "#3B6EFF"
 
     @staticmethod
     def glow(base: str, pct: float = 0.2) -> str:
         base = base.lstrip("#")
-        r, g, b = (int(base[i:i+2], 16) for i in (0, 2, 4))
+        r, g, b = (int(base[i : i + 2], 16) for i in (0, 2, 4))
         r = int(r + (255 - r) * pct)
         g = int(g + (255 - g) * pct)
         b = int(b + (255 - b) * pct)
@@ -54,6 +55,7 @@ class AuroraTheme:
 # ------------------------- 🔠 字体基线（问题一：字太小 修复） -------------------------
 # 所有控件显式指定 font=app._fonts["BASE"] 等，避免依赖系统默认 9pt。
 # font_size 来自 config.font_size（默认 14pt），配合 DPI 放大系数再调整一次。
+
 
 def resolve_font_specs(app, force_pt: int | None = None) -> dict:
     """
@@ -72,14 +74,14 @@ def resolve_font_specs(app, force_pt: int | None = None) -> dict:
         raw_pt = int(force_pt)
     else:
         raw_pt = int(cfg.get("font_size", 14) or 14)
-    raw_pt = max(8, min(24, raw_pt))                      # 8..24pt（字体对话框放宽）
+    raw_pt = max(8, min(24, raw_pt))  # 8..24pt（字体对话框放宽）
 
     # DPI 放大（Windows 125% 缩放常见）：如果 config.font_follow_dpi=True，按 DPI/96 再乘一次
     follow_dpi = bool(cfg.get("font_follow_dpi", True))
     scale = 1.0
     if follow_dpi:
         try:
-            dpi = float(app.winfo_fpixels("1i"))           # 1 英寸 = DPI 像素
+            dpi = float(app.winfo_fpixels("1i"))  # 1 英寸 = DPI 像素
             if dpi > 0:
                 scale = dpi / 96.0
         except Exception:
@@ -91,8 +93,8 @@ def resolve_font_specs(app, force_pt: int | None = None) -> dict:
     base_pt = max(10, int(round(raw_pt * scale)))
     bold_pt = base_pt
     tree_pt = max(10, base_pt - 1)
-    log_pt  = max(10, base_pt - 1)
-    tab_pt  = base_pt
+    log_pt = max(10, base_pt - 1)
+    tab_pt = base_pt
     btn_big_pt = max(11, base_pt)
     h1_pt = max(12, base_pt + 2)
 
@@ -101,21 +103,21 @@ def resolve_font_specs(app, force_pt: int | None = None) -> dict:
     family_mono = "Consolas" if sys.platform == "win32" else "Menlo"
 
     specs = {
-        "BASE":      (family_cn, base_pt),
-        "BOLD":      (family_cn, bold_pt, "bold"),
-        "SMALL":     (family_cn, max(10, base_pt - 1)),
-        "H1":        (family_cn, h1_pt, "bold"),
-        "TREE":      (family_cn, tree_pt),
-        "TREEHEAD":  (family_cn, tree_pt, "bold"),
-        "TAB":       (family_cn, tab_pt, "bold"),
-        "BIGBTN":    (family_cn, btn_big_pt, "bold"),
-        "BTN":       (family_cn, base_pt, "bold"),
-        "BTN2":      (family_cn, base_pt),
-        "ENTRY":     (family_cn, base_pt),
-        "LABEL":     (family_cn, base_pt),
-        "LOG":       (family_mono, log_pt),
-        "STATUS":    (family_cn, max(10, base_pt - 1)),
-        "TOOLTIP":   (family_cn, max(9, base_pt - 2)),
+        "BASE": (family_cn, base_pt),
+        "BOLD": (family_cn, bold_pt, "bold"),
+        "SMALL": (family_cn, max(10, base_pt - 1)),
+        "H1": (family_cn, h1_pt, "bold"),
+        "TREE": (family_cn, tree_pt),
+        "TREEHEAD": (family_cn, tree_pt, "bold"),
+        "TAB": (family_cn, tab_pt, "bold"),
+        "BIGBTN": (family_cn, btn_big_pt, "bold"),
+        "BTN": (family_cn, base_pt, "bold"),
+        "BTN2": (family_cn, base_pt),
+        "ENTRY": (family_cn, base_pt),
+        "LABEL": (family_cn, base_pt),
+        "LOG": (family_mono, log_pt),
+        "STATUS": (family_cn, max(10, base_pt - 1)),
+        "TOOLTIP": (family_cn, max(9, base_pt - 2)),
     }
     app._fonts = specs
     # 菜单栏右侧「字号 Npt」快捷显示：有就更新
@@ -139,6 +141,7 @@ def resolve_font_specs(app, force_pt: int | None = None) -> dict:
 
 # ------------------------- 🧭 自绘菜单栏（设置 / 帮助：字体完全可控）-------------------------
 
+
 def _toggle_theme(app) -> None:
     """在「设置」菜单中切换浅色/深色主题：持久化 + 应用 + 刷新工厂控件 + 提示重启。
 
@@ -148,20 +151,19 @@ def _toggle_theme(app) -> None:
         import tkinter.messagebox as _mb
 
         from ui.dialogs.common import _restart_app
+
         _new = "light" if get_current_theme() == "dark" else "dark"
         save_theme_preference(_new)
         set_current_theme(_new)
         apply_theme(app, _new)
         refresh_themed_widgets()
         _label = "浅色" if _new == "light" else "深色"
-        if _mb.askyesno("已切换主题",
-                        f"已切换为「{_label}」主题。\n\n"
-                        "部分已显示的界面需重启后完全生效，是否立即重启？",
-                        parent=app):
+        if _mb.askyesno(
+            "已切换主题", f"已切换为「{_label}」主题。\n\n部分已显示的界面需重启后完全生效，是否立即重启？", parent=app
+        ):
             _restart_app(app)
     except Exception as _e:
-        print("[ui_builder] toggle_theme failed:", _e)
-
+        print("[ui_builder] toggle_theme failed:", _e)  # noqa: T201
 
 
 def apply_aurora_theme(app) -> None:
@@ -180,14 +182,14 @@ def apply_aurora_theme(app) -> None:
             fonts = resolve_font_specs(app)
         except Exception:
             fonts = {
-                "BASE":      ("Microsoft YaHei UI", 12),
-                "BOLD":      ("Microsoft YaHei UI", 12, "bold"),
-                "BIGBTN":    ("Microsoft YaHei UI", 13, "bold"),
-                "BTN":       ("Microsoft YaHei UI", 12, "bold"),
-                "TREE":      ("Microsoft YaHei UI", 11),
-                "TREEHEAD":  ("Microsoft YaHei UI", 11, "bold"),
-                "TAB":       ("Microsoft YaHei UI", 12, "bold"),
-                "ENTRY":     ("Microsoft YaHei UI", 12),
+                "BASE": ("Microsoft YaHei UI", 12),
+                "BOLD": ("Microsoft YaHei UI", 12, "bold"),
+                "BIGBTN": ("Microsoft YaHei UI", 13, "bold"),
+                "BTN": ("Microsoft YaHei UI", 12, "bold"),
+                "TREE": ("Microsoft YaHei UI", 11),
+                "TREEHEAD": ("Microsoft YaHei UI", 11, "bold"),
+                "TAB": ("Microsoft YaHei UI", 12, "bold"),
+                "ENTRY": ("Microsoft YaHei UI", 12),
             }
 
     style.configure(
@@ -403,6 +405,7 @@ def apply_aurora_theme(app) -> None:
 
 # ------------------------- 🎨 渐变背景画布 -------------------------
 
+
 class AuroraGradientCanvas(tk.Canvas):
     def __init__(self, master, c1: str, c2: str, particles: int = 14, **kwargs):
         super().__init__(master, highlightthickness=0, bd=0, **kwargs)
@@ -455,6 +458,7 @@ class AuroraGradientCanvas(tk.Canvas):
             col = self._rgb2hex(self._lerp(rgb1[i], rgb2[i], t_e) for i in range(3))
             self.create_rectangle(0, y, w, y + 2, fill=col, outline=col)
         import random
+
         rng = random.Random(42)
         palette = [AuroraTheme.BRAND_BLUE, AuroraTheme.BRAND_GREEN, AuroraTheme.BRAND_PURPLE]
         for i in range(self._particles_n):
@@ -467,9 +471,9 @@ class AuroraGradientCanvas(tk.Canvas):
                 rgb = self._hex2rgb(col)
                 bg = self._hex2rgb(self._c2 if cy / h > 0.5 else self._c1)
                 mixed = self._rgb2hex(self._lerp(bg[i], rgb[i], alpha) for i in range(3))
-                self.create_oval(cx - r * k / 6, cy - r * k / 6,
-                                 cx + r * k / 6, cy + r * k / 6,
-                                 fill=mixed, outline=mixed)
+                self.create_oval(
+                    cx - r * k / 6, cy - r * k / 6, cx + r * k / 6, cy + r * k / 6, fill=mixed, outline=mixed
+                )
         try:
             w2 = self.winfo_width()
             h2 = self.winfo_height()
@@ -481,8 +485,10 @@ class AuroraGradientCanvas(tk.Canvas):
 
 # ------------------------- 🎨 玻璃卡片容器 -------------------------
 
-def make_aurora_card(parent, title: str | None = None, accent: str | None = None, *,
-                     app_ref=None) -> tuple[tk.Frame, tk.Frame]:
+
+def make_aurora_card(
+    parent, title: str | None = None, accent: str | None = None, *, app_ref=None
+) -> tuple[tk.Frame, tk.Frame]:
     T = AuroraTheme
     accent = accent or T.BRAND_GREEN
     outer = tk.Frame(
@@ -512,7 +518,8 @@ def make_aurora_card(parent, title: str | None = None, accent: str | None = None
             bg=T.CARD_BG,
             fg=T.TEXT_MAIN,
             font=title_font,
-            padx=10, pady=0,
+            padx=10,
+            pady=0,
         ).pack(side=tk.LEFT)
         rule = tk.Frame(header, bg=T.CARD_BG, height=22)
         rule.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 0))
@@ -522,6 +529,7 @@ def make_aurora_card(parent, title: str | None = None, accent: str | None = None
 
 
 # ------------------------- 🫧 Tooltip 升级：玻璃胶囊 -------------------------
+
 
 class ToolTip:
     def __init__(self, widget, text: str, font=None):
@@ -580,7 +588,6 @@ class ToolTip:
             self.tip_window = None
 
 
-
 def add_tooltip(widget, text: str, font=None):
     ToolTip(widget, text, font=font)
 
@@ -598,6 +605,7 @@ def add_tooltip(widget, text: str, font=None):
 
 # ------------------------- 🔧 辅助：可折叠面板（Labelframe 可「展开/收起」） -------------------------
 
+
 class CollapsibleFrame(tk.LabelFrame):
     """
     一个可折叠的 LabelFrame：标题栏右侧有「▼/▶」按钮，点击后收起下方内容；
@@ -608,7 +616,7 @@ class CollapsibleFrame(tk.LabelFrame):
         kwargs.setdefault("bg", COLORS["card_bg"])
         kwargs.setdefault("fg", COLORS["text"])
         # 字太小：LabelFrame 标题默认 12→至少 13pt bold（跟随 config 默认 14pt 的 BOLD 基线）
-        kwargs.setdefault("font", ('Microsoft YaHei', 13, 'bold'))
+        kwargs.setdefault("font", ("Microsoft YaHei", 13, "bold"))
         kwargs.setdefault("relief", tk.GROOVE)
         kwargs.setdefault("bd", 2)
         super().__init__(master, text=f"  {title}  ", **kwargs)
@@ -624,14 +632,23 @@ class CollapsibleFrame(tk.LabelFrame):
             _app = master.winfo_toplevel()
         except Exception:
             _app = None
-        _btn_font = getattr(_app, '_fonts', {}).get('BTN', ('Microsoft YaHei', 12, 'bold')) \
-            if _app is not None else ('Microsoft YaHei', 12, 'bold')
+        _btn_font = (
+            getattr(_app, "_fonts", {}).get("BTN", ("Microsoft YaHei", 12, "bold"))
+            if _app is not None
+            else ("Microsoft YaHei", 12, "bold")
+        )
 
         # 「▼ / ▶」切换按钮：嵌入 labelwidget 机制更复杂，这里在 label_frame 的「空白」放
         # 一个小按钮到右上角即可（grid 里塞一个 LabelFrame 内没有直接右上角位置，改用叠加实现）
         self._toggle_btn = tk.Button(
-            self, text="▼", relief=tk.FLAT, bg=COLORS["card_bg"], fg=COLORS["primary"],
-            font=_btn_font, cursor="hand2", width=3,
+            self,
+            text="▼",
+            relief=tk.FLAT,
+            bg=COLORS["card_bg"],
+            fg=COLORS["primary"],
+            font=_btn_font,
+            cursor="hand2",
+            width=3,
             command=self._toggle,
         )
         # 用 place 放到右上角，不影响 body 的 pack/grid
@@ -670,7 +687,6 @@ class CollapsibleFrame(tk.LabelFrame):
 # ------------------------- 🎨 颜色调色板（双主题，随 ui_theme 当前主题切换） -------------------------
 # COLORS 现为 ui.ui_theme 的 ThemeColors 代理：COLORS["bg"] / COLORS.get("bg", d)
 # 始终返回「当前主题」的调色板值，构建新控件与运行时查询自动跟随主题。
-
 
 
 def _make_scrolled_frame(master, bg, use_x=True, use_y=True):
@@ -730,11 +746,11 @@ def _make_scrolled_frame(master, bg, use_x=True, use_y=True):
     return outer, inner
 
 
-
 def apply_aurora_theme_if_available(app):
     """如果有 apply_aurora_theme 就调用（tkk Notebook/Progressbar/Button 样式更统一）。"""
     try:
         from ui.ui_builder import apply_aurora_theme
+
         apply_aurora_theme(app)
     except Exception:
         pass

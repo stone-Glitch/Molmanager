@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 核心领域数据结构（框架无关的纯数据定义）。
 

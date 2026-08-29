@@ -16,7 +16,6 @@ def clear_caches() -> tuple[int, int]:
     return d, m
 
 
-
 def _cache_key(path_str: str) -> tuple[str, int, int, str | None] | None:
     """返回 (解析后路径, mtime_ns, 大小, 内容哈希或None)。
 
@@ -25,7 +24,6 @@ def _cache_key(path_str: str) -> tuple[str, int, int, str | None] | None:
     仅对小文件计算，大文件（P-3 场景）跳过哈希以保性能。
     """
     return make_file_cache_key(path_str, max_hash_bytes=_CONTENT_HASH_MAX_BYTES)
-
 
 
 def cache_stats() -> dict[str, int]:

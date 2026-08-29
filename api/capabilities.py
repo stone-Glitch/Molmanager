@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """后端能力探测：OpenBabel / PSI4 是否可用。
 
 设计要点：

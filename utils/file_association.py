@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 E-06 反向追溯（纯逻辑层）
 
@@ -9,6 +8,7 @@ E-06 反向追溯（纯逻辑层）
 
 纯字符串处理，零文件系统依赖，可在沙箱单测。
 """
+
 from typing import NamedTuple
 
 # 视为「结构本体」的扩展名（追溯的锚点）
@@ -19,9 +19,9 @@ RESULT_EXTS = (".log", ".out", ".fchk", ".inp", ".gjf", ".com", ".json")
 
 class FileLink(NamedTuple):
     stem: str
-    structure: str | None          # 结构文件全名（若有）
-    results: list[str]                # 计算结果文件全名列表
-    extras: list[str]                 # 同词干但不属于上述两类的文件
+    structure: str | None  # 结构文件全名（若有）
+    results: list[str]  # 计算结果文件全名列表
+    extras: list[str]  # 同词干但不属于上述两类的文件
 
 
 def _stem_of(name: str) -> str:
@@ -88,5 +88,4 @@ def unlinked_results(links: list[FileLink]) -> list[str]:
     return out
 
 
-__all__ = ["FileLink", "STRUCTURE_EXTS", "RESULT_EXTS",
-           "associate_by_stem", "unlinked_results", "_stem_of", "_ext_of"]
+__all__ = ["FileLink", "STRUCTURE_EXTS", "RESULT_EXTS", "associate_by_stem", "unlinked_results", "_stem_of", "_ext_of"]

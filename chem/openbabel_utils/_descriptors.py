@@ -181,7 +181,7 @@ def calculate_descriptors(input_path: str) -> dict[str, Any]:
                 cmd = ["obabel", input_path, "-o", "prop", "-O", tmp_name]
                 cmd_result = _run_obabel(cmd, timeout=30)
                 if cmd_result.returncode == 0 and os.path.exists(tmp_name):
-                    with open(tmp_name, encoding='utf-8', errors='replace') as f:
+                    with open(tmp_name, encoding="utf-8", errors="replace") as f:
                         data = f.read()
                     descriptors["info"] = data.strip()
                 else:
@@ -201,6 +201,7 @@ def calculate_descriptors(input_path: str) -> dict[str, Any]:
 
 
 # ======================== O3：分子式 / 精确分子量 / 元素百分比 ========================
+
 
 def analyze_formula(input_path: str) -> dict[str, Any]:
     """
@@ -296,6 +297,7 @@ def analyze_formula(input_path: str) -> dict[str, Any]:
 
 # ======================== O6：导出键长 / 键角 CSV ========================
 
+
 def export_geometry_csv(input_path: str, out_csv_path: str) -> dict[str, Any]:
     """
     提取分子所有键长（Å）及所有可能的 1-2-3 键角（度），写 CSV。
@@ -322,9 +324,11 @@ def export_geometry_csv(input_path: str, out_csv_path: str) -> dict[str, Any]:
             iter_atoms = list(mol.atoms)
         for idx, a in enumerate(iter_atoms):
             if hasattr(a, "GetX"):
-                sym = a.GetSymbol(); x, y, z = a.GetX(), a.GetY(), a.GetZ()
+                sym = a.GetSymbol()
+                x, y, z = a.GetX(), a.GetY(), a.GetZ()
             else:
-                sym = a.symbol; x, y, z = a.coords
+                sym = a.symbol
+                x, y, z = a.coords
             atoms_list.append((idx + 1, str(sym), [float(x), float(y), float(z)]))  # 1-based 编号
 
         # 键长
@@ -332,11 +336,13 @@ def export_geometry_csv(input_path: str, out_csv_path: str) -> dict[str, Any]:
         try:
             iter_bonds = list(obmol.GetBonds())
             for b in iter_bonds:
-                i = b.GetBeginAtomIdx(); j = b.GetEndAtomIdx()
+                i = b.GetBeginAtomIdx()
+                j = b.GetEndAtomIdx()
                 if hasattr(b, "GetLength"):
                     length = float(b.GetLength())
                 else:
                     import math
+
                     a1 = next((a for a in atoms_list if a[0] == i), None)
                     a2 = next((a for a in atoms_list if a[0] == j), None)
                     if not a1 or not a2:
@@ -348,6 +354,7 @@ def export_geometry_csv(input_path: str, out_csv_path: str) -> dict[str, Any]:
         except Exception:
             import itertools
             import math
+
             # 回退：根据原子间距 < 1.85Å 猜测键（通用有机分子，金属键可能不准）
             for (i1, s1, c1), (i2, s2, c2) in itertools.combinations(atoms_list, 2):
                 d = math.sqrt(sum((c1[k] - c2[k]) ** 2 for k in range(3)))
@@ -362,12 +369,14 @@ def export_geometry_csv(input_path: str, out_csv_path: str) -> dict[str, Any]:
                 neighbors.setdefault(i, []).append(j)
                 neighbors.setdefault(j, []).append(i)
             import math
+
             sym_map = {a[0]: a[1] for a in atoms_list}
             coord_map = {a[0]: a[2] for a in atoms_list}
             for center, neigh in neighbors.items():
                 if len(neigh) < 2:
                     continue
                 import itertools as _it
+
                 for a1, a2 in _it.combinations(neigh, 2):
                     if center not in coord_map or a1 not in coord_map or a2 not in coord_map:
                         continue
@@ -381,9 +390,17 @@ def export_geometry_csv(input_path: str, out_csv_path: str) -> dict[str, Any]:
                         continue
                     cosang = max(-1.0, min(1.0, dot / (n1 * n2)))
                     deg = math.degrees(math.acos(cosang))
-                    angles_list.append((a1, center, a2,
-                                        sym_map.get(a1, "?"), sym_map.get(center, "?"), sym_map.get(a2, "?"),
-                                        round(deg, 3)))
+                    angles_list.append(
+                        (
+                            a1,
+                            center,
+                            a2,
+                            sym_map.get(a1, "?"),
+                            sym_map.get(center, "?"),
+                            sym_map.get(a2, "?"),
+                            round(deg, 3),
+                        )
+                    )
         except Exception as e_ang:
             logger.debug("计算键角失败：%s", e_ang)
         # 写 CSV
@@ -412,6 +429,7 @@ def export_geometry_csv(input_path: str, out_csv_path: str) -> dict[str, Any]:
 
 
 # ======================== O2：SMILES → InChIKey 搜索本地相似分子 ========================
+
 
 def smiles_to_inchikey(smiles: str) -> dict[str, Any]:
     """
@@ -461,7 +479,6 @@ def smiles_to_inchikey(smiles: str) -> dict[str, Any]:
         }
     except Exception as e:
         return {"success": False, "message": f"SMILES 解析失败：{e}"}
-
 
 
 def batch_inchikey(paths: list[str]) -> dict[str, str | None]:

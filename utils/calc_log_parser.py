@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 E-07 多计算程序日志解析（Gaussian / ORCA / CP2K）· 纯逻辑层
 
@@ -9,6 +8,7 @@ E-07 多计算程序日志解析（Gaussian / ORCA / CP2K）· 纯逻辑层
 只做正则抽取，字段找不到就记 "unknown" / None，绝不伪造。纯 stdlib，
 可在沙箱用合成日志单测。
 """
+
 import re
 from typing import Any
 
@@ -26,15 +26,13 @@ def detect_engine(text: str) -> str:
     return "unknown"
 
 
-_GAUSS_ENERGY = re.compile(
-    r"SCF Done:\s+E\([^)]*\)\s*=\s*([-+]?\d+\.\d+)", re.IGNORECASE)
+_GAUSS_ENERGY = re.compile(r"SCF Done:\s+E\([^)]*\)\s*=\s*([-+]?\d+\.\d+)", re.IGNORECASE)
 _GAUSS_NORM = re.compile(r"Normal termination of Gaussian", re.IGNORECASE)
 
 _ORCA_ENERGY = re.compile(r"FINAL SINGLE POINT ENERGY\s+([-+]?\d+\.\d+)", re.IGNORECASE)
 _ORCA_NORM = re.compile(r"ORCA TERMINATED NORMALLY", re.IGNORECASE)
 
-_CP2K_ENERGY = re.compile(
-    r"Total FORCE_EVAL \( QS \) energy \[a\.u\.\]\s*=\s*([-+]?\d+\.\d+)", re.IGNORECASE)
+_CP2K_ENERGY = re.compile(r"Total FORCE_EVAL \( QS \) energy \[a\.u\.\]\s*=\s*([-+]?\d+\.\d+)", re.IGNORECASE)
 _CP2K_NORM = re.compile(r"PROGRAM ENDED AT", re.IGNORECASE)
 
 
@@ -65,8 +63,13 @@ def _gaussian_method_basis(text: str):
 
 
 def parse_gaussian(text: str) -> dict[str, Any]:
-    res: dict[str, Any] = {"engine": "gaussian", "energy": None,
-                           "converged": None, "method": "unknown", "basis": "unknown"}
+    res: dict[str, Any] = {
+        "engine": "gaussian",
+        "energy": None,
+        "converged": None,
+        "method": "unknown",
+        "basis": "unknown",
+    }
     m = _GAUSS_ENERGY.search(text)
     if m:
         res["energy"] = float(m.group(1))
@@ -78,8 +81,7 @@ def parse_gaussian(text: str) -> dict[str, Any]:
 
 
 def parse_orca(text: str) -> dict[str, Any]:
-    res: dict[str, Any] = {"engine": "orca", "energy": None,
-                           "converged": None, "method": "unknown", "basis": "unknown"}
+    res: dict[str, Any] = {"engine": "orca", "energy": None, "converged": None, "method": "unknown", "basis": "unknown"}
     m = _ORCA_ENERGY.search(text)
     if m:
         res["energy"] = float(m.group(1))
@@ -99,8 +101,7 @@ def parse_orca(text: str) -> dict[str, Any]:
 
 
 def parse_cp2k(text: str) -> dict[str, Any]:
-    res: dict[str, Any] = {"engine": "cp2k", "energy": None,
-                           "converged": None, "method": "unknown", "basis": "unknown"}
+    res: dict[str, Any] = {"engine": "cp2k", "energy": None, "converged": None, "method": "unknown", "basis": "unknown"}
     m = _CP2K_ENERGY.search(text)
     if m:
         res["energy"] = float(m.group(1))
@@ -117,8 +118,7 @@ def parse_calc_log(text: str) -> dict[str, Any]:
         return parse_orca(text)
     if engine == "cp2k":
         return parse_cp2k(text)
-    return {"engine": "unknown", "energy": None, "converged": None,
-            "method": "unknown", "basis": "unknown"}
+    return {"engine": "unknown", "energy": None, "converged": None, "method": "unknown", "basis": "unknown"}
 
 
 __all__ = ["detect_engine", "parse_gaussian", "parse_orca", "parse_cp2k", "parse_calc_log"]

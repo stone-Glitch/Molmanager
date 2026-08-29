@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 E-09 HPC 作业脚本生成器（SLURM / PBS）· 纯逻辑层
 

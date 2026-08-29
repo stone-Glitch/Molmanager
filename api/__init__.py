@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """MolManager 可选 HTTP 接口层（FastAPI）。
 
 安装：``pip install -e ".[api]"``

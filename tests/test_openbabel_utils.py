@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """chem/openbabel_utils —— 需要真实 OpenBabel 的功能测试。
 
 未装 OpenBabel 时整文件跳过；纯逻辑与命名空间回归见
@@ -61,9 +60,9 @@ def test_descriptors_of_first_molecule(smiles_file: str) -> None:
     d = r["descriptors"]
     assert d["formula"] == "C6H6"
     assert d["molecular_weight"] == pytest.approx(78.11, abs=0.5)
-    assert d["num_atoms"] == 6           # SMILES 读入不显式加氢：6 个重原子
+    assert d["num_atoms"] == 6  # SMILES 读入不显式加氢：6 个重原子
     assert d["heavy_atoms"] == 6
-    assert d["rings"] == 1               # 一个苯环
+    assert d["rings"] == 1  # 一个苯环
     assert d["bonds"] == 6
 
 
@@ -81,20 +80,21 @@ def test_descriptors_of_aspirin(tmp_path) -> None:
     d = r["descriptors"]
     assert d["formula"] == "C9H8O4"
     assert d["molecular_weight"] == pytest.approx(180.16, abs=0.1)
-    assert d["num_atoms"] == 13          # 9 C + 4 O（H 为隐式氢）
+    assert d["num_atoms"] == 13  # 9 C + 4 O（H 为隐式氢）
     # 以下四项是修复前恒为 0 的指标
     assert d["logP"] == pytest.approx(1.31, abs=0.1)
     assert d["tpsa"] == pytest.approx(63.6, abs=1.0)
     assert d["hbd"] == 1
     assert d["hba"] == 4
-    assert d["rings"] == 1               # 一个苯环
+    assert d["rings"] == 1  # 一个苯环
     assert d["rotors"] == 3
 
 
 def test_descriptors_of_missing_file(tmp_path) -> None:
     r = calculate_descriptors(str(tmp_path / "nope.mol"))
     # 允许 success=False，但绝不能抛异常
-    assert isinstance(r, dict) and "success" in r
+    assert isinstance(r, dict)
+    assert "success" in r
 
 
 def test_descriptors_are_cached(smiles_file: str) -> None:

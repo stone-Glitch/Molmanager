@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 对话框模块 - 路由
 保持原 Dialogs 类接口不变，实际实现拆分到各子模块。
 """
+
 from .advanced_tools_dialog import show_advanced_tools_dialog
 from .analytics_dialog import export_geometry_csv, show_formula_dialog
 from .backup_dialog import show_backup_manager_dialog
@@ -39,6 +39,7 @@ from .update_dialog import (
 
 class Dialogs:
     """保持原接口，所有方法转发到子模块函数"""
+
     def __init__(self, app, controller):
         self.app = app
         self.controller = controller

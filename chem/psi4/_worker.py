@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 PSI4 持久热 worker（被 run_psi4_task_cancellable 以 `python -m chem.psi4._worker` 启动）。
 
@@ -11,6 +10,7 @@ psi4 导入开销 —— 这是消除「每次计算都重导 psi4 约 10~15s」
 取消 / 超时由父进程通过杀掉本进程树实现（PSI4 C++ 调用本身不可中断）；强杀后父进程会按需
 重启本 worker（下一次计算再次承担一次导入，仅取消时付出该代价）。
 """
+
 import json
 import os
 import sys
@@ -66,8 +66,7 @@ def main():
             if idle > IDLE_TIMEOUT_SECONDS:
                 # 空闲超时：关闭 stdin，主循环下次读即 EOF 退出（跨平台可靠）
                 try:
-                    sys.stderr.write(
-                        f"worker: 空闲 {int(idle)}s 超过 {IDLE_TIMEOUT_SECONDS}s，自动退出释放内存\n")
+                    sys.stderr.write(f"worker: 空闲 {int(idle)}s 超过 {IDLE_TIMEOUT_SECONDS}s，自动退出释放内存\n")
                     sys.stdin.close()
                 except Exception:
                     pass

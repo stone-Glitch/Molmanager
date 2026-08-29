@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 F15 日志过滤条控件（T05 / Phase 1）
 ──────────────────────────────────
@@ -20,6 +19,7 @@ F15 日志过滤条控件（T05 / Phase 1）
     避免高频写配置文件；
   - 所有外部调用都包 try/except：过滤条坏掉绝不能让日志面板或主窗口崩。
 """
+
 from __future__ import annotations
 
 import tkinter as tk
@@ -68,7 +68,11 @@ class LogFilterBar(tk.Frame):
 
         # ---- 级别下拉 ----
         tk.Label(
-            self, text="级别:", bg=bg, fg=self._color("text", "#E6EDF3"), font=base_font,
+            self,
+            text="级别:",
+            bg=bg,
+            fg=self._color("text", "#E6EDF3"),
+            font=base_font,
         ).pack(side=tk.LEFT, padx=(0, 4))
 
         self.level_combo = ttk.Combobox(
@@ -84,11 +88,18 @@ class LogFilterBar(tk.Frame):
 
         # ---- 关键词输入 ----
         tk.Label(
-            self, text="🔎 关键词:", bg=bg, fg=self._color("text", "#E6EDF3"), font=base_font,
+            self,
+            text="🔎 关键词:",
+            bg=bg,
+            fg=self._color("text", "#E6EDF3"),
+            font=base_font,
         ).pack(side=tk.LEFT, padx=(0, 4))
 
         self.keyword_entry = ttk.Entry(
-            self, textvariable=self.keyword_var, width=24, font=base_font,
+            self,
+            textvariable=self.keyword_var,
+            width=24,
+            font=base_font,
         )
         self.keyword_entry.pack(side=tk.LEFT, padx=(0, 6))
         self.keyword_entry.bind("<KeyRelease>", self._on_keyword_typed)
@@ -99,8 +110,11 @@ class LogFilterBar(tk.Frame):
 
         # ---- 计数 ----
         tk.Label(
-            self, textvariable=self.count_var, bg=bg,
-            fg=self._color("primary", "#2DD4BF"), font=bold_font,
+            self,
+            textvariable=self.count_var,
+            bg=bg,
+            fg=self._color("primary", "#2DD4BF"),
+            font=bold_font,
         ).pack(side=tk.LEFT)
 
         # ---- 应用初始过滤条件 ----
@@ -265,6 +279,7 @@ class LogFilterBar(tk.Frame):
             section["level"] = level
             section["keyword"] = keyword
             from utils.config import save_config
+
             save_config(cfg)
         except Exception as exc:
             logger.debug("持久化日志过滤条件失败（非致命）: %s", exc)

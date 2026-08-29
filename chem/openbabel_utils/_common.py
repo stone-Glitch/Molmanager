@@ -10,7 +10,6 @@ Open Babel 工具模块 - 封装常用分子操作
 
 """
 
-
 import os
 import threading
 
@@ -35,11 +34,13 @@ try:
     # 新版 OpenBabel (>=3.0) 推荐使用 openbabel 模块
     import openbabel as ob  # noqa: F401  # 由本模块统一导出给同包子模块使用
     import openbabel.pybel as pybel  # noqa: F401
+
     PYBEL_AVAILABLE = True
 except ImportError:
     try:
         # 旧版使用 pybel 顶层模块
         import pybel  # noqa: F401
+
         PYBEL_AVAILABLE = True
     except ImportError:
         PYBEL_AVAILABLE = False
@@ -64,9 +65,7 @@ _MOL_READ_CACHE_MAX = 256
 # （单位字节）调整，便于用户按机器内存自定义上限，例如设为 200MB：
 #   set MM_MOL_READ_CACHE_MAX_BYTES=209715200
 
-_MOL_READ_CACHE_MAX_BYTES = int(
-    os.environ.get("MM_MOL_READ_CACHE_MAX_BYTES", 50 * 1024 * 1024)
-)
+_MOL_READ_CACHE_MAX_BYTES = int(os.environ.get("MM_MOL_READ_CACHE_MAX_BYTES", 50 * 1024 * 1024))
 #: 单文件含分子数超过此值的（典型为上千分子的巨量 SDF）不进读取缓存，仅跳过缓存、正常返回，
 #: 避免整表 pybel 分子对象撑爆内存（审计 P-3）。
 

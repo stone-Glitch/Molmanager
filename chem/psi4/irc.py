@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 IRC 模块 - 过渡态 IRC 轨迹生成
 """
+
 import logging
 import os
 import re
@@ -53,12 +53,12 @@ def run_irc_task(
         return result
 
     from utils.path_utils import make_temp_dir
+
     tmp_dir = make_temp_dir("psi4_irc_")
     try:
         if output_prefix is None:
             output_prefix = os.path.join(
-                os.path.dirname(os.path.abspath(ts_file)),
-                os.path.splitext(os.path.basename(ts_file))[0] + "_irc"
+                os.path.dirname(os.path.abspath(ts_file)), os.path.splitext(os.path.basename(ts_file))[0] + "_irc"
             )
 
         def _report(p, m):
@@ -71,11 +71,18 @@ def run_irc_task(
         # Step 1：频率计算
         _report(10, "TS 频率计算 / 预优化（获取 Hessian）")
         r_freq = run_psi4_task(
-            ts_file, "frequency", method, basis,
+            ts_file,
+            "frequency",
+            method,
+            basis,
             output_dir=tmp_dir,
-            preset_name=preset_name, solvent=solvent, d3=d3,
-            charge=charge, multiplicity=multiplicity, memory=memory,
-            _progress_callback=None
+            preset_name=preset_name,
+            solvent=solvent,
+            d3=d3,
+            charge=charge,
+            multiplicity=multiplicity,
+            memory=memory,
+            _progress_callback=None,
         )
 
         if not r_freq.get("success"):
@@ -94,21 +101,24 @@ def run_irc_task(
             return result
 
         # Step 2：尝试 IRC
-        wfn_final = None
         try:
             geom_txt = r_freq.get("optimized_xyz") or read_xyz_content(ts_file)
             if geom_txt:
                 try:
                     import psi4
+
                     if hasattr(psi4, "geometry") and hasattr(psi4, "irc"):
                         from chem.psi4.core import normalize_psi4_memory
+
                         psi4.set_memory(normalize_psi4_memory(memory))
-                        psi4.set_options({
-                            "basis": basis,
-                            "geom_maxiter": max_points,
-                            "irc_step_size": step_size,
-                            "irc_points": max_points,
-                        })
+                        psi4.set_options(
+                            {
+                                "basis": basis,
+                                "geom_maxiter": max_points,
+                                "irc_step_size": step_size,
+                                "irc_points": max_points,
+                            }
+                        )
                         if solvent:
                             try:
                                 psi4.set_options({"solvent": solvent})
@@ -136,15 +146,18 @@ def run_irc_task(
                         real_fwd = 0
                         real_bwd = 0
                         direction_eff = (direction or "both").lower()
-                        for d in (["forward", "backward"] if direction_eff == "both" else [direction_eff]):
+                        for d in ["forward", "backward"] if direction_eff == "both" else [direction_eff]:
                             try:
                                 psi4.set_options({"irc_direction": d})
                                 e_irc, wfn_irc = psi4.irc(
-                                    method, molecule=mol_obj, return_wfn=True,
-                                    step_size=step_size, max_points=max_points
+                                    method,
+                                    molecule=mol_obj,
+                                    return_wfn=True,
+                                    step_size=step_size,
+                                    max_points=max_points,
                                 )
                                 if wfn_irc is not None:
-                                    wfn_final = wfn_irc
+                                    pass
 
                                 # 从 log 解析真实 IRC 轨迹帧（wfn 末端几何只作诊断，
                                 # 不计入"真实轨迹帧"，避免把单点当成轨迹）。
@@ -179,8 +192,7 @@ def run_irc_task(
         if real_fwd == 0 and real_bwd == 0:
             result["success"] = False
             result["error"] = (
-                "未解析到 IRC 轨迹（0 帧）。请确认输入为真实过渡态"
-                "（freq 应恰有一个虚频，且 PSI4 编译含 IRC driver）。"
+                "未解析到 IRC 轨迹（0 帧）。请确认输入为真实过渡态（freq 应恰有一个虚频，且 PSI4 编译含 IRC driver）。"
             )
             logger.error(result["error"])
             return result

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 F18 新版本提示对话框（T15 / Phase 1 批次二）
 ──────────────────────────────────────────
@@ -24,6 +23,7 @@ F18 新版本提示对话框（T15 / Phase 1 批次二）
   - 「跳过此版本」写入 `update.skipped_version`（经 utils/updater 落盘）；
   - 「前往下载」用系统默认浏览器打开，打不开时降级为"复制链接"提示。
 """
+
 from __future__ import annotations
 
 import tkinter as tk
@@ -66,6 +66,7 @@ def _config_of(app: Any) -> dict | None:
 # ============================================================================
 # 主对话框：发现新版本
 # ============================================================================
+
 
 def show_update_dialog(app: Any, info: Any, *, manual: bool = False) -> str:
     """
@@ -133,17 +134,13 @@ def _build_update_dialog(app: Any, info: Any, *, manual: bool) -> str:
     if published_at:
         meta_bits.append(f"发布于 {published_at[:10]}")
     if meta_bits:
-        ttk.Label(header, text="　".join(meta_bits), foreground="#5A6785").pack(
-            anchor=tk.W, pady=(2, 0)
-        )
+        ttk.Label(header, text="　".join(meta_bits), foreground="#5A6785").pack(anchor=tk.W, pady=(2, 0))
 
     # ---------------------------------------------------------- 中部：更新说明
     body = ttk.LabelFrame(dialog, text="📋 更新说明", padding=6)
     body.pack(fill=tk.BOTH, expand=True, padx=14, pady=(8, 6))
 
-    text_widget = scrolledtext.ScrolledText(
-        body, wrap=tk.WORD, height=12, relief=tk.FLAT, borderwidth=0
-    )
+    text_widget = scrolledtext.ScrolledText(body, wrap=tk.WORD, height=12, relief=tk.FLAT, borderwidth=0)
     text_widget.pack(fill=tk.BOTH, expand=True)
     text_widget.insert(
         tk.END,
@@ -214,15 +211,9 @@ def _build_update_dialog(app: Any, info: Any, *, manual: bool) -> str:
             _log(app, f"⚠️ 跳过版本 {remote_version} 的设置未能保存（本次仍不再提示）", "warning")
         _close(ACTION_SKIP)
 
-    ttk.Button(footer, text="🚫 跳过此版本", command=_on_skip, width=14).pack(
-        side=tk.RIGHT, padx=(6, 0)
-    )
-    ttk.Button(footer, text="⏰ 稍后提醒", command=_on_later, width=12).pack(
-        side=tk.RIGHT, padx=(6, 0)
-    )
-    ttk.Button(footer, text="🌐 前往下载", command=_on_download, width=12).pack(
-        side=tk.RIGHT, padx=(6, 0)
-    )
+    ttk.Button(footer, text="🚫 跳过此版本", command=_on_skip, width=14).pack(side=tk.RIGHT, padx=(6, 0))
+    ttk.Button(footer, text="⏰ 稍后提醒", command=_on_later, width=12).pack(side=tk.RIGHT, padx=(6, 0))
+    ttk.Button(footer, text="🌐 前往下载", command=_on_download, width=12).pack(side=tk.RIGHT, padx=(6, 0))
 
     dialog.protocol("WM_DELETE_WINDOW", lambda: _close(ACTION_LATER))
     dialog.bind("<Escape>", lambda _e: _close(ACTION_LATER))
@@ -237,6 +228,7 @@ def _build_update_dialog(app: Any, info: Any, *, manual: bool) -> str:
 # ============================================================================
 # 手动检查的其余两种反馈
 # ============================================================================
+
 
 def show_no_update_dialog(app: Any, current_version: str | None = None) -> None:
     """手动检查且**已是最新**时的反馈。静默检查绝不调用此函数。"""
@@ -276,6 +268,7 @@ def show_check_failed_dialog(app: Any, reason: str = "") -> None:
 # ============================================================================
 # 统一分发入口 —— view / controller 只需调这一个
 # ============================================================================
+
 
 def notify_update_result(app: Any, info: Any, *, manual: bool = False) -> str:
     """

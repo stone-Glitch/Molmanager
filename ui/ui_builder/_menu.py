@@ -15,25 +15,34 @@ def build_menu_bar(app) -> None:
     里面放 Menubutton，字体用 app._fonts。
     """
     F = getattr(app, "_fonts", {})
-    BASE      = F.get("BASE",      ("Microsoft YaHei UI", 12))
-    BOLD      = F.get("BOLD",      ("Microsoft YaHei UI", 12, "bold"))
-    BTN       = F.get("BTN",       ("Microsoft YaHei UI", 12, "bold"))
-    SMALL     = F.get("SMALL",     ("Microsoft YaHei UI", 11))
+    F.get("BASE", ("Microsoft YaHei UI", 12))
+    BOLD = F.get("BOLD", ("Microsoft YaHei UI", 12, "bold"))
+    BTN = F.get("BTN", ("Microsoft YaHei UI", 12, "bold"))
+    SMALL = F.get("SMALL", ("Microsoft YaHei UI", 11))
     MENU_ITEM = F.get("MENU_ITEM", F.get("BASE", ("Microsoft YaHei UI", 12)))
 
     # 菜单栏整体背景：用浅色，比主内容稍深一点做层级感
-    bar = tk.Frame(app, bg=COLORS.get("menu_bar_bg", "#E1EBFF"), bd=0,
-                   highlightbackground=COLORS.get("card_border", "#C7D5FF"),
-                   highlightthickness=1)
+    bar = tk.Frame(
+        app,
+        bg=COLORS.get("menu_bar_bg", "#E1EBFF"),
+        bd=0,
+        highlightbackground=COLORS.get("card_border", "#C7D5FF"),
+        highlightthickness=1,
+    )
     bar.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
 
     # —— 1) 应用标题标签（左侧）——
     try:
-        tk.Label(bar, text="  分子管理器  ",
-                 bg=COLORS.get("menu_bar_bg", "#E1EBFF"),
-                 fg=COLORS.get("primary", "#3B6EFF"),
-                 font=BOLD, anchor="w", padx=6, pady=4
-                 ).pack(side=tk.LEFT)
+        tk.Label(
+            bar,
+            text="  分子管理器  ",
+            bg=COLORS.get("menu_bar_bg", "#E1EBFF"),
+            fg=COLORS.get("primary", "#3B6EFF"),
+            font=BOLD,
+            anchor="w",
+            padx=6,
+            pady=4,
+        ).pack(side=tk.LEFT)
     except Exception:
         pass
 
@@ -41,20 +50,31 @@ def build_menu_bar(app) -> None:
     def _make_mb(bar_parent, label: str, side=tk.LEFT):
         # Menubutton 本身 tk.Menubutton 比 ttk.Menubutton 好配色
         mb = tk.Menubutton(
-            bar_parent, text=label,
+            bar_parent,
+            text=label,
             bg=COLORS.get("menu_bar_bg", "#E1EBFF"),
             fg=COLORS.get("text", "#1A2142"),
             activebackground=COLORS.get("menu_hover_bg", "#1C2330"),
             activeforeground=COLORS.get("primary", "#3B6EFF"),
-            font=BTN, relief=tk.FLAT, bd=0, padx=14, pady=5,
+            font=BTN,
+            relief=tk.FLAT,
+            bd=0,
+            padx=14,
+            pady=5,
             cursor="hand2",
         )
         mb.pack(side=side, padx=0, pady=0)
-        menu = tk.Menu(mb, tearoff=0,
-                       bg=COLORS.get("card_bg", "#161B22"), fg=COLORS.get("text", "#E6EDF3"),
-                       activebackground=COLORS.get("primary", "#2DD4BF"),
-                       activeforeground=COLORS.get("btn_text", "#0F1419"),
-                       font=MENU_ITEM, bd=1, relief=tk.SOLID)
+        menu = tk.Menu(
+            mb,
+            tearoff=0,
+            bg=COLORS.get("card_bg", "#161B22"),
+            fg=COLORS.get("text", "#E6EDF3"),
+            activebackground=COLORS.get("primary", "#2DD4BF"),
+            activeforeground=COLORS.get("btn_text", "#0F1419"),
+            font=MENU_ITEM,
+            bd=1,
+            relief=tk.SOLID,
+        )
         mb.configure(menu=menu)
         return mb, menu
 
@@ -75,7 +95,8 @@ def build_menu_bar(app) -> None:
             menu_set.add_checkbutton(
                 label="  ⏱️ 文件整理前先预览（建议开启）",
                 variable=_prev_var,
-                onvalue=True, offvalue=False,
+                onvalue=True,
+                offvalue=False,
                 command=lambda: _persist_preview_toggle(app),
             )
         except Exception:
@@ -200,12 +221,17 @@ def build_menu_bar(app) -> None:
             _cur_pt = 14
         _font_pt_var = tk.StringVar(value=f"字号 {_cur_pt}pt")
         _font_btn = tk.Button(
-            right_row, textvariable=_font_pt_var,
+            right_row,
+            textvariable=_font_pt_var,
             bg=COLORS.get("menu_bar_bg", "#E1EBFF"),
             fg=COLORS.get("primary", "#3B6EFF"),
             activebackground=COLORS.get("menu_hover_bg", "#1C2330"),
             activeforeground=COLORS.get("primary", "#3B6EFF"),
-            font=SMALL, relief=tk.FLAT, bd=0, padx=10, pady=5,
+            font=SMALL,
+            relief=tk.FLAT,
+            bd=0,
+            padx=10,
+            pady=5,
             cursor="hand2",
             command=lambda: _safe_call(app, "show_font_size_dialog_from_menu"),
         )
@@ -217,6 +243,7 @@ def build_menu_bar(app) -> None:
 
 # ——— 菜单栏内部辅助：安全调用 app 方法（容错）———
 
+
 def _safe_call(app, method_name: str):
     try:
         fn = getattr(app, method_name, None)
@@ -226,16 +253,15 @@ def _safe_call(app, method_name: str):
         try:
             from utils.logger import default_logger as _log
             from utils.logger import log_exception
+
             log_exception(_log, f"菜单栏调用 {method_name} 失败", _e)
         except Exception:
-            print(f"[menu] {method_name} failed:", _e)
-
+            print(f"[menu] {method_name} failed:", _e)  # noqa: T201
 
 
 def _persist_preview_toggle(app) -> None:
     try:
-        v = bool(getattr(app, "preview_before_operation_var", None) and
-                 app.preview_before_operation_var.get())
+        v = bool(getattr(app, "preview_before_operation_var", None) and app.preview_before_operation_var.get())
         cfg = getattr(app, "config_data", None)
         if not isinstance(cfg, dict):
             cfg = {}
@@ -243,6 +269,7 @@ def _persist_preview_toggle(app) -> None:
         app.config_data = cfg
         try:
             from utils.config import save_config
+
             save_config(cfg)
         except Exception:
             pass
@@ -250,10 +277,10 @@ def _persist_preview_toggle(app) -> None:
         pass
 
 
-
 def _open_ob_path_dialog(app) -> None:
     try:
         from ui.dialogs import Dialogs
+
         dlg = Dialogs(app, getattr(app, "controller", None))
         cb = getattr(app.helpers, "check_environment", None)
         dlg.show_obabel_path_dialog(
@@ -263,15 +290,16 @@ def _open_ob_path_dialog(app) -> None:
     except Exception as _e:
         try:
             from tkinter import messagebox
+
             messagebox.showerror("打开失败", f"无法打开 OpenBabel 路径设置：\n{_e}")
         except Exception:
             pass
 
 
-
 def _show_about(app) -> None:
     try:
         from tkinter import messagebox
+
         try:
             cfg = getattr(app, "config_data", {}) or {}
             pt = int(cfg.get("font_size", 14) or 14)

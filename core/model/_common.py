@@ -40,6 +40,7 @@ _is_windows_junction = is_windows_junction
 
 PROTECTED_DIR_NAMES: frozenset[str] = frozenset({".trash_backup", ".backup", ".preview"})
 
+
 def is_protected_relpath(rel_path: str) -> bool:
     """相对路径的任一层是否落在受保护目录内。"""
     if not rel_path:
@@ -50,9 +51,11 @@ def is_protected_relpath(rel_path: str) -> bool:
         return False
     return any(seg in PROTECTED_DIR_NAMES for seg in parts)
 
+
 def _is_windows_junction(path: str | os.PathLike, *, _raise: bool = False) -> bool:
     """向后兼容包装：参数名 _raise → raise_on_junction"""
     return is_windows_junction(path, raise_on_junction=_raise)
+
 
 def resolve_secure_output_path_external(
     requested_path,
@@ -78,13 +81,30 @@ def resolve_secure_output_path_external(
 
 __all__ = [
     # 标准库模块 / 名称（仅经 star-import 被 mixin 使用，本文件未直接引用）
-    "os", "re", "csv", "json", "stat", "shutil", "hashlib", "threading",
-    "datetime", "Path",
+    "os",
+    "re",
+    "csv",
+    "json",
+    "stat",
+    "shutil",
+    "hashlib",
+    "threading",
+    "datetime",
+    "Path",
     # 第三方 / 项目级单例与常量（model 对外兼容导出）
-    "logger", "SUPPORTED_EXTS", "STRUCTURE_EXTS", "looks_like_chem_query",
-    "is_windows_junction", "enforce_no_symlink_target",
-    "resolve_secure_output_path", "get_backup_dir", "win_longpath",
-    "ob_utils", "psi4_utils",
+    "logger",
+    "SUPPORTED_EXTS",
+    "STRUCTURE_EXTS",
+    "looks_like_chem_query",
+    "is_windows_junction",
+    "enforce_no_symlink_target",
+    "resolve_secure_output_path",
+    "get_backup_dir",
+    "win_longpath",
+    "ob_utils",
+    "psi4_utils",
     # 本模块新增的防御性辅助（供 UI / controller 经 star-import 取用）
-    "PROTECTED_DIR_NAMES", "is_protected_relpath", "resolve_secure_output_path_external",
+    "PROTECTED_DIR_NAMES",
+    "is_protected_relpath",
+    "resolve_secure_output_path_external",
 ]

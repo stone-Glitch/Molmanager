@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """core/domain.py —— 领域数据结构的序列化契约。
 
 这些 dataclass 是持久化层（SQLite）与 UI 之间唯一的「形状约定」，

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """MolManager 的可选 HTTP 接口层（FastAPI）。
 
 启动：
@@ -23,11 +22,7 @@ try:
     from fastapi import FastAPI, HTTPException
     from fastapi.responses import JSONResponse
 except ImportError as _exc:  # pragma: no cover - 取决于是否安装了 [api] 依赖
-    raise ImportError(
-        "接口层需要额外依赖，请先安装：\n"
-        "    pip install -e \".[api]\"\n"
-        f"（原始错误：{_exc}）"
-    ) from _exc
+    raise ImportError(f'接口层需要额外依赖，请先安装：\n    pip install -e ".[api]"\n（原始错误：{_exc}）') from _exc
 
 from utils.version import APP_DISPLAY_NAME, APP_NAME, get_full_version
 
@@ -117,9 +112,7 @@ def create_app() -> FastAPI:
                 items.append(InChIKeyItem(smiles=smi, success=False, error=_fmt_exc(exc)))
                 continue
             if not r.get("success"):
-                items.append(
-                    InChIKeyItem(smiles=smi, success=False, error=str(r.get("message") or "解析失败"))
-                )
+                items.append(InChIKeyItem(smiles=smi, success=False, error=str(r.get("message") or "解析失败")))
                 continue
             ok_count += 1
             items.append(
@@ -279,6 +272,7 @@ app = create_app()
 
 
 # ---------------------------------------------------------------- 内部辅助
+
 
 def _require_openbabel() -> None:
     """OpenBabel（含命令行 obabel）不可用时抛 503。"""

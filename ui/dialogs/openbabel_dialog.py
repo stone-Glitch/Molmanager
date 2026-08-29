@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 OpenBabel 工具对话框 - 格式转换、SMILES生成、结构优化、描述符、分子叠加、2D预览
 """
+
 import csv
 import os
 import tkinter as tk
@@ -19,11 +19,11 @@ from .common import _safe_open_file
 def show_openbabel_dialog(app, controller):
     available, msg, det = ob_utils.check_openbabel()
     if not available:
-        app.helpers.on_log(f"❌ Open Babel 不可用: {msg}", 'error')
+        app.helpers.on_log(f"❌ Open Babel 不可用: {msg}", "error")
         return
     for _w in det.get("warnings", []):
-        app.helpers.on_log(f"⚠️ OB: {_w}", 'warning')
-    app.helpers.on_log(f"✅ OB: {msg}", 'info')
+        app.helpers.on_log(f"⚠️ OB: {_w}", "warning")
+    app.helpers.on_log(f"✅ OB: {msg}", "info")
 
     dialog = tk.Toplevel(app)
     dialog.title("🔬 Open Babel 工具")
@@ -39,7 +39,9 @@ def show_openbabel_dialog(app, controller):
     tab_convert = ttk.Frame(notebook, padding=10)
     notebook.add(tab_convert, text="📄 格式转换")
 
-    ttk.Label(tab_convert, text="将分子文件转换为其他格式", font=('Arial', 10, 'bold')).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+    ttk.Label(tab_convert, text="将分子文件转换为其他格式", font=("Arial", 10, "bold")).grid(
+        row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10)
+    )
     ttk.Label(tab_convert, text="批量转换文件（输出格式统一）:").grid(row=1, column=0, sticky="nw")
 
     convert_list_frame = ttk.Frame(tab_convert)
@@ -69,16 +71,26 @@ def show_openbabel_dialog(app, controller):
     ttk.Label(tab_convert, text="输出格式:").grid(row=2, column=0, sticky=tk.W, pady=(10, 0))
     formats = ob_utils.get_supported_formats()
     convert_fmt_var = tk.StringVar(value="xyz" if "xyz" in formats else (formats[0] if formats else ""))
-    ttk.Combobox(tab_convert, textvariable=convert_fmt_var, values=formats, state="readonly", width=15).grid(row=2, column=1, sticky=tk.W, padx=5, pady=(10, 0))
-    ttk.Label(tab_convert, text="💡 例如: .mol → .xyz", foreground="gray").grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=5)
+    ttk.Combobox(tab_convert, textvariable=convert_fmt_var, values=formats, state="readonly", width=15).grid(
+        row=2, column=1, sticky=tk.W, padx=5, pady=(10, 0)
+    )
+    ttk.Label(tab_convert, text="💡 例如: .mol → .xyz", foreground="gray").grid(
+        row=3, column=0, columnspan=3, sticky=tk.W, pady=5
+    )
 
-    ttk.Button(tab_convert, text="🔄 立即转换", command=lambda: _run_convert_batch(app, convert_listbox, convert_fmt_var.get(), dialog, controller)).grid(row=4, column=1, pady=10)
+    ttk.Button(
+        tab_convert,
+        text="🔄 立即转换",
+        command=lambda: _run_convert_batch(app, convert_listbox, convert_fmt_var.get(), dialog, controller),
+    ).grid(row=4, column=1, pady=10)
 
     # Tab2: SMILES
     tab_smiles = ttk.Frame(notebook, padding=10)
     notebook.add(tab_smiles, text="🧪 SMILES → 分子")
 
-    ttk.Label(tab_smiles, text="输入 SMILES 生成 3D 分子", font=('Arial', 10, 'bold')).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
+    ttk.Label(tab_smiles, text="输入 SMILES 生成 3D 分子", font=("Arial", 10, "bold")).grid(
+        row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 10)
+    )
 
     ttk.Label(tab_smiles, text="SMILES:").grid(row=1, column=0, sticky=tk.W)
     smiles_entry = ttk.Entry(tab_smiles, width=40)
@@ -89,7 +101,10 @@ def show_openbabel_dialog(app, controller):
     common_smiles = {"乙醇": "CCO", "苯": "c1ccccc1", "水": "O", "甲烷": "C", "乙烯": "C=C", "乙烷": "CC"}
     combo = ttk.Combobox(tab_smiles, values=list(common_smiles.keys()), state="readonly", width=15)
     combo.grid(row=2, column=1, sticky=tk.W, padx=5)
-    combo.bind("<<ComboboxSelected>>", lambda e: smiles_entry.delete(0, tk.END) or smiles_entry.insert(0, common_smiles[combo.get()]))
+    combo.bind(
+        "<<ComboboxSelected>>",
+        lambda e: smiles_entry.delete(0, tk.END) or smiles_entry.insert(0, common_smiles[combo.get()]),
+    )
 
     ttk.Label(tab_smiles, text="文件名前缀:").grid(row=3, column=0, sticky=tk.W, pady=(10, 0))
     prefix_entry = ttk.Entry(tab_smiles, width=30)
@@ -104,14 +119,16 @@ def show_openbabel_dialog(app, controller):
     def do_smiles_generate():
         smiles = smiles_entry.get().strip()
         if not smiles:
-            app.helpers.on_log("❌ 请输入 SMILES", 'error')
+            app.helpers.on_log("❌ 请输入 SMILES", "error")
             return
         prefix = prefix_entry.get().strip() or "mol_from_smiles"
-        result = controller.model.generate_from_smiles(smiles, prefix, generate_3d=gen3d_var.get(), optimize=opt_var.get())
+        result = controller.model.generate_from_smiles(
+            smiles, prefix, generate_3d=gen3d_var.get(), optimize=opt_var.get()
+        )
         if result.get("error"):
-            app.helpers.on_log(f"❌ SMILES 生成失败: {result['error']}", 'error')
+            app.helpers.on_log(f"❌ SMILES 生成失败: {result['error']}", "error")
         else:
-            app.helpers.on_log(f"✅ 生成成功: {os.path.basename(result['mol'])}", 'success')
+            app.helpers.on_log(f"✅ 生成成功: {os.path.basename(result['mol'])}", "success")
             controller.scan_files()
             dialog.destroy()
 
@@ -120,13 +137,17 @@ def show_openbabel_dialog(app, controller):
     batch_frame = ttk.LabelFrame(tab_smiles, text="批量 SMILES 导入", padding=8)
     batch_frame.grid(row=6, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
 
-    ttk.Label(batch_frame, text="每行一条，支持 \"SMILES 名称\" 空格分隔（名称可选）:").grid(row=0, column=0, sticky=tk.W)
-    batch_text = scrolledtext.ScrolledText(batch_frame, height=6, wrap=tk.WORD, font=('Consolas', 9))
+    ttk.Label(batch_frame, text='每行一条，支持 "SMILES 名称" 空格分隔（名称可选）:').grid(row=0, column=0, sticky=tk.W)
+    batch_text = scrolledtext.ScrolledText(batch_frame, height=6, wrap=tk.WORD, font=("Consolas", 9))
     batch_text.grid(row=1, column=0, sticky="nsew", pady=5)
     batch_frame.grid_rowconfigure(1, weight=1)
     batch_frame.grid_columnconfigure(0, weight=1)
 
-    ttk.Button(batch_frame, text="🧬 批量生成", command=lambda: _run_smiles_batch(app, batch_text, gen3d_var.get(), opt_var.get(), dialog, controller)).grid(row=2, column=0, pady=5)
+    ttk.Button(
+        batch_frame,
+        text="🧬 批量生成",
+        command=lambda: _run_smiles_batch(app, batch_text, gen3d_var.get(), opt_var.get(), dialog, controller),
+    ).grid(row=2, column=0, pady=5)
 
     tab_smiles.grid_rowconfigure(6, weight=1)
     tab_smiles.grid_columnconfigure(1, weight=1)
@@ -135,7 +156,9 @@ def show_openbabel_dialog(app, controller):
     tab_opt = ttk.Frame(notebook, padding=10)
     notebook.add(tab_opt, text="🔧 结构优化")
 
-    ttk.Label(tab_opt, text="用力场优化分子结构", font=('Arial', 10, 'bold')).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+    ttk.Label(tab_opt, text="用力场优化分子结构", font=("Arial", 10, "bold")).grid(
+        row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10)
+    )
     ttk.Label(tab_opt, text="选择分子文件:").grid(row=1, column=0, sticky="nw")
 
     opt_list_frame = ttk.Frame(tab_opt)
@@ -163,9 +186,15 @@ def show_openbabel_dialog(app, controller):
 
     ttk.Label(tab_opt, text="力场:").grid(row=2, column=0, sticky=tk.W, pady=(10, 0))
     forcefield_var = tk.StringVar(value="mmff94")
-    ttk.Combobox(tab_opt, textvariable=forcefield_var, values=["mmff94", "uff"], state="readonly", width=15).grid(row=2, column=1, sticky=tk.W, padx=5, pady=(10, 0))
+    ttk.Combobox(tab_opt, textvariable=forcefield_var, values=["mmff94", "uff"], state="readonly", width=15).grid(
+        row=2, column=1, sticky=tk.W, padx=5, pady=(10, 0)
+    )
 
-    ttk.Button(tab_opt, text="⚡ 开始优化", command=lambda: _run_optimize_batch(app, opt_listbox, forcefield_var.get(), dialog, controller)).grid(row=4, column=1, pady=10)
+    ttk.Button(
+        tab_opt,
+        text="⚡ 开始优化",
+        command=lambda: _run_optimize_batch(app, opt_listbox, forcefield_var.get(), dialog, controller),
+    ).grid(row=4, column=1, pady=10)
 
     # Tab4: 描述符
     tab_desc = ttk.Frame(notebook, padding=10)
@@ -173,7 +202,9 @@ def show_openbabel_dialog(app, controller):
 
     work_dir = controller.model.work_dir
 
-    ttk.Label(tab_desc, text="一键计算分子性质（支持批量 + CSV 导出）", font=('Arial', 10, 'bold')).grid(row=0, column=0, columnspan=4, sticky=tk.W, pady=(0, 10))
+    ttk.Label(tab_desc, text="一键计算分子性质（支持批量 + CSV 导出）", font=("Arial", 10, "bold")).grid(
+        row=0, column=0, columnspan=4, sticky=tk.W, pady=(0, 10)
+    )
     ttk.Label(tab_desc, text="分子文件列表:").grid(row=1, column=0, sticky="nw")
 
     desc_list_frame = ttk.Frame(tab_desc)
@@ -193,8 +224,7 @@ def show_openbabel_dialog(app, controller):
 
     def add_desc_files():
         files = filedialog.askopenfilenames(
-            initialdir=str(work_dir),
-            filetypes=[("分子文件", "*.mol *.xyz *.sdf *.mol2"), ("全部", "*.*")]
+            initialdir=str(work_dir), filetypes=[("分子文件", "*.mol *.xyz *.sdf *.mol2"), ("全部", "*.*")]
         )
         for f in files:
             name = os.path.basename(f)
@@ -207,7 +237,7 @@ def show_openbabel_dialog(app, controller):
     ttk.Button(desc_btn_col, text="添加...", command=add_desc_files).pack(side=tk.TOP, pady=2, fill=tk.X)
     ttk.Button(desc_btn_col, text="删除选中", command=del_desc_selected).pack(side=tk.TOP, pady=2, fill=tk.X)
 
-    desc_result = scrolledtext.ScrolledText(tab_desc, height=10, wrap=tk.WORD, font=('Consolas', 9))
+    desc_result = scrolledtext.ScrolledText(tab_desc, height=10, wrap=tk.WORD, font=("Consolas", 9))
     desc_result.grid(row=2, column=0, columnspan=4, pady=10, sticky="nsew")
     tab_desc.grid_rowconfigure(2, weight=1)
     tab_desc.grid_columnconfigure(1, weight=1)
@@ -218,12 +248,12 @@ def show_openbabel_dialog(app, controller):
             full = Path(work_dir) / name
             if full.exists() and name not in desc_listbox.get(0, tk.END):
                 desc_listbox.insert(tk.END, name)
-        app.helpers.on_log(f"📄 已从主界面加载 {len(names)} 个文件到列表", 'info')
+        app.helpers.on_log(f"📄 已从主界面加载 {len(names)} 个文件到列表", "info")
 
     def do_descriptors():
         items = list(desc_listbox.get(0, tk.END))
         if not items:
-            app.helpers.on_log("❌ 列表中没有文件", 'error')
+            app.helpers.on_log("❌ 列表中没有文件", "error")
             return
         sel = desc_listbox.curselection()
         if sel:
@@ -234,6 +264,7 @@ def show_openbabel_dialog(app, controller):
         def task_process(**kwargs):
             path = Path(work_dir) / fname
             desc = controller.model.calculate_descriptors(str(path))
+
             def update_ui():
                 _clear_text(app, desc_result)
                 if "error" in desc:
@@ -242,18 +273,18 @@ def show_openbabel_dialog(app, controller):
                     _append_text(app, desc_result, f"📋 {fname} 计算结果:\n")
                     for key, val in desc.items():
                         _append_text(app, desc_result, f"{key}: {val}\n", see_end=False)
+
             app.after(0, update_ui)
+
         app.helpers.run_task(task_process)
 
     def do_batch_csv():
         items = list(desc_listbox.get(0, tk.END))
         if not items:
-            app.helpers.on_log("❌ 列表中没有文件可批量计算", 'error')
+            app.helpers.on_log("❌ 列表中没有文件可批量计算", "error")
             return
         out_path = filedialog.asksaveasfilename(
-            initialdir=str(work_dir),
-            initialfile="descriptors.csv",
-            filetypes=[("CSV", "*.csv")]
+            initialdir=str(work_dir), initialfile="descriptors.csv", filetypes=[("CSV", "*.csv")]
         )
         if not out_path:
             return
@@ -283,17 +314,22 @@ def show_openbabel_dialog(app, controller):
                     writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
                     writer.writeheader()
                     writer.writerows(rows)
+
                 def done():
-                    app.helpers.on_log(f"💾 CSV 已导出: {os.path.basename(out_path)}（共 {len(rows)} 条）", 'success')
+                    app.helpers.on_log(f"💾 CSV 已导出: {os.path.basename(out_path)}（共 {len(rows)} 条）", "success")
                     controller.scan_files()
+
                 app.after(0, done)
             except Exception as e:
                 # 🔴 捕获异常信息：Python 3 中 except 块变量 `e` 在退出 except 后即被清除，
                 # 若放在嵌套的 fail() 里延迟调用会 NameError。先转成字符串固化。
                 err_msg = str(e)
+
                 def fail():
-                    app.helpers.on_log(f"❌ CSV 写出失败: {err_msg}", 'error')
+                    app.helpers.on_log(f"❌ CSV 写出失败: {err_msg}", "error")
+
                 app.after(0, fail)
+
         app.helpers.run_task(task_process)
 
     desc_btn_row = ttk.Frame(tab_desc)
@@ -306,7 +342,9 @@ def show_openbabel_dialog(app, controller):
     tab_align = ttk.Frame(notebook, padding=10)
     notebook.add(tab_align, text="🔗 分子叠加")
 
-    ttk.Label(tab_align, text="将两个分子按骨架对齐", font=('Arial', 10, 'bold')).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+    ttk.Label(tab_align, text="将两个分子按骨架对齐", font=("Arial", 10, "bold")).grid(
+        row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10)
+    )
     ttk.Label(tab_align, text="参考分子（单选）:").grid(row=1, column=0, sticky="nw")
 
     ref_list_frame = ttk.Frame(tab_align)
@@ -357,7 +395,11 @@ def show_openbabel_dialog(app, controller):
     ttk.Button(mob_btn_col, text="添加...", command=add_mob_files).pack(side=tk.TOP, pady=2, fill=tk.X)
     ttk.Button(mob_btn_col, text="删除选中", command=del_mob_selected).pack(side=tk.TOP, pady=2, fill=tk.X)
 
-    ttk.Button(tab_align, text="🔗 执行叠加", command=lambda: _run_align_batch(app, ref_listbox, mob_listbox, dialog, controller)).grid(row=3, column=1, pady=10)
+    ttk.Button(
+        tab_align,
+        text="🔗 执行叠加",
+        command=lambda: _run_align_batch(app, ref_listbox, mob_listbox, dialog, controller),
+    ).grid(row=3, column=1, pady=10)
 
     ttk.Label(dialog, text="所有操作在后台运行，请查看日志", foreground="blue").pack(pady=5)
 
@@ -369,7 +411,7 @@ def show_openbabel_dialog(app, controller):
 def _ask_ob_files(controller):
     return filedialog.askopenfilenames(
         initialdir=str(controller.model.work_dir),
-        filetypes=[("分子文件", "*.mol *.xyz *.sdf *.mol2 *.fchk *.out"), ("全部", "*.*")]
+        filetypes=[("分子文件", "*.mol *.xyz *.sdf *.mol2 *.fchk *.out"), ("全部", "*.*")],
     )
 
 
@@ -388,10 +430,10 @@ def _delete_selected_from_listbox(listbox):
 def _run_convert_batch(app, listbox, out_fmt, dialog, controller):
     items = list(listbox.get(0, tk.END))
     if not items:
-        app.helpers.on_log("❌ 列表中没有文件", 'error')
+        app.helpers.on_log("❌ 列表中没有文件", "error")
         return
     if not out_fmt:
-        app.helpers.on_log("❌ 请选择输出格式", 'error')
+        app.helpers.on_log("❌ 请选择输出格式", "error")
         return
     dialog.destroy()
 
@@ -407,21 +449,22 @@ def _run_convert_batch(app, listbox, out_fmt, dialog, controller):
                 res = controller.model.convert_file(str(input_path), str(output_path), out_fmt)
                 success = res.get("success", False)
                 msg = res.get("message", "")
-                app.helpers.on_log(f"{'✅' if success else '❌'} 转换 {name}: {msg}", 'success' if success else 'error')
+                app.helpers.on_log(f"{'✅' if success else '❌'} 转换 {name}: {msg}", "success" if success else "error")
                 if not success:
                     all_ok = False
             except Exception as e:
-                app.helpers.on_log(f"❌ 转换 {name} 异常: {e}", 'error')
+                app.helpers.on_log(f"❌ 转换 {name} 异常: {e}", "error")
                 all_ok = False
         if all_ok:
             controller.scan_files()
+
     app.helpers.run_task(task_process)
 
 
 def _run_optimize_batch(app, listbox, forcefield, dialog, controller):
     items = list(listbox.get(0, tk.END))
     if not items:
-        app.helpers.on_log("❌ 列表中没有文件", 'error')
+        app.helpers.on_log("❌ 列表中没有文件", "error")
         return
     dialog.destroy()
 
@@ -438,25 +481,26 @@ def _run_optimize_batch(app, listbox, forcefield, dialog, controller):
                 res = controller.model.optimize_geometry(str(input_path), str(output_path), forcefield)
                 success = res.get("success", False)
                 msg = res.get("message", "")
-                app.helpers.on_log(f"{'✅' if success else '❌'} 优化 {name}: {msg}", 'success' if success else 'error')
+                app.helpers.on_log(f"{'✅' if success else '❌'} 优化 {name}: {msg}", "success" if success else "error")
                 if not success:
                     all_ok = False
             except Exception as e:
-                app.helpers.on_log(f"❌ 优化 {name} 异常: {e}", 'error')
+                app.helpers.on_log(f"❌ 优化 {name} 异常: {e}", "error")
                 all_ok = False
         if all_ok:
             controller.scan_files()
+
     app.helpers.run_task(task_process)
 
 
 def _run_smiles_batch(app, text_widget, gen3d, opt, dialog, controller):
     raw = text_widget.get(1.0, tk.END).strip()
     if not raw:
-        app.helpers.on_log("❌ 请输入 SMILES 内容", 'error')
+        app.helpers.on_log("❌ 请输入 SMILES 内容", "error")
         return
     lines = [line.strip() for line in raw.splitlines() if line.strip()]
     if not lines:
-        app.helpers.on_log("❌ 没有有效 SMILES 行", 'error')
+        app.helpers.on_log("❌ 没有有效 SMILES 行", "error")
         return
     dialog.destroy()
 
@@ -465,33 +509,34 @@ def _run_smiles_batch(app, text_widget, gen3d, opt, dialog, controller):
         for idx, line in enumerate(lines):
             parts = line.split(None, 1)
             smiles = parts[0].strip()
-            name = parts[1].strip() if len(parts) > 1 else f"smi_idx_{idx+1:03d}"
+            name = parts[1].strip() if len(parts) > 1 else f"smi_idx_{idx + 1:03d}"
             if not smiles:
                 continue
             try:
                 res = controller.model.generate_from_smiles(smiles, name, generate_3d=gen3d, optimize=opt)
                 if res.get("error"):
-                    app.helpers.on_log(f"❌ SMILES 生成失败 {name}: {res['error']}", 'error')
+                    app.helpers.on_log(f"❌ SMILES 生成失败 {name}: {res['error']}", "error")
                     all_ok = False
                 else:
-                    app.helpers.on_log(f"✅ 生成成功 {name}: {os.path.basename(res['mol'])}", 'success')
+                    app.helpers.on_log(f"✅ 生成成功 {name}: {os.path.basename(res['mol'])}", "success")
             except Exception as e:
-                app.helpers.on_log(f"❌ SMILES 生成异常 {name}: {e}", 'error')
+                app.helpers.on_log(f"❌ SMILES 生成异常 {name}: {e}", "error")
                 all_ok = False
         if all_ok:
             controller.scan_files()
+
     app.helpers.run_task(task_process)
 
 
 def _run_align_batch(app, ref_listbox, mob_listbox, dialog, controller):
     ref_sel = ref_listbox.curselection()
     if not ref_sel:
-        app.helpers.on_log("❌ 请选择参考分子", 'error')
+        app.helpers.on_log("❌ 请选择参考分子", "error")
         return
     ref_name = ref_listbox.get(ref_sel[0])
     mob_items = list(mob_listbox.get(0, tk.END))
     if not mob_items:
-        app.helpers.on_log("❌ 移动分子列表为空", 'error')
+        app.helpers.on_log("❌ 移动分子列表为空", "error")
         return
     dialog.destroy()
 
@@ -509,27 +554,30 @@ def _run_align_batch(app, ref_listbox, mob_listbox, dialog, controller):
                 res = controller.model.align_molecules(str(ref_path), str(mob_path), str(out_path))
                 success = res.get("success", False)
                 msg = res.get("message", "")
-                app.helpers.on_log(f"{'✅' if success else '❌'} 叠加 {mob_name}: {msg}", 'success' if success else 'error')
+                app.helpers.on_log(
+                    f"{'✅' if success else '❌'} 叠加 {mob_name}: {msg}", "success" if success else "error"
+                )
                 if not success:
                     all_ok = False
             except Exception as e:
-                app.helpers.on_log(f"❌ 叠加 {mob_name} 异常: {e}", 'error')
+                app.helpers.on_log(f"❌ 叠加 {mob_name} 异常: {e}", "error")
                 all_ok = False
         if all_ok:
             controller.scan_files()
+
     app.helpers.run_task(task_process)
 
 
 def preview_2d_structure(app, controller):
     selected = app.helpers.get_selected_filenames()
     if not selected:
-        app.helpers.on_log("⚠️ 请先选择一个文件", 'warning')
+        app.helpers.on_log("⚠️ 请先选择一个文件", "warning")
         return
     fname = selected[0]
     ext = Path(fname).suffix.lower()
-    mol_exts = ('.mol', '.xyz', '.sdf', '.mol2')
+    mol_exts = (".mol", ".xyz", ".sdf", ".mol2")
     if ext not in mol_exts:
-        app.helpers.on_log(f"⚠️ 不支持的文件类型 {ext}，仅支持 {', '.join(mol_exts)}", 'warning')
+        app.helpers.on_log(f"⚠️ 不支持的文件类型 {ext}，仅支持 {', '.join(mol_exts)}", "warning")
         messagebox.showwarning("不支持", f"仅支持以下分子文件类型:\n{', '.join(mol_exts)}")
         return
 
@@ -541,18 +589,21 @@ def preview_2d_structure(app, controller):
 
         def done():
             if not success or not png_path or not os.path.exists(png_path):
-                app.helpers.on_log(f"❌ 2D 预览失败: {msg}", 'error')
+                app.helpers.on_log(f"❌ 2D 预览失败: {msg}", "error")
                 messagebox.showerror("预览失败", f"2D 结构渲染失败:\n{msg}")
                 return
-            app.helpers.on_log(f"✅ 2D 预览: {msg}", 'success')
+            app.helpers.on_log(f"✅ 2D 预览: {msg}", "success")
             _show_png_preview(app, png_path, fname)
+
         app.after(0, done)
+
     app.helpers.run_task(task_process)
 
 
 def _show_png_preview(app, png_path: str, fname: str):
     try:
         from PIL import Image, ImageTk
+
         has_pil = True
     except ImportError:
         has_pil = False
@@ -582,7 +633,7 @@ def _show_png_preview(app, png_path: str, fname: str):
                 dialog.destroy()
                 if messagebox.askyesno(
                     "无法显示图片",
-                    f"PIL/Pillow 未安装，且 tk.PhotoImage 无法加载 PNG:\n{e_tk}\n\n是否用系统默认程序打开图片？"
+                    f"PIL/Pillow 未安装，且 tk.PhotoImage 无法加载 PNG:\n{e_tk}\n\n是否用系统默认程序打开图片？",
                 ):
                     try:
                         _safe_open_file(png_path)

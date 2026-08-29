@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 E-03 智能规则引擎（if-this-then-that）· 纯逻辑层
 
@@ -25,23 +24,36 @@ E-03 智能规则引擎（if-this-then-that）· 纯逻辑层
 条件组支持嵌套 all/any；字段路径支持点号（如 "descriptors.molecular_weight"）。
 红线：字段缺失时，比较类条件一律 False（绝不把缺失当命中）。
 """
+
 import re
 from typing import Any
 
 # 操作符别名 → 规范名
 _OPS = {
-    "eq": "eq", "==": "eq", "=": "eq",
-    "ne": "ne", "!=": "ne",
-    "gt": "gt", ">": "gt",
-    "gte": "gte", ">=": "gte",
-    "lt": "lt", "<": "lt",
-    "lte": "lte", "<=": "lte",
+    "eq": "eq",
+    "==": "eq",
+    "=": "eq",
+    "ne": "ne",
+    "!=": "ne",
+    "gt": "gt",
+    ">": "gt",
+    "gte": "gte",
+    ">=": "gte",
+    "lt": "lt",
+    "<": "lt",
+    "lte": "lte",
+    "<=": "lte",
     "in": "in",
-    "not_in": "not_in", "notin": "not_in",
-    "contains": "contains", "not_contains": "not_contains",
-    "startswith": "startswith", "endswith": "endswith",
-    "exists": "exists", "missing": "missing",
-    "matches": "matches", "regex": "matches",
+    "not_in": "not_in",
+    "notin": "not_in",
+    "contains": "contains",
+    "not_contains": "not_contains",
+    "startswith": "startswith",
+    "endswith": "endswith",
+    "exists": "exists",
+    "missing": "missing",
+    "matches": "matches",
+    "regex": "matches",
 }
 
 _NUMERIC_OPS = {"gt", "gte", "lt", "lte", "eq", "ne"}
@@ -178,13 +190,15 @@ def render_actions(matched: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for r in matched:
         then = r.get("then") or {}
         action = then.get("action", "notify")
-        out.append({
-            "rule_id": r.get("id"),
-            "rule_name": r.get("name", ""),
-            "action": action,
-            "target": then.get("target"),
-            "params": then.get("params") or then,
-        })
+        out.append(
+            {
+                "rule_id": r.get("id"),
+                "rule_name": r.get("name", ""),
+                "action": action,
+                "target": then.get("target"),
+                "params": then.get("params") or then,
+            }
+        )
     return out
 
 
@@ -222,6 +236,7 @@ def validate_rule(rule: dict[str, Any]) -> tuple[bool, list[str]]:
 def load_rules(text: str) -> tuple[list[dict[str, Any]], list[str]]:
     """解析 JSON 规则文本（数组或单对象），返回 (规则列表, 错误列表)。"""
     import json
+
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:
@@ -240,5 +255,13 @@ def load_rules(text: str) -> tuple[list[dict[str, Any]], list[str]]:
     return rules, errs
 
 
-__all__ = ["normalize_op", "match_condition", "match_rule", "evaluate_rules",
-           "render_actions", "validate_rule", "load_rules", "_resolve"]
+__all__ = [
+    "normalize_op",
+    "match_condition",
+    "match_rule",
+    "evaluate_rules",
+    "render_actions",
+    "validate_rule",
+    "load_rules",
+    "_resolve",
+]

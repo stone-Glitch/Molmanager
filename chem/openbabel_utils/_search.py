@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """基于 OpenBabel 指纹与 SMARTS 的子结构 / 相似性搜索。
 
 仅依赖项目已有的 openbabel（C++ 绑定），不引入 RDKit 等额外重依赖。

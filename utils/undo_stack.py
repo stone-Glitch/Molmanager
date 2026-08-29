@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 M-07 映射变更细粒度历史（逐条撤销）· 纯逻辑核心
 
@@ -13,6 +12,7 @@ M-07 映射变更细粒度历史（逐条撤销）· 纯逻辑核心
   - 上限 ``maxlen`` 防止无限增长；超出后丢弃最旧快照。
   - 所有方法幂等且不会抛异常（边界条件返回 None/空）。
 """
+
 import copy
 from typing import Any
 

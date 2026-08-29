@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 E-08 CLI 无头模式（--batch --fix-all）· 纯逻辑规划层
 
@@ -10,12 +9,18 @@ E-08 CLI 无头模式（--batch --fix-all）· 纯逻辑规划层
 用法示例：
     python -m utils.cli_batch --batch --work-dir output --fix-all --dry-run
 """
+
 import argparse
 from typing import Any
 
 # 操作定义：按「安全顺序」排列（扫描→整理→重命名→修中文→生成缺失→导出）
 OPERATION_ORDER = [
-    "scan", "organize", "rename", "fix_chinese", "generate_missing", "export_mapping",
+    "scan",
+    "organize",
+    "rename",
+    "fix_chinese",
+    "generate_missing",
+    "export_mapping",
 ]
 
 OPERATION_LABELS = {
@@ -58,12 +63,18 @@ def _pick(opts: argparse.Namespace) -> dict[str, dict[str, Any]]:
     if getattr(opts, "fix_chinese", False):
         plan["fix_chinese"] = {"name": "fix_chinese", "label": OPERATION_LABELS["fix_chinese"], "args": {}}
     if getattr(opts, "generate_missing", False):
-        plan["generate_missing"] = {"name": "generate_missing", "label": OPERATION_LABELS["generate_missing"], "args": {}}
+        plan["generate_missing"] = {
+            "name": "generate_missing",
+            "label": OPERATION_LABELS["generate_missing"],
+            "args": {},
+        }
     export = getattr(opts, "export_mapping", None)
     if export:
-        plan["export_mapping"] = {"name": "export_mapping",
-                                  "label": OPERATION_LABELS["export_mapping"],
-                                  "args": {"path": export}}
+        plan["export_mapping"] = {
+            "name": "export_mapping",
+            "label": OPERATION_LABELS["export_mapping"],
+            "args": {"path": export},
+        }
     return plan
 
 
@@ -90,5 +101,4 @@ def plan_summary(plan: list[dict[str, Any]], dry_run: bool = False) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["parse_args", "build_batch_plan", "plan_summary",
-           "OPERATION_ORDER", "OPERATION_LABELS"]
+__all__ = ["parse_args", "build_batch_plan", "plan_summary", "OPERATION_ORDER", "OPERATION_LABELS"]
