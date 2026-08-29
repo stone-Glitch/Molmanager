@@ -1,7 +1,5 @@
 """chem 子系统 mixin（由原 core/model.py 拆分而来）。"""
 
-from typing import Dict, Tuple
-
 from ._common import *  # noqa: F401,F403
 
 
@@ -276,7 +274,7 @@ class ChemMixin:
                 )
         return results
 
-    def _file_signature(self, path: Path) -> Tuple[int, float]:
+    def _file_signature(self, path: Path) -> tuple[int, float]:
         try:
             st = path.stat()
             return (st.st_size, st.st_mtime_ns)
@@ -286,8 +284,8 @@ class ChemMixin:
     def compare_directories(self, left: str | Path, right: str | Path) -> dict:
         left_path = Path(left)
         right_path = Path(right)
-        left_files: Dict[str, Tuple[int, float]] = {}
-        right_files: Dict[str, Tuple[int, float]] = {}
+        left_files: dict[str, tuple[int, float]] = {}
+        right_files: dict[str, tuple[int, float]] = {}
         only_left: list[dict] = []
         only_right: list[dict] = []
         diff_content: list[dict] = []

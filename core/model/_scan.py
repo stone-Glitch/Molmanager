@@ -1,7 +1,5 @@
 """scan 子系统 mixin（由原 core/model.py 拆分而来）。"""
 
-from typing import List, Tuple
-
 from ._common import *  # noqa: F401,F403
 
 
@@ -304,7 +302,7 @@ class ScanMixin:
         # F17：覆盖既有导出产物前先快照（失败只警告，不阻断导出）
         self.create_backup_snapshot("export", [safe_path], "导出完整映射表前的自动快照")
         with self._lock:
-            rows: List[Tuple[str, str]] = sorted(self.mapping.items(), key=lambda kv: str(kv[0]).lower())
+            rows: list[tuple[str, str]] = sorted(self.mapping.items(), key=lambda kv: str(kv[0]).lower())
         with open(win_longpath(safe_path), "w", newline="", encoding="utf-8-sig") as f:
             writer = csv.DictWriter(f, fieldnames=["english", "chinese"])
             writer.writeheader()

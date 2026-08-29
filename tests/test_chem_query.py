@@ -146,4 +146,4 @@ def test_matches_free_text_without_terms_is_true() -> None:
 def test_filter_does_not_mutate_input() -> None:
     snapshot = [dict(e) for e in ENTRIES]
     filter_entries(ENTRIES, "mw:>100")
-    assert ENTRIES == snapshot
+    assert snapshot == ENTRIES

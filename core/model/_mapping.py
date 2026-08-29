@@ -1,12 +1,10 @@
 """mapping 子系统 mixin（由原 core/model.py 拆分而来）。"""
 
-from typing import Dict, List, Optional, Tuple
-
 from ._common import *  # noqa: F401,F403
 
 
 class MappingMixin:
-    def save_mapping(self, mapping_dict: Dict[str, str], *, path=None, backup: bool = True) -> Path:
+    def save_mapping(self, mapping_dict: dict[str, str], *, path=None, backup: bool = True) -> Path:
         """
         保存映射表到磁盘（T10：从 ui/dialogs/mapping_dialog.py 下沉而来）。
 
@@ -46,7 +44,7 @@ class MappingMixin:
                 logger.warning("⚠️ 映射表快照失败（保存继续）: %s", exc)
 
         # ---- 2) 原子写（复用 config.save_config 范式，C19）----
-        tmp_path: Optional[Path] = None
+        tmp_path: Path | None = None
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
@@ -70,7 +68,7 @@ class MappingMixin:
         self._log(f"💾 映射表已保存：{len(mapping_dict)} 条 → {out_path.name}", "success")
         return out_path
 
-    def parse_mapping_file(self, path: Path) -> Tuple[Dict[str, str], Dict[str, "object"]]:
+    def parse_mapping_file(self, path: Path) -> tuple[dict[str, str], dict[str, "object"]]:
         """
         M-05：只读解析映射文件，**不**写入内存。返回 (new_dict, info_dict)。
         供 controller 在真正 apply 之前做 Diff 预览；与 load_mapping_file 共用同一解析逻辑，
@@ -80,11 +78,11 @@ class MappingMixin:
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"文件不存在: {path}")
-        mapping: Dict[str, str] = {}
+        mapping: dict[str, str] = {}
         duplicate_count = 0
-        eng_conflicts: List[str] = []  # 重复的英文名（后者被静默丢弃）
-        chn_conflicts: List[Tuple[str, str, str]] = []  # 科学红线 S-06
-        seen_chn: Dict[str, str] = {}
+        eng_conflicts: list[str] = []  # 重复的英文名（后者被静默丢弃）
+        chn_conflicts: list[tuple[str, str, str]] = []  # 科学红线 S-06
+        seen_chn: dict[str, str] = {}
         with open(win_longpath(path), encoding="utf-8-sig") as f:
             lines = f.readlines()
         if len(lines) < 2:

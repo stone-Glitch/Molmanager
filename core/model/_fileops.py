@@ -1,7 +1,5 @@
 """fileops 子系统 mixin（由原 core/model.py 拆分而来）。"""
 
-from typing import List, Tuple
-
 from ._common import *  # noqa: F401,F403
 
 
@@ -511,7 +509,7 @@ class FileOpsMixin:
         d.mkdir(exist_ok=True)
         return d
 
-    def delete_files(self, filenames: List[str], *, _filtered_names: List[str] | None = None):
+    def delete_files(self, filenames: list[str], *, _filtered_names: list[str] | None = None):
         if not filenames:
             return 0, []
         filenames = list(filenames)
@@ -745,9 +743,9 @@ class FileOpsMixin:
         except TypeError:
             raise ValueError("paths 必须是可迭代的路径集合") from None
 
-        imported: List[Tuple[str, str]] = []
-        skipped: List[str] = []
-        errors: List[str] = []
+        imported: list[tuple[str, str]] = []
+        skipped: list[str] = []
+        errors: list[str] = []
         total = len(items)
 
         for idx, src in enumerate(items):

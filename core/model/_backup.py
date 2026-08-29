@@ -1,12 +1,10 @@
 """backup 子系统 mixin（由原 core/model.py 拆分而来）。"""
 
-from typing import Dict, List, Optional
-
 from ._common import *  # noqa: F401,F403
 
 
 class BackupMixin:
-    def configure_backup(self, backup_cfg: Optional[Dict] = None) -> None:
+    def configure_backup(self, backup_cfg: dict | None = None) -> None:
         """
         用 config["backup"] 配置备份行为。controller 初始化时调用一次即可。
 
@@ -88,14 +86,14 @@ class BackupMixin:
             logger.warning("⚠️ 创建快照失败（不影响主操作）: %s", exc)
             return None
 
-    def get_mapping_artifacts(self) -> List[Path]:
+    def get_mapping_artifacts(self) -> list[Path]:
         """
         返回「映射表产物集合」——F17 快照按产物集合而非单文件备份（架构 §7 风险表）。
 
         C9：映射表历史上是**读 TSV / 写 JSON** 双格式，两者都要纳入快照，
         否则回滚后会出现 JSON 已还原、TSV 仍是新版的撕裂状态。
         """
-        out: List[Path] = []
+        out: list[Path] = []
         seen: set = set()
 
         def _add(p) -> None:
