@@ -137,6 +137,17 @@ def build_menu_bar(app) -> None:
     # —— 3) ❓ 帮助菜单 ——
     _mb_help, menu_help = _make_mb(bar, "  ❓ 帮助  ")
     try:
+        # 可发现性：快捷键帮助与命令面板此前只能靠「碰巧按 F1 / Ctrl+K」发现，
+        # 现在从菜单也能直达（新手必经之路）。
+        menu_help.add_command(
+            label="  ⌨️ 快捷键帮助 (F1)…",
+            command=lambda: _safe_call(app, "_show_help"),
+        )
+        menu_help.add_command(
+            label="  🔍 命令面板 (Ctrl+K)…",
+            command=lambda: _safe_call(app, "show_command_palette"),
+        )
+        menu_help.add_separator()
         menu_help.add_command(
             label="  🧪 环境诊断（检查 OB / PSI4 依赖）",
             command=lambda: _safe_call(app, "show_environment_dialog_from_menu"),

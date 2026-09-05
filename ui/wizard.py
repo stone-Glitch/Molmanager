@@ -375,7 +375,15 @@ class FirstRunWizard:
         try:
             p.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            messagebox.showerror("创建目录失败", f"无法创建/访问目录 {p}\n{e}", parent=self.top)
+            # 不直接甩原始异常给新手：用 friendly_error 翻译成大白话 + 下一步建议，
+            # 但保留目录路径，方便用户核对到底是哪个目录出的问题。
+            try:
+                from ui.dialogs.base import friendly_error
+
+                _t, body, hint = friendly_error(e)
+                messagebox.showerror("创建目录失败", f"无法创建/访问目录：\n{p}\n\n{body}\n\n{hint}", parent=self.top)
+            except Exception:
+                messagebox.showerror("创建目录失败", f"无法创建/访问目录 {p}\n{e}", parent=self.top)
             return False
         self.work_dir_value = str(p)
         return True

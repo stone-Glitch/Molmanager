@@ -143,7 +143,9 @@ class AppHelpers:
             messagebox.showerror("导出失败", "文件被占用或没有写入权限，请换个路径再试。")
         except Exception as e:
             logger.error("导出日志失败: %s", e)
-            messagebox.showerror("导出失败", f"{e}")
+            from ui.dialogs.base import show_friendly_error
+
+            show_friendly_error(self.app, e, title="导出失败")
 
     def _show_top_perf(self):
         """显示性能 Top10（来自 performance_timer 累计）"""

@@ -12,7 +12,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 import chem.openbabel_utils as ob_utils
 from utils.dialog_geom import fit_dialog_geometry
 
-from .base import _append_text, _clear_text
+from .base import _append_text, _clear_text, show_friendly_error
 from .common import _safe_open_file
 
 
@@ -638,24 +638,26 @@ def _show_png_preview(app, png_path: str, fname: str):
                     try:
                         _safe_open_file(png_path)
                     except Exception as e_open:
-                        messagebox.showerror("打开失败", f"无法打开图片:\n{e_open}")
+                        show_friendly_error(app, e_open, title="打开失败")
                 else:
                     messagebox.showinfo("提示", "请安装 Pillow:\n  pip install Pillow")
                 return
     except Exception as e:
         dialog.destroy()
-        messagebox.showerror("预览异常", f"显示图片时出错:\n{e}")
+        show_friendly_error(app, e, title="预览异常")
         return
 
     btn_frame = ttk.Frame(dialog)
     btn_frame.pack(pady=10)
-    ttk.Button(btn_frame, text="📂 打开文件位置", command=lambda: _open_png_folder(png_path)).pack(side=tk.LEFT, padx=5)
+    ttk.Button(btn_frame, text="📂 打开文件位置", command=lambda: _open_png_folder(png_path, parent=dialog)).pack(
+        side=tk.LEFT, padx=5
+    )
     ttk.Button(btn_frame, text="关闭", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
 
-def _open_png_folder(png_path: str):
+def _open_png_folder(png_path: str, parent=None):
     try:
         folder = os.path.dirname(os.path.abspath(png_path))
         _safe_open_file(folder)
     except Exception as e:
-        messagebox.showerror("打开失败", f"无法打开文件夹:\n{e}")
+        show_friendly_error(None, e, parent=parent, title="打开失败")

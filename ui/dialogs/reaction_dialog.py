@@ -130,7 +130,9 @@ def show_reaction_animation_dialog(app, controller):
                 traj_var.set(data["traj_path"])
             messagebox.showinfo("加载成功", f"已加载预设：{name}", parent=dialog)
         except Exception as e:
-            messagebox.showerror("加载失败", str(e), parent=dialog)
+            from .base import show_friendly_error
+
+            show_friendly_error(app, e, parent=dialog, title="加载失败")
 
     def _save_preset():
         name = simpledialog.askstring("保存预设", "输入预设名称：", parent=dialog)
@@ -208,7 +210,9 @@ def show_reaction_animation_dialog(app, controller):
                 preset_var.set(name)
                 messagebox.showinfo("导入成功", f"已导入预设：{name}", parent=dialog)
             except Exception as e:
-                messagebox.showerror("导入失败", str(e), parent=dialog)
+                from .base import show_friendly_error
+
+                show_friendly_error(app, e, parent=dialog, title="导入失败")
 
     ttk.Button(preset_frame, text="📥 加载", command=_load_preset).pack(side=tk.LEFT, padx=2)
     ttk.Button(preset_frame, text="💾 保存", command=_save_preset).pack(side=tk.LEFT, padx=2)

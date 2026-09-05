@@ -10,6 +10,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from utils.dialog_geom import fit_dialog_geometry
 
+from .base import show_friendly_error
 from .common import _safe_open_file
 
 
@@ -107,7 +108,7 @@ def show_results_browser_dialog(app, controller):
             messagebox.showinfo("导出成功", f"已导出 {len(sel_ids)} 行到：\n{out_path}", parent=dialog)
         except Exception as e:
             app.helpers.on_log(f"❌ CSV 导出失败: {e}", "error")
-            messagebox.showerror("导出失败", f"导出失败：{e}", parent=dialog)
+            show_friendly_error(app, e, parent=dialog, title="导出失败")
 
     btn_export_csv = ttk.Button(top_btn_frame, text="💾 导出选中行 CSV", command=export_selected_csv)
     btn_export_csv.pack(side=tk.LEFT, padx=5)
@@ -181,7 +182,7 @@ def show_results_browser_dialog(app, controller):
             try:
                 _safe_open_file(log_path)
             except Exception as e:
-                messagebox.showerror("打开失败", f"无法打开文件：{e}", parent=dialog)
+                show_friendly_error(app, e, parent=dialog, title="打开失败")
 
     tree.bind("<Double-Button-1>", on_double_click)
 
@@ -286,7 +287,7 @@ def show_results_browser_dialog(app, controller):
             messagebox.showinfo("导出成功", f"已导出差值结果到：\n{out_path}", parent=dialog)
         except Exception as e:
             app.helpers.on_log(f"❌ 差值 CSV 导出失败: {e}", "error")
-            messagebox.showerror("导出失败", f"导出失败：{e}", parent=dialog)
+            show_friendly_error(app, e, parent=dialog, title="导出失败")
 
     btn_calc = ttk.Button(btn_row, text="📐 计算差值", command=calc_deltas)
     btn_calc.pack(side=tk.LEFT, padx=5)

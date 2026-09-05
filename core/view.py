@@ -390,8 +390,11 @@ class MainView(*_DND_BASES):
             # -------- 全局快捷键绑定（易用性改进）--------
             # 注意：F1 帮助里列出的每一个键都必须真实绑定在这里，
             # 否则用户按了没反应会直接怀疑「这软件是不是坏了」。
+            # 反过来，命令面板里标注的快捷键也必须真实绑定（Ctrl+O 曾被
+            # 标注却未绑定，属于误导用户的显示 bug，已修复）。
             self.bind("<Control-g>", lambda e: self._on_ctrl_g())
             self.bind("<Control-s>", lambda e: self._on_ctrl_s())
+            self.bind("<Control-o>", lambda e: self._on_ctrl_o())
             self.bind("<F1>", lambda e: self._show_help())
             self.bind("<Control-z>", self._on_ctrl_z)
             self.bind("<Control-y>", self._on_ctrl_y)
@@ -401,10 +404,8 @@ class MainView(*_DND_BASES):
             # F15：日志过滤关键词框（Ctrl+F 已被文件列表搜索占用，这里必须避让）
             self.bind("<Control-Shift-F>", self._on_ctrl_shift_f)
             # 命令面板（设计落地 Phase 1）：Ctrl/Cmd+K 全局唤起
-            from ui.command_palette import open_command_palette as _open_cmd_palette
-
-            self.bind("<Control-k>", lambda e: _open_cmd_palette(self))
-            self.bind("<Command-k>", lambda e: _open_cmd_palette(self))
+            self.bind("<Control-k>", lambda e: self.show_command_palette())
+            self.bind("<Command-k>", lambda e: self.show_command_palette())
 
             self.protocol("WM_DELETE_WINDOW", self.on_close)
         except Exception as e:
@@ -651,6 +652,22 @@ class MainView(*_DND_BASES):
         else:
             self.helpers.on_log("⚠️ 反应动画功能未加载", "warning")
 
+    def _on_ctrl_o(self):
+        """Ctrl+O: 选择工作目录（命令面板里标注过此快捷键，必须真实可用）"""
+        try:
+            self.controller.browse_work_dir()
+        except Exception as e:
+            logger.debug("Ctrl+O 选择工作目录失败: %s", e)
+
+    def show_command_palette(self):
+        """Ctrl/Cmd+K 与「帮助」菜单共用的命令面板入口。"""
+        try:
+            from ui.command_palette import open_command_palette
+
+            open_command_palette(self)
+        except Exception as e:
+            logger.debug("打开命令面板失败: %s", e)
+
     def _on_ctrl_s(self):
         """Ctrl+S: 保存当前配置"""
         try:
@@ -756,8 +773,10 @@ Ctrl+F          跳到文件搜索框
 Ctrl+Shift+F    跳到日志过滤关键词框
 Ctrl+Z          撤销上一步文件操作
 Ctrl+Y          重做（也可用 Ctrl+Shift+Z）
+Ctrl+O          选择工作目录
 Ctrl+G          打开反应动画对话框
 Ctrl+S          保存当前配置
+Ctrl+K          打开命令面板（搜功能 / 看全部快捷键）
 F1              显示此帮助
 
 提示：在输入框里编辑文字时，Ctrl+Z 仍是普通的文本撤销，

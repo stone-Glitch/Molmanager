@@ -234,14 +234,19 @@ def friendly_error(err: object) -> tuple[str, str, str]:
     return (title, body, suggestion)
 
 
-def show_friendly_error(app, err: object, parent=None) -> None:
-    """封装：把异常对象转成大白话弹框"""
-    title, body, hint = friendly_error(err)
+def show_friendly_error(app, err: object, parent=None, title: str | None = None) -> None:
+    """封装：把异常对象转成大白话弹框。
+
+    参数 ``title``：调用方已有明确业务语境（如「导出失败」）时可自定义弹窗标题；
+    省略则使用 friendly_error 生成的标题。正文与下一步建议始终来自翻译结果，
+    避免把原始异常（英文/路径/异常类型）直接甩给用户。
+    """
+    d_title, body, hint = friendly_error(err)
     parent = parent or app
     try:
-        messagebox.showerror(title, f"{body}\n\n{hint}", parent=parent)
+        messagebox.showerror(title or d_title, f"{body}\n\n{hint}", parent=parent)
     except Exception:
         try:
-            tk.messagebox.showerror(title, f"{body}\n\n{hint}", parent=parent)
+            tk.messagebox.showerror(title or d_title, f"{body}\n\n{hint}", parent=parent)
         except Exception:
-            print(f"[{title}] {body}\n{hint}")  # noqa: T201
+            print(f"[{d_title}] {body}\n{hint}")  # noqa: T201

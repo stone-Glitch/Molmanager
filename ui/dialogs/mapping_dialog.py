@@ -15,6 +15,8 @@ from utils.mapping_utils import (
     suggest_mapping_from_dir,
 )
 
+from .base import show_friendly_error
+
 
 def show_mapping_manager_dialog(app, controller):
     model = controller.model
@@ -50,7 +52,7 @@ def show_mapping_manager_dialog(app, controller):
             messagebox.showinfo("导出成功", f"已导出 {count} 条缺失映射记录到：\n{csv_path}", parent=dialog)
             app.helpers.on_log(f"💾 导出缺失映射表: {count} 条", "success")
         except Exception as e:
-            messagebox.showerror("导出失败", f"导出失败：{e}", parent=dialog)
+            show_friendly_error(app, e, parent=dialog, title="导出失败")
             app.helpers.on_log(f"❌ 导出缺失映射表失败: {e}", "error")
 
     def import_missing(overwrite=False):
@@ -89,7 +91,7 @@ def show_mapping_manager_dialog(app, controller):
             if messagebox.askyesno("导入完成", _msg + "\n\n是否刷新文件列表？", parent=dialog):
                 controller.scan_files()
         except Exception as e:
-            messagebox.showerror("导入失败", f"导入失败：{e}", parent=dialog)
+            show_friendly_error(app, e, parent=dialog, title="导入失败")
             app.helpers.on_log(f"❌ 导入映射表失败: {e}", "error")
 
     def export_mapping():
@@ -106,7 +108,7 @@ def show_mapping_manager_dialog(app, controller):
             messagebox.showinfo("导出成功", f"已导出 {count} 条映射记录到：\n{csv_path}", parent=dialog)
             app.helpers.on_log(f"💾 导出完整映射表: {count} 条", "success")
         except Exception as e:
-            messagebox.showerror("导出失败", f"导出失败：{e}", parent=dialog)
+            show_friendly_error(app, e, parent=dialog, title="导出失败")
             app.helpers.on_log(f"❌ 导出完整映射表失败: {e}", "error")
 
     btn_export_missing = ttk.Button(btn_frame, text="💾 导出缺失表 (CSV)", command=export_missing, width=28)
@@ -269,7 +271,7 @@ def show_mapping_editor_dialog(app, controller):
         try:
             out_path = model.save_mapping(new_dict)
         except Exception as e:
-            messagebox.showerror("保存失败", f"写入文件失败：{e}", parent=dialog)
+            show_friendly_error(app, e, parent=dialog, title="保存失败")
             app.helpers.on_log(f"❌ 保存映射表失败: {e}", "error")
             return
         # M-07 边界修复：保存成功后把「保存后」状态重置为撤销基线，
@@ -305,7 +307,7 @@ def show_mapping_editor_dialog(app, controller):
             )
             app.helpers.on_log(f"📝 生成映射空白模板: {n} 行 → {Path(out).name}", "success")
         except Exception as e:
-            messagebox.showerror("生成失败", f"生成模板失败：{e}", parent=dialog)
+            show_friendly_error(app, e, parent=dialog, title="生成失败")
             app.helpers.on_log(f"❌ 生成映射模板失败: {e}", "error")
 
     def _suggest_from_files():
@@ -319,7 +321,7 @@ def show_mapping_editor_dialog(app, controller):
                 max_items=1000,
             )
         except Exception as e:
-            messagebox.showerror("扫描失败", f"扫描工作目录失败：{e}", parent=dialog)
+            show_friendly_error(app, e, parent=dialog, title="扫描失败")
             return
         if not sug:
             messagebox.showinfo(
