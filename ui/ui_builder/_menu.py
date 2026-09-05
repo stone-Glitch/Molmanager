@@ -140,6 +140,10 @@ def build_menu_bar(app) -> None:
         # 可发现性：快捷键帮助与命令面板此前只能靠「碰巧按 F1 / Ctrl+K」发现，
         # 现在从菜单也能直达（新手必经之路）。
         menu_help.add_command(
+            label="  🚀 快速上手（3 分钟）…",
+            command=lambda: _safe_call(app, "show_quick_start_from_menu"),
+        )
+        menu_help.add_command(
             label="  ⌨️ 快捷键帮助 (F1)…",
             command=lambda: _safe_call(app, "_show_help"),
         )
@@ -151,6 +155,10 @@ def build_menu_bar(app) -> None:
         menu_help.add_command(
             label="  🧪 环境诊断（检查 OB / PSI4 依赖）",
             command=lambda: _safe_call(app, "show_environment_dialog_from_menu"),
+        )
+        menu_help.add_command(
+            label="  💬 反馈问题 / 提建议…",
+            command=lambda: _safe_call(app, "show_feedback_from_menu"),
         )
         menu_help.add_separator()
         # OpenBabel 路径与字体大小设置已统一收敛到「⚙️ 设置」菜单，帮助菜单不再重复。

@@ -1169,6 +1169,68 @@ F1              显示此帮助
         except Exception as e:
             self.helpers.on_log(f"❌ 打开量子反应计算失败: {e}", "error")
 
+    def show_quick_start_from_menu(self) -> None:
+        """🚀 快速上手：3 分钟新手指引（与新手路径日志提示一致）。"""
+        text = """🚀 快速上手（3 分钟）
+
+① 选工作目录
+   左上「浏览…」选择一个放分子文件的文件夹（没有就新建一个）。
+
+② 导入文件
+   直接把 mol / sdf / xyz / pdb 拖进窗口，或菜单「文件 → 导入外部文件…」。
+   没有 file？试试「帮助 → 示例分子库」里的现成结构。
+
+③ 一键修复
+   点「🔧 一键修复全部」：自动补齐缺失的 SMILES / 分子式 / InChI 等信息。
+
+④ 按类型整理
+   点「📂 按类型整理」把文件归档到子目录；规则可在「设置」里自定义。
+
+⑤ 量化计算（可选）
+   选中分子 → 量化计算面板：单点能 / 几何优化 / 频率 / 热化学；
+   「工具 → 量子反应能计算」可算整个反应的 ΔE / ΔH° / ΔG°。
+
+⑥ 遇到问题？
+   「帮助 → 🧪 环境诊断」一键检查 OpenBabel / PSI4 依赖；
+   「帮助 → ⌨️ 快捷键帮助」或按 F1 查看全部快捷键。
+"""
+        try:
+            self._show_text_dialog("🚀 快速上手", text)
+        except Exception as e:
+            self.helpers.on_log(f"❌ 打开快速上手失败: {e}", "error")
+
+    def show_feedback_from_menu(self) -> None:
+        """💬 反馈：反馈渠道 + 环境信息一键复制（已自动写入剪贴板）。"""
+        try:
+            import platform
+            import sys
+
+            from utils.version import get_full_version
+
+            env_text = (
+                f"MolManager {get_full_version()}\n"
+                f"Python {platform.python_version()} ({sys.platform})\n"
+                f"{platform.system()} {platform.release()}"
+            )
+            text = f"""💬 反馈问题 / 提建议
+
+1) GitHub Issues（推荐，可附截图）:
+   https://github.com/stone-Glitch/Molmanager/issues
+
+2) 提问时请附上环境信息 —— 已经帮你复制到剪贴板了，
+   在 Issue 里直接 Ctrl+V 粘贴即可：
+
+{env_text}
+
+3) 依赖类问题先跑「帮助 → 🧪 环境诊断」，把诊断结果一并贴上。
+"""
+            self._show_text_dialog("💬 反馈", text)
+            self.clipboard_clear()
+            self.clipboard_append(env_text)
+            self.helpers.on_log("📋 环境信息已复制到剪贴板", "info")
+        except Exception as e:
+            self.helpers.on_log(f"❌ 打开反馈窗口失败: {e}", "error")
+
     def show_wizard_steps_from_menu(self) -> None:
         """U-07 新手任务向导（6 场景）只读概览。"""
         try:

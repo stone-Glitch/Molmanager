@@ -60,6 +60,22 @@ CREATE INDEX IF NOT EXISTS idx_calc_molecule ON calc_result(molecule);
 CREATE INDEX IF NOT EXISTS idx_calc_type ON calc_result(calc_type);
 """
 
+# 当前 schema 版本。**每次给 _SCHEMA/表结构做不兼容变更时 +1**，并在 _MIGRATIONS
+# 注册 (旧版本 -> 新版本) 的迁移步骤；迁移在独立事务中执行，失败回滚保留原版本号。
+_SCHEMA_VERSION = 1
+
+# 迁移注册表：{from_version: (to_version, 人类可读描述, 迁移函数)}
+# 迁移函数签名: (conn: sqlite3.Connection) -> None；失败抛异常即可，调用方负责回滚。
+# 示例（未来扩展）：
+#   _MIGRATIONS[1] = (2, "molecule 增加 cas 列",
+#                     lambda conn: conn.execute("ALTER TABLE molecule ADD COLUMN cas TEXT"))
+_MIGRATIONS: dict[int, tuple[int, str, Any]] = {}
+
+
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
+    return row is not None
+
 
 class Storage:
     """围绕单个 SQLite 文件的轻量仓储。"""
@@ -77,10 +93,57 @@ class Storage:
     # ---------------- schema ----------------
     def _init_schema(self) -> None:
         try:
-            self._conn.executescript(_SCHEMA)
+            self._migrate()
+            self._conn.executescript(_SCHEMA)  # 幂等：补建缺失的表/索引
             self._conn.commit()
         except sqlite3.Error as _e:  # pragma: no cover - 极端环境
             _logger.error("schema init failed: %s", _e)
+
+    def _migrate(self) -> None:
+        """基于 ``PRAGMA user_version`` 的增量 schema 迁移。
+
+        - **全新库**（无表、无版本号）：直接标记为当前版本，随后由 ``_SCHEMA`` 建表。
+        - **史前库**（1.0 时代建表但尚无版本标记）：结构与当前 ``_SCHEMA`` 一致，
+          ``CREATE TABLE IF NOT EXISTS`` 天然兼容，仅补标版本号，数据不受影响。
+        - **旧版本库**：按注册表顺序执行迁移，每步独立事务；全部成功才推进版本号，
+          缺步骤或任一步失败则保持原版本号，下次启动自动重试。
+        """
+        cur = int(self._conn.execute("PRAGMA user_version").fetchone()[0])
+        has_tables = _table_exists(self._conn, "molecule")
+        if cur == 0:
+            if has_tables:
+                # 史前库：无版本标记但结构即当前版
+                _logger.info("检测到无版本标记的旧数据库，补标 schema 版本 %s", _SCHEMA_VERSION)
+            self._conn.execute(f"PRAGMA user_version = {int(_SCHEMA_VERSION)}")
+            self._conn.commit()
+            return
+        while cur < _SCHEMA_VERSION:
+            step = _MIGRATIONS.get(cur)
+            if step is None:
+                _logger.warning(
+                    "数据库版本 %s 缺少到 %s 的迁移步骤，保留旧版本（结构兜底由 schema 脚本完成，数据不受影响）",
+                    cur,
+                    _SCHEMA_VERSION,
+                )
+                return  # 不推进版本号，避免「假升级」后永不重试
+            target, desc, fn = step
+            try:
+                fn(self._conn)
+                self._conn.commit()
+            except sqlite3.Error as e:
+                self._conn.rollback()
+                _logger.error(
+                    "数据库迁移 %s→%s 失败（保留旧版本，下次启动重试）: %s — %s",
+                    cur,
+                    target,
+                    desc,
+                    e,
+                )
+                return
+            _logger.info("数据库迁移 %s→%s 完成: %s", cur, target, desc)
+            cur = target
+        self._conn.execute(f"PRAGMA user_version = {int(cur)}")
+        self._conn.commit()
 
     # ---------------- molecule ----------------
     def upsert_molecule(self, rec: MoleculeRecord) -> bool:
