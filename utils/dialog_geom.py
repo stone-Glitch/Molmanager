@@ -93,20 +93,15 @@ def make_scrollable_body(dialog, padx: int = 12, pady: int = 12):
     body.bind("<Configure>", _on_body_configure)
 
     # 鼠标滚轮滚动（仅当内容超出时）
-    def _on_mousewheel(event):
-        try:
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        except Exception:
-            pass
+    # —— 跨平台修复：原先只 bind_all("<MouseWheel>")，有两个问题：
+    #   1) Linux/X11 触发的是 <Button-4>/<Button-5>，导致滚轮完全失效；
+    #   2) bind_all 是**全局**绑定，会劫持本对话框之外其它窗口的滚轮滚动。
+    # 改为只绑定到本画布，并统一三平台事件（指针停在画布内任意子控件上同样生效）。
+    try:
+        from utils.tk_scroll import bind_mousewheel
 
-    canvas.bind_all("<MouseWheel>", _on_mousewheel)
-
-    def _cleanup(_e=None):
-        try:
-            canvas.unbind_all("<MouseWheel>")
-        except Exception:
-            pass
-
-    dialog.bind("<Destroy>", _cleanup)
+        bind_mousewheel(canvas)
+    except Exception:
+        pass
 
     return canvas, body

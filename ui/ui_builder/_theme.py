@@ -2,14 +2,7 @@ import sys
 import tkinter as tk
 from tkinter import ttk
 
-from ui.ui_theme import (
-    COLORS,
-    apply_theme,
-    get_current_theme,
-    refresh_themed_widgets,
-    save_theme_preference,
-    set_current_theme,
-)
+from ui.ui_theme import COLORS
 
 # ------------------------- 🎨 主题颜色常量 -------------------------
 
@@ -143,25 +136,24 @@ def resolve_font_specs(app, force_pt: int | None = None) -> dict:
 
 
 def _toggle_theme(app) -> None:
-    """在「设置」菜单中切换浅色/深色主题：持久化 + 应用 + 刷新工厂控件 + 提示重启。
+    """在「设置」菜单中切换浅色/深色主题：持久化 + 三层即时换肤。
 
-    与字体大小对话框一致，部分已显示的界面需重启后完全生效。
+    早期版本切换后只能弹窗提示「部分界面需重启后完全生效」——因为大量直接写
+    ``bg=COLORS[...]`` 的控件不会跟着变。现在 ``ui_theme.toggle_theme`` 会额外调用
+    ``refresh_all_widget_colors`` 就地换色，主界面绝大多数控件即时生效，
+    因此不再用模态弹窗打断用户去询问是否重启。
     """
     try:
-        import tkinter.messagebox as _mb
+        from ui.ui_theme import toggle_theme as _tt
 
-        from ui.dialogs.common import _restart_app
-
-        _new = "light" if get_current_theme() == "dark" else "dark"
-        save_theme_preference(_new)
-        set_current_theme(_new)
-        apply_theme(app, _new)
-        refresh_themed_widgets()
+        _new = _tt(app)
         _label = "浅色" if _new == "light" else "深色"
-        if _mb.askyesno(
-            "已切换主题", f"已切换为「{_label}」主题。\n\n部分已显示的界面需重启后完全生效，是否立即重启？", parent=app
-        ):
-            _restart_app(app)
+        # 用状态栏轻提示代替模态弹窗，避免打断当前操作
+        try:
+            if isinstance(getattr(app, "status_var", None), tk.StringVar):
+                app.status_var.set(f"已切换为「{_label}」主题")
+        except Exception:
+            pass
     except Exception as _e:
         print("[ui_builder] toggle_theme failed:", _e)  # noqa: T201
 
@@ -554,11 +546,8 @@ class ToolTip:
     def _show_tip(self):
         if self.tip_window is not None:
             return
-        x = self.widget.winfo_rootx() + 24
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
         self.tip_window = tw = tk.Toplevel(self.widget)
         tw.wm_overrideredirect(True)
-        tw.wm_geometry(f"+{x}+{y}")
         try:
             tw.attributes("-topmost", True)
         except tk.TclError:
@@ -581,6 +570,28 @@ class ToolTip:
             font=self.font,
             wraplength=320,
         ).pack()
+
+        # —— 屏幕边界保护：先搭建内容并强制布局，量出真实尺寸后再定位。
+        # 原实现固定显示在控件下方 +10px，靠近屏幕底部/右侧时会被屏幕边缘裁掉看不见。
+        x = self.widget.winfo_rootx() + 24
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 10
+        try:
+            tw.update_idletasks()  # 强制布局，否则量到的是 1x1
+            tip_w = tw.winfo_reqwidth()
+            tip_h = tw.winfo_reqheight()
+            scr_w = tw.winfo_screenwidth()
+            scr_h = tw.winfo_screenheight()
+            margin = 8
+            # 水平：超出右边界则贴住右边界
+            if x + tip_w > scr_w - margin:
+                x = max(margin, scr_w - tip_w - margin)
+            # 垂直：下方放不下就翻到控件上方；上方也放不下则贴住屏幕底部
+            if y + tip_h > scr_h - margin:
+                above = self.widget.winfo_rooty() - tip_h - 6
+                y = above if above >= margin else max(margin, scr_h - tip_h - margin)
+        except Exception:
+            pass
+        tw.wm_geometry(f"+{int(x)}+{int(y)}")
 
     def _hide_tip(self):
         if self.tip_window is not None:
@@ -735,13 +746,14 @@ def _make_scrolled_frame(master, bg, use_x=True, use_y=True):
     canvas.bind("<Configure>", _sync)
 
     # 鼠标滚轮：悬停画布时纵向滚动；Shift+滚轮横向滚动（仅本画布，避免影响其他标签页）
-    def _on_wheel(evt):
-        if evt.state & 0x0001:  # Shift 按下 → 横向
-            canvas.xview_scroll(int(-evt.delta / 120), "units")
-        else:
-            canvas.yview_scroll(int(-evt.delta / 120), "units")
+    # —— 跨平台修复：Windows/macOS 触发 <MouseWheel>，Linux/X11 触发 <Button-4>/<Button-5>。
+    # 原实现只绑定 <MouseWheel>，导致 Linux 上主界面 6 个标签页的滚轮滚动完全失效。
+    try:
+        from utils.tk_scroll import bind_mousewheel
 
-    canvas.bind("<MouseWheel>", _on_wheel)
+        bind_mousewheel(canvas)
+    except Exception:
+        pass
 
     return outer, inner
 

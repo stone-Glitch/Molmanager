@@ -204,6 +204,105 @@ def refresh_themed_widgets() -> None:
     _THEMED[:] = alive
 
 
+# ---------- 已存在控件的就地换色（免重启换肤的关键） ----------
+# 大量界面控件是直接写 `bg=COLORS["surface"]` / `fg=COLORS["text"]` 创建的
+# （不经工厂、未登记进 _THEMED），切换主题后它们仍保留旧调色板的值，
+# 所以旧实现只能弹窗让用户重启程序。
+#
+# 这里用「反查法」就地刷色：读出控件当前的颜色值 → 在旧调色板里反查它属于哪个 key
+# → 替换成新调色板同 key 的值。因为 COLORS 代理保证了所有显式赋色都取自调色板，
+# 反查是可靠且零侵入的，不需要改动任何页面构建代码。
+#
+# 已知边界（不改也无害）：
+#   - ttk 控件由 style 驱动，apply_theme 已统一处理，这里 cget 会失败并自然跳过；
+#   - Canvas 内用 create_oval / create_rectangle 画的图元（如状态栏圆点指示灯）
+#     不是 widget 属性，不在此函数范围内。
+
+# 需要就地换色的控件属性（按出现频率排序，全部包 try/except 兼容不支持的选项）
+_COLOR_OPTIONS = (
+    "bg",
+    "fg",
+    "activebackground",
+    "activeforeground",
+    "disabledforeground",
+    "insertbackground",
+    "highlightbackground",
+    "highlightcolor",
+    "selectbackground",
+    "selectforeground",
+    "troughcolor",
+    "readonlybackground",
+)
+
+
+def refresh_all_widget_colors(root, old_theme: str | None = None) -> int:
+    """遍历 root 下所有控件，把仍是旧主题色的属性就地替换为新主题色。
+
+    参数：
+      - root：根窗口（MainView）或任意容器。
+      - old_theme：切换前的主题名；省略时按「所有非当前主题」来反查。
+
+    返回实际发生修改的「控件属性」条数（用于判断是否真的刷到了东西）。
+    """
+    try:
+        new_pal = get_palette()
+    except Exception:
+        return 0
+
+    # 旧主题色 -> 调色板 key 的反查表（忽略大小写：Tk 返回小写，调色板多为大写）
+    if old_theme and old_theme in PALETTES and old_theme != _CURRENT:
+        sources = (PALETTES[old_theme],)
+    else:
+        sources = tuple(p for name, p in PALETTES.items() if name != _CURRENT)
+
+    rev: dict[str, str] = {}
+    for pal in sources:
+        for k, v in pal.items():
+            if isinstance(v, str):
+                rev.setdefault(v.strip().lower(), k)
+    if not rev:
+        return 0
+
+    changed = 0
+    stack = [root]
+    seen: set[str] = set()
+    while stack:
+        w = stack.pop()
+        # 防重复/防环：同一控件可能被多个父容器引用
+        try:
+            key_id = str(w)
+            if key_id in seen:
+                continue
+            seen.add(key_id)
+        except Exception:
+            pass
+        # 先收集子控件（ttk 与 tk 混合树都能正常递归）
+        try:
+            stack.extend(w.winfo_children())
+        except Exception:
+            pass
+
+        for opt in _COLOR_OPTIONS:
+            try:
+                cur = w.cget(opt)
+            except Exception:
+                continue  # 该控件没有这个属性（ttk 控件大多在此跳过）
+            if not isinstance(cur, str) or not cur:
+                continue
+            pal_key = rev.get(cur.strip().lower())
+            if pal_key is None:
+                continue  # 不是调色板颜色（如系统色名），保持原样
+            newv = new_pal.get(pal_key)
+            if not isinstance(newv, str) or newv.strip().lower() == cur.strip().lower():
+                continue  # 新旧同色，无需改动
+            try:
+                w.configure(**{opt: newv})
+                changed += 1
+            except Exception:
+                pass
+    return changed
+
+
 def bind_treeview_hover(tree, hover_bg=None):
     """给 Treeview 行加悬停高亮：合并 tag（不丢失已有 tag，如状态色）、
 
@@ -498,11 +597,23 @@ def apply_dark_theme(root: tk.Tk | tk.Toplevel) -> None:
 
 # ---------- 运行时一键切换（供命令面板 / 顶栏按钮复用） ----------
 def toggle_theme(root: tk.Tk | tk.Toplevel) -> str:
-    """在 dark/light 间切换并即时重绘 + 持久化偏好。返回新主题名。"""
-    new = "light" if get_current_theme() == "dark" else "dark"
+    """在 dark/light 间切换并即时重绘 + 持久化偏好。返回新主题名。
+
+    换肤链路分三层，合起来覆盖全部控件：
+      1) ``apply_theme``             → ttk.Style + tk 全局 option_add（样式与新控件）
+      2) ``refresh_themed_widgets``  → 工厂创建的控件（卡片/按钮/标题，登记在 _THEMED）
+      3) ``refresh_all_widget_colors`` → 其余直接写 ``bg=COLORS[...]`` 的 tk 控件
+         （反查法就地换色，本次新增）
+
+    第 3 层补上了原先「必须重启程序才完全生效」的缺口：主界面绝大多数控件
+    现在切换后立即变色，无需重启。
+    """
+    old = get_current_theme()
+    new = "light" if old == "dark" else "dark"
     set_current_theme(new)
     apply_theme(root, new)
     refresh_themed_widgets()
+    refresh_all_widget_colors(root, old)
     save_theme_preference(new)
     return new
 
