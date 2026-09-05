@@ -1160,6 +1160,15 @@ F1              显示此帮助
         except Exception as e:
             self.helpers.on_log(f"❌ 打开示例库失败: {e}", "error")
 
+    def show_quantum_reaction_from_menu(self) -> None:
+        """⚗️ 量子反应能计算（融合自 Quantum Reaction Visualizer）。"""
+        try:
+            from ui.dialogs.quantum_reaction_dialog import show_quantum_reaction_dialog
+
+            show_quantum_reaction_dialog(self, self.controller)
+        except Exception as e:
+            self.helpers.on_log(f"❌ 打开量子反应计算失败: {e}", "error")
+
     def show_wizard_steps_from_menu(self) -> None:
         """U-07 新手任务向导（6 场景）只读概览。"""
         try:

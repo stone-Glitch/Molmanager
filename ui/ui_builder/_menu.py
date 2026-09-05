@@ -204,6 +204,12 @@ def build_menu_bar(app) -> None:
             label="  📚 示例分子库",
             command=lambda: _safe_call(app, "show_example_library_from_menu"),
         )
+        # 量子反应能计算（融合自 Quantum Reaction Visualizer）：
+        # SMILES → Psi4 优化+频率热化学 → ΔE/ΔH°/ΔG° + IQmol 轨迹动画
+        menu_tools.add_command(
+            label="  ⚗️ 量子反应能计算（ΔE/ΔH°/ΔG°）…",
+            command=lambda: _safe_call(app, "show_quantum_reaction_from_menu"),
+        )
         menu_tools.add_command(
             label="  🧭 新手任务向导",
             command=lambda: _safe_call(app, "show_wizard_steps_from_menu"),

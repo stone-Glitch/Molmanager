@@ -3,6 +3,39 @@
 本文件记录 MolManager 每个版本值得注意的变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-09-06
+
+两个主题：融合 **Quantum Reaction Visualizer** 为新的量子反应能计算功能；一轮终端用户友好性修复。
+
+### 新增（Added）
+
+- **⚗️ 量子反应能计算（ΔE/ΔE₀/ΔH°/ΔG°）**：融合独立的 Quantum Reaction Visualizer 项目。
+  - 入口：工具菜单「量子反应能计算」或 <kbd>Ctrl+K</kbd> 命令面板；缺少 PSI4 时对话框
+    顶部显示安装指引而非报错。
+  - 8 个预设反应（水生成、氨合成、甲烷燃烧、氯化氢分解、乙烯加氢、水煤气变换、甲醇脱水、
+    臭氧分解）+ 自定义 SMILES；`O=O:3` 语法指定自旋多重度，O₂ 预设默认标注三线态。
+  - 计算内核（PSI4 包装）原样保留：c1 对称、开壳层自动 UHF/UKS、SCF 分级重试、
+    优化/频率磁盘缓存、单原子解析热化学（Sackur–Tetrode）。
+  - 新增框架无关编排层 `chem/quantum_reaction/runner.py`，支持任务内协作式取消，
+    对接既有 TaskManager 线程模型。
+  - 结果卡展示 ΔE 大字（放热绿/吸热红）+ ΔE₀/ΔH°/ΔG° + 自发性判定；内嵌能量曲线 PNG；
+    落盘 `quantum_runs/<时间戳>/`（结果 JSON、优化 XYZ、IQmol 兼容多帧轨迹、可选 MP4）。
+  - 新增 23 项单测 `tests/test_quantum_reaction.py`（stub PSI4 端到端覆盖编排/取消/配平预检，
+    纯 pip 环境可跑）。
+  - 并入时修正原版 Kabsch 对齐的旋转矩阵公式错误（列向量公式误用于行向量约定，
+    导致产物对齐失败 RMSD≈2.8；修正后 <1e-14，反射修正保持有效）。
+
+### 改进（Improved）
+
+- **错误提示友好化（P0）**：15 处把原始异常文本直接弹窗的路径改为 `show_friendly_error`，
+  按错误类型给出中文原因与可操作建议（含 reactions / openbabel / mapping / results 等对话框）。
+- **命令面板可发现性（P1）**：帮助菜单新增「命令面板 (Ctrl+K)」入口；命令面板补齐
+  「打开文件 (Ctrl+O)」等高频动作。
+
+### 修复（Fixed）
+
+- **Ctrl+O 打开文件失效**：标注文件提示绑定到了错误的处理方法，已修正并纳入快捷键自检。
+
 ## [1.0.2] - 2026-08-29
 
 一轮「代码质量与性能」优化（无功能变更，向后兼容）。

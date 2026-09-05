@@ -85,6 +85,7 @@ def _build_commands(app):
     _act("一键修复全部", "", _safe(app, "controller") and app.controller.run_fix_by_mode)
     _act("按类型整理", "", _safe(app, "controller") and app.controller.organize_by_type)
     _act("打开反应动画", "Ctrl+G", _safe(app, "_on_ctrl_g"))
+    _act("量子反应能计算（ΔE/ΔH°/ΔG°）", "", _safe(app, "show_quantum_reaction_from_menu"))
     _act("打开环境诊断", "", _safe(app, "show_environment_dialog_from_menu"))
     _act("字体大小设置", "", _safe(app, "show_font_size_dialog_from_menu"))
     _act("切换主题（深 / 浅）", "", lambda: ui_theme.toggle_theme(app))

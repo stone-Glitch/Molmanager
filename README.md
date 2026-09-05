@@ -3,7 +3,7 @@
 基于 **Tkinter** 的桌面分子管理工具：统一管理计算产物文件、批量格式转换、调用
 **PSI4** 做量化计算、**OpenBabel** 做结构渲染与描述符，并生成反应动画字幕。
 
-> 当前版本：**1.0.1**
+> 当前版本：**1.1.0**
 > 技术栈：Python 3.12 · Tkinter · PSI4 · OpenBabel · NumPy/SciPy/Matplotlib · FastAPI（可选）
 > 运行环境固定见 `environment.yml`（conda-forge，含 psi4 / openbabel C++ 扩展）。
 
@@ -17,6 +17,7 @@
 | 格式转换 | SMILES↔mol/sdf/pdb、2D 结构 PNG、描述符（MW/LogP/TPSA…）、InChIKey |
 | 量化计算 | 单点能 / 几何优化 / 频率 / 过渡态 / 激发态 / SAPT / 热化学（PSI4 驱动，可取消） |
 | 反应动画 | 帧序列 + 字幕，导出为视频素材 |
+| 量子反应能 | 预设/自定义反应 **ΔE · ΔE₀ · ΔH° · ΔG°**（PSI4 热化学，含零点能），附能量曲线与 MP4 过渡动画 |
 | 分子搜索 | **SMARTS 子结构** 与 **指纹相似性** 检索（OpenBabel FP2，零额外依赖） |
 | 高级工具 | 手性分析、对映体反转、质子化、多 SDF 拆分/合并、构象对齐 |
 
@@ -81,12 +82,41 @@ uvicorn api.server:app --reload --port 8000
 
 ---
 
+## ⚗️ 量子反应能计算（ΔE/ΔH°/ΔG°）
+
+入口：菜单 **工具 → 量子反应能计算**，或 <kbd>Ctrl+K</kbd> 命令面板搜索「量子」。
+（由独立的 Quantum Reaction Visualizer 项目融合而来，计算内核原样保留。）
+
+工作流程：SMILES → RDKit 生成 3D 构型 → PSI4 几何优化 + 频率分析 → 汇总两侧热化学量：
+
+| 输出 | 含义 |
+| --- | --- |
+| **ΔE** | 电子能差（优化后单点） |
+| **ΔE₀** | 含零点能校正的能差 |
+| **ΔH° / ΔG°** | 298.15 K、1 bar 标准态焓变 / 吉布斯能变（含自发性判定） |
+
+- **反应来源**：8 个预设（水生成、氨合成、甲烷燃烧、氯化氢分解、乙烯加氢、水煤气变换、
+  甲醇脱水、臭氧分解），或自定义输入 SMILES 列表；`O=O:3` 这种 `:N` 后缀指定自旋多重度
+  （O₂ 默认已标三线态，避免激发态导致 ΔE 系统性偏差）。
+- **方法**：HF/STO-3G（最快）· HF/6-31G* · B3LYP/6-31G* · MP2/6-31G*；开壳层自动切 UHF/UKS，
+  SCF 不收敛自动分级重试；单原子体系走解析热化学（Sackur–Tetrode，避开 PSI4 单原子频率缺陷）。
+- **产物落盘**：每次运行写入 `quantum_runs/<时间戳>/`（结果 JSON、优化后 XYZ、能量曲线 PNG、
+  IQmol 兼容多帧 `trajectory.xyz`、可选 MP4 过渡动画，需要 ffmpeg）；对话框内一键打开目录
+  或用 IQmol 校验工具核对轨迹。
+- **依赖**：PSI4 必需；RDKit 仅自定义 SMILES 需要（预设内置 3D 构型可缺）；ffmpeg 仅 MP4 需要。
+  缺依赖时对话框顶部给出安装指引，不会崩溃。
+- 优化/频率结果带磁盘缓存，重复计算同分子同级别直接读缓存。
+
+---
+
 ## 🗂️ 代码结构
 
 ```
 core/        领域模型与数据层（domain 数据类 / storage_sqlite 持久化）
 ui/          界面构建（ui_builder 已按功能拆分为 _theme/_menu/_tabs/… 子模块）
-chem/        化学能力（openbabel_utils 已拆分为 _cli/_io/_descriptors/_search/…）
+chem/        化学能力（openbabel_utils 已拆分为 _cli/_io/_descriptors/_search/…；
+             quantum_reaction/ 为量子反应能计算子包：runner 编排 / quantum PSI4 包装 /
+             molbuild 构型 / reactions 预设库 / animate 动画 / iqmol_check 轨迹校验）
 utils/       纯逻辑工具（chem_query、mapping_utils 等，均带 pytest 单测）
 api/         FastAPI 接口层（可选）
 tests/       单元测试（pytest）
@@ -115,4 +145,4 @@ pytest tests/ -q                               # 单元测试
 - **已知欠账**：历史代码尚未统一跑过 `ruff format`（全量格式化约 1.9 万行 diff），
   CI 中该步骤目前只提示不阻塞，待专项整改。
 
-详见 `CHANGELOG.md`（1.0.1 记录了本轮修复的两个严重功能缺陷）。
+详见 `CHANGELOG.md`（1.1.0 记录了量子反应能计算融合与友好性修复）。
