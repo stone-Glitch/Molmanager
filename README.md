@@ -3,7 +3,7 @@
 基于 **Tkinter** 的桌面分子管理工具：统一管理计算产物文件、批量格式转换、调用
 **PSI4** 做量化计算、**OpenBabel** 做结构渲染与描述符，并生成反应动画字幕。
 
-> 当前版本：**1.1.0**
+> 当前版本：**1.2.0**
 > 技术栈：Python 3.12 · Tkinter · PSI4 · OpenBabel · NumPy/SciPy/Matplotlib · FastAPI（可选）
 > 运行环境固定见 `environment.yml`（conda-forge，含 psi4 / openbabel C++ 扩展）。
 
@@ -145,4 +145,4 @@ pytest tests/ -q                               # 单元测试
 - **已知欠账**：历史代码尚未统一跑过 `ruff format`（全量格式化约 1.9 万行 diff），
   CI 中该步骤目前只提示不阻塞，待专项整改。
 
-详见 `CHANGELOG.md`（1.1.0 记录了量子反应能计算融合与友好性修复）。
+详见 `CHANGELOG.md`（1.2.0 记录了测试加固、UI 结构重构与 Aurora Frost 视觉精修）。

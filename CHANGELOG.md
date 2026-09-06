@@ -3,6 +3,57 @@
 本文件记录 MolManager 每个版本值得注意的变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-09-06
+
+一轮「先实测加固、再重构、后视觉精修」的工程质量版本：功能行为零变更，测试函数 157 → 279，
+UI 代码结构重排 + Aurora Frost 视觉令牌化。
+
+### 修复（Fixed）
+
+- **手性分析跨版本兼容（OpenBabel 3.1 绑定缺失 API）**：手性链路重写为 `OBStereoFacade`
+  逐原子查询（`GetAllStereoData` / `InvertStereo` 在 3.1 绑定中不存在）；对映体反转采用
+  winding 翻转 + x 坐标镜像双保险；新增 `_symbol_of()` 规范化元素符号（`OBAtom` 无
+  `GetSymbol`，`GetType()` 会返回 `C3`/`Cl` 等类型串）；CIP 标签在 3.1 下诚实返回 `?`，
+  不再谎报 R/S。
+- **`obabel` CLI 可执行缓存初始化缺失**：`_OBABEL_CLI_EXE` 模块级初始化缺失导致 NameError。
+- **化学查询裸比较语法**：新增无冒号裸比较式查询（`MW>100` / `logP<3` / `formula=C6H6`），
+  修复此类条件被误当自由文本、一条都查不到的问题。
+
+### 新增（Added）
+
+- **GUI 冒烟脚本 `scripts/smoke_gui.py`**：Xvfb 无头验证主窗口装配、6 页切换、7 个对话框
+  调起，支持 `--screenshot` / `--theme` 参数，为 GUI 回归提供可自动化的冒烟入口。
+- **约 120 项补充单测（11 个全新测试文件）**：P0 纯逻辑（规则引擎 / 元数据索引 / MO 能级图 /
+  结构评分）、P1 领域模块（备份快照 / 项目打包 / 预设管理 / 示例分子库）、P2 基础设施
+  （统一网络层 / 后台任务管理器 / 模型 Mixin）、手性分析与对映体反转（含输出护栏回归）。
+  参数化展开后全量回归 **302 例（301 通过 / 1 环境跳过）**。
+
+### 改进（Improved）——重构与视觉精修（行为不变）
+
+- **设计令牌层 `utils/theme_tokens.py`**：几何/间距/控件尺寸/描边常量先行抽离（颜色无关），
+  为后续视觉统一打底。
+- **`ui/ui_builder/_tabs.py`（1810 行单文件）拆分为 `ui/pages/` 八页面模块**
+  （仪表盘 / 文件管理 / 映射 / 计算动画 / 高级工具 / 面板-日志 / 计算队列 / 操作提示），
+  原位置保留纯转发 shim；`ui.ui_builder.__init__` 改 PEP 562 懒加载导出，根治
+  `ui.pages ↔ ui.ui_builder` 双向包初始化循环导入。
+- **`ui/dialogs/reaction_dialog.py` 770 行主函数重构**：拆为 7 个 section 构建函数 +
+  `SimpleNamespace` State 容器，30 参数的动画启动函数收敛为 `(app, dialog, st, controller)`；
+  预设收集/回填改声明式字段清单 `_PRESET_FIELDS`。
+- **`ui/dialogs/base.py` 新增 `ThemedDialog` 基类**：统一标题/初始尺寸/模态/ESC 关闭约定，
+  历史记录、公式结果、目录同步三个对话框迁移为子类（`show_history_dialog` 等路由层零改动）。
+- **主题归一**：`AuroraTheme` 28 个颜色常量全部改为从 `ui/ui_theme.py` 调色板派生，
+  消除「同一颜色两处定义」的双源漂移隐患；`_theme.py` / `_menu.py` / `_statusbar.py`
+  裸 hex 与 `COLORS.get(key, "#hex")` 兜底清零。
+- **Aurora Frost 视觉令牌化**：侧边栏导航（行高/指示条/选中描边）、工具栏（控件高度自适应
+  内边距）、状态栏、文件树、批量条、日志台、页面标题全部接入设计令牌；调色板新增
+  `purple`；新增 `shade()` / `glow()` 明暗对偶；日志控制台改为恒定深色（`LOG_CONSOLE`，
+  不随主题切换），tag 颜色经 `LOG_TAG_KEYS` 实时取调色板语义键。
+
+### 已知问题（Known issues）
+
+- `reaction_dialog` 的「运行扫描」按钮（`run_scan_btn`）为遗留死按钮（未绑定 command），
+  本次重构原样保留，待确认产品意图后处置。
+
 ## [1.1.0] - 2026-09-06
 
 两个主题：融合 **Quantum Reaction Visualizer** 为新的量子反应能计算功能；一轮终端用户友好性修复。
