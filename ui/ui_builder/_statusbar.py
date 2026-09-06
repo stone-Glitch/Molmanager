@@ -8,6 +8,7 @@ from ui.ui_theme import (
 # ------------------------- 🎨 主题颜色常量 -------------------------
 from ._tabs import _inject_action_tips
 from ._theme import add_tooltip
+from ui.theme_tokens import SPACING, STATUSBAR_H
 
 
 def build_status_bar_new(app):
@@ -36,10 +37,10 @@ def build_status_bar_new(app):
         font=STATUS_F,
         bg=COLORS["card_bg"],
         fg=COLORS["text"],
-        padx=10,
-        pady=4,
+        padx=SPACING["sm"],
+        pady=max(2, (STATUSBAR_H - 20) // 4),
     )
-    status_label.pack(side=tk.LEFT, fill=tk.X, expand=False, padx=(8, 6), pady=4)
+    status_label.pack(side=tk.LEFT, fill=tk.X, expand=False, padx=(SPACING["sm"], SPACING["xs"]), pady=SPACING["xs"])
     try:
         status_label.configure(width=28)
     except Exception:
@@ -56,7 +57,7 @@ def build_status_bar_new(app):
         fg=COLORS["accent"],
         padx=8,
     )
-    tip_label.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=4)
+    tip_label.pack(side=tk.LEFT, fill=tk.X, expand=True, pady=SPACING["xs"])
 
     # —— 问题三：OpenBabel 指示灯（绿点 = 可用 / 红点 = 不可用，悬停显示摘要，点击 = 环境诊断）——
     app.ob_status_var = tk.StringVar(value="OB: 检测中…")
@@ -149,7 +150,7 @@ def build_status_bar_new(app):
     # 进度条
     app.progress_var = getattr(app, "progress_var", None) or tk.DoubleVar(value=0.0)
     app.progress_bar = ttk.Progressbar(status_frame, variable=app.progress_var, maximum=100, length=220)
-    app.progress_bar.pack(side=tk.RIGHT, padx=8, pady=4)
+    app.progress_bar.pack(side=tk.RIGHT, padx=SPACING["sm"], pady=SPACING["xs"])
 
     # —— P1：长任务「取消」按钮（默认隐藏，任务进行中由 helpers 显示）——
     app.cancel_button = ttk.Button(

@@ -2,6 +2,7 @@
 
 import tkinter as tk
 
+from ui.theme_tokens import SPACING
 from ui.ui_theme import COLORS, themed_button
 
 def build_tab_dashboard(app, parent):
@@ -14,7 +15,7 @@ def build_tab_dashboard(app, parent):
     f_num = ("Microsoft YaHei", 24, "bold")
 
     tk.Label(parent, text="工作台", bg=COLORS["bg"], fg=COLORS["text"], font=f_h1, anchor="w").pack(
-        anchor="w", padx=20, pady=(18, 2)
+        anchor="w", padx=SPACING["xl"], pady=(SPACING["lg"], SPACING["xs"])
     )
     tk.Label(
         parent,
@@ -23,11 +24,11 @@ def build_tab_dashboard(app, parent):
         fg=COLORS["text_secondary"],
         font=f_base,
         anchor="w",
-    ).pack(anchor="w", padx=20, pady=(0, 14))
+    ).pack(anchor="w", padx=20, pady=(0, SPACING["md"]))
 
     # —— 统计卡（4 张，读 last_scan_result）——
     stats = tk.Frame(parent, bg=COLORS["bg"])
-    stats.pack(fill="x", padx=20, pady=4)
+    stats.pack(fill="x", padx=SPACING["xl"], pady=SPACING["xs"])
     app._dash_vars = {}
     cards = (
         ("文件总数", "total", COLORS["text"]),
@@ -51,16 +52,16 @@ def build_tab_dashboard(app, parent):
         )
         var = tk.StringVar(value="0")
         tk.Label(card, textvariable=var, bg=COLORS["surface"], fg=color, font=f_num).pack(
-            anchor="w", padx=16, pady=(0, 14)
+            anchor="w", padx=16, pady=(0, SPACING["md"])
         )
         app._dash_vars[key] = var
 
     # —— 快捷操作 ——
     tk.Label(parent, text="快捷操作", bg=COLORS["bg"], fg=COLORS["text"], font=f_bold, anchor="w").pack(
-        anchor="w", padx=20, pady=(20, 8)
+        anchor="w", padx=20, pady=(SPACING["xl"], SPACING["sm"])
     )
     quick = tk.Frame(parent, bg=COLORS["bg"])
-    quick.pack(fill="x", padx=20, pady=4)
+    quick.pack(fill="x", padx=SPACING["xl"], pady=SPACING["xs"])
 
     def _safe(fn):
         try:

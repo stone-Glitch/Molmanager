@@ -3,7 +3,8 @@
 import tkinter as tk
 from tkinter import scrolledtext, ttk
 
-from ui.ui_theme import CHECK_GLYPH, COLORS, themed_button
+from ui.theme_tokens import SPACING, STROKE
+from ui.ui_theme import CHECK_GLYPH, LOG_CONSOLE, LOG_TAG_KEYS, COLORS, themed_button
 
 # ===========================================================
 # 📊 公共：文件列表 + 日志（垂直分割）
@@ -87,8 +88,10 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
         text="📄 文件列表（勾选多选 · 双击编辑中文名 · 右键删除勾选）",
         bg=COLORS["card_bg"],
         font=getattr(app, "_fonts", {}).get("H1", ("Microsoft YaHei", 14, "bold")),
-        relief=tk.GROOVE,
-        bd=2,
+        relief=tk.FLAT,
+        bd=0,
+        highlightbackground=COLORS["card_border"],
+        highlightthickness=STROKE["hair"],
     )
     paned.add(list_frame, weight=2)
 
@@ -427,10 +430,10 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
     batch_bar = tk.Frame(
         list_frame,
         bg=COLORS["card_bg"],
-        relief=tk.RAISED,
-        bd=2,
-        highlightbackground=COLORS["card_border"],
-        highlightthickness=1,
+        relief=tk.FLAT,
+        bd=0,
+        highlightbackground=COLORS["accent"],
+        highlightthickness=STROKE["hair"],
     )
     app.batch_bar = batch_bar
     tk.Label(
@@ -478,8 +481,10 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
         text="📋 日志（所有操作/错误实时显示）",
         bg=COLORS["card_bg"],
         font=getattr(app, "_fonts", {}).get("H1", ("Microsoft YaHei", 14, "bold")),
-        relief=tk.GROOVE,
-        bd=2,
+        relief=tk.FLAT,
+        bd=0,
+        highlightbackground=COLORS["card_border"],
+        highlightthickness=STROKE["hair"],
     )
     paned.add(log_frame, weight=1)
 
@@ -508,12 +513,11 @@ def _build_paned_file_and_log(app, parent, row, column, show_in_tab2: bool = Fal
         height=10,
         wrap=tk.WORD,
         font=getattr(app, "_fonts", {}).get("LOG", ("Consolas", 13)),
-        bg="#0F172A",
-        fg="#C8D3E0",
+        bg=LOG_CONSOLE["bg"],
+        fg=LOG_CONSOLE["fg"],
     )
-    app.log_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+    app.log_text.pack(fill=tk.BOTH, expand=True, padx=SPACING["sm"], pady=(0, SPACING["sm"]))
 
-    app.log_text.tag_config("info", foreground="#8AB4F8")
-    app.log_text.tag_config("success", foreground="#3FB950")
-    app.log_text.tag_config("error", foreground="#F85149")
-    app.log_text.tag_config("warning", foreground="#D29922")
+    P_log = COLORS
+    for _tag, _key in LOG_TAG_KEYS.items():
+        app.log_text.tag_config(_tag, foreground=P_log[_key])

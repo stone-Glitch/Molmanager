@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 
+from ui.theme_tokens import CONTROL_H, SPACING, STROKE
 from ui.ui_theme import (
     COLORS,
 )
@@ -36,11 +37,11 @@ def build_toolbar(app, parent):
         highlightbackground=COLORS["card_border"],
         highlightthickness=1,
     )
-    bar.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
+    bar.grid(row=0, column=0, sticky="ew", padx=SPACING["sm"], pady=(SPACING["sm"], SPACING["xs"]))
     bar.grid_columnconfigure(0, weight=1)
 
     # —— 可横向滚动的视口：内容宽度超出视口时才出现滚动条 ——
-    canvas = tk.Canvas(bar, bg=COLORS["card_bg"], highlightthickness=0, bd=0, height=40)
+    canvas = tk.Canvas(bar, bg=COLORS["card_bg"], highlightthickness=0, bd=0, height=CONTROL_H + SPACING["sm"])
     canvas.grid(row=0, column=0, sticky="ew")
     hbar = ttk.Scrollbar(bar, orient=tk.HORIZONTAL, command=canvas.xview)
     canvas.configure(xscrollcommand=hbar.set)
@@ -90,7 +91,7 @@ def build_toolbar(app, parent):
 
     # —— 列 0：工作目录 ——
     tk.Label(inner, text=" 📂 工作目录:", bg=COLORS["card_bg"], fg=COLORS["text"], font=BOLD).grid(
-        row=0, column=0, sticky="w", padx=8, pady=6
+        row=0, column=0, sticky="w", padx=SPACING["sm"], pady=SPACING["sm"]
     )
     app.work_dir_entry = ttk.Entry(inner, textvariable=app.work_dir_var, font=ENTRY, width=38)
     app.work_dir_entry.grid(row=0, column=1, sticky="ew", padx=(0, 6), pady=6)
@@ -107,8 +108,8 @@ def build_toolbar(app, parent):
             command=cmd,
             relief=tk.RAISED,
             bd=1,
-            padx=10,
-            pady=5,
+            padx=SPACING["sm"],
+            pady=max(4, (CONTROL_H - 16) // 2),
             font=SMALL_BTN,
             cursor="hand2",
             **style_kw,
@@ -128,14 +129,14 @@ def build_toolbar(app, parent):
         pass
 
     # —— 分隔 ——
-    tk.Frame(inner, bg=COLORS["card_border"], width=2).grid(row=0, column=4, sticky="ns", padx=8, pady=4)
+    tk.Frame(inner, bg=COLORS["card_border"], width=STROKE["strong"]).grid(row=0, column=4, sticky="ns", padx=8, pady=4)
 
     # —— 列：扫描 / 刷新 ——
     _row0_btn(
         "🔍 扫描文件", app.controller.scan_files, bg=COLORS["btn_info_bg"], tip="重新扫描工作目录下的所有计算文件"
     ).grid(row=0, column=5, sticky="w", padx=2, pady=6)
 
-    tk.Frame(inner, bg=COLORS["card_border"], width=2).grid(row=0, column=7, sticky="ns", padx=8, pady=4)
+    tk.Frame(inner, bg=COLORS["card_border"], width=STROKE["strong"]).grid(row=0, column=7, sticky="ns", padx=8, pady=4)
 
     # —— 列：撤销 / 重做 ——
     _row0_btn("↩ 撤销", app.controller.undo_last, tip="撤销上一步文件操作（重命名/移动/整理等）").grid(
@@ -149,7 +150,7 @@ def build_toolbar(app, parent):
         pass
 
     # —— 列：文件类型过滤入口 ——
-    tk.Frame(inner, bg=COLORS["card_border"], width=2).grid(row=0, column=10, sticky="ns", padx=8, pady=4)
+    tk.Frame(inner, bg=COLORS["card_border"], width=STROKE["strong"]).grid(row=0, column=10, sticky="ns", padx=8, pady=4)
     tk.Label(
         inner,
         text="文件类型:",
@@ -183,7 +184,7 @@ def build_toolbar(app, parent):
             bg=COLORS["accent"],
             fg=COLORS["btn_text"],
             tip="Ctrl/Cmd+K 唤起命令面板：动作 / 导航 / 文件一搜即达",
-        ).grid(row=0, column=14, sticky="w", padx=(10, 2), pady=6)
+        ).grid(row=0, column=14, sticky="w", padx=(SPACING["lg"], SPACING["xs"]), pady=SPACING["sm"])
     except Exception as _cpe:
         import traceback as _tb
 

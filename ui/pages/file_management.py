@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from ui.pages.paned_file_log import _build_paned_file_and_log
+from ui.theme_tokens import SPACING
 from ui.ui_theme import COLORS, dark_card, primary_button, section_title, themed_button
 from ui.ui_builder._theme import add_tooltip
 
@@ -171,7 +172,7 @@ def build_tab_file_management(app, parent):
         anchor="w",
         wraplength=560,
         justify="left",
-    ).grid(row=1, column=0, sticky="w", pady=(0, 14))
+    ).grid(row=1, column=0, sticky="w", pady=(0, SPACING["md"]))
 
     steps = [
         ("①", "选择工作目录", "点右上「📂 浏览…」或下方按钮，指定存放分子文件的文件夹"),

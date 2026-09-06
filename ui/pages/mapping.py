@@ -3,6 +3,7 @@
 import tkinter as tk
 from tkinter import ttk
 
+from ui.theme_tokens import SPACING
 from ui.ui_theme import COLORS, dark_card, section_title, themed_button
 from ui.ui_builder._theme import add_tooltip
 
@@ -23,7 +24,7 @@ def build_tab_mapping(app, parent):
         fg=COLORS["text"],
         font=F.get("H1", ("Microsoft YaHei", 20, "bold")),
         anchor="w",
-    ).pack(anchor="w", padx=20, pady=(18, 2))
+    ).pack(anchor="w", padx=SPACING["xl"], pady=(SPACING["lg"], SPACING["xs"]))
     tk.Label(
         parent,
         text="管理「英文名 / 编号 → 中文名」的映射关系，让文件列表自动显示中文名。",
@@ -31,7 +32,7 @@ def build_tab_mapping(app, parent):
         fg=COLORS["text_secondary"],
         font=F.get("BASE", ("Microsoft YaHei", 13)),
         anchor="w",
-    ).pack(anchor="w", padx=20, pady=(0, 14))
+    ).pack(anchor="w", padx=20, pady=(0, SPACING["md"]))
 
     # —— 卡片 1：映射文件加载 ——
     load_card = dark_card(parent)
