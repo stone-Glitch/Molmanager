@@ -6,7 +6,6 @@
 
 from utils.structure_score import score_structure
 
-
 _BENZENE = {
     "molecular_weight": 78.11,
     "logP": 1.69,

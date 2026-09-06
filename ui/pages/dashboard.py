@@ -5,6 +5,7 @@ import tkinter as tk
 from ui.theme_tokens import SPACING
 from ui.ui_theme import COLORS, themed_button
 
+
 def build_tab_dashboard(app, parent):
     """🏠 工作台：概览统计（4 卡）+ 快捷操作（界面方案新增落地页）。"""
     F = getattr(app, "_fonts", {})

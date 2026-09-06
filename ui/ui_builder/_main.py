@@ -1,13 +1,5 @@
 import tkinter as tk
 
-from ui.ui_theme import (
-    COLORS,
-)
-
-# ------------------------- 🎨 主题颜色常量 -------------------------
-from ._menu import build_menu_bar
-from ._sidebar import build_sidebar
-from ._statusbar import build_status_bar_new
 from ui.pages import (
     build_tab_advanced_tools,
     build_tab_compute_and_animation,
@@ -16,6 +8,14 @@ from ui.pages import (
     build_tab_file_management,
     build_tab_mapping,
 )
+from ui.ui_theme import (
+    COLORS,
+)
+
+# ------------------------- 🎨 主题颜色常量 -------------------------
+from ._menu import build_menu_bar
+from ._sidebar import build_sidebar
+from ._statusbar import build_status_bar_new
 from ._theme import _make_scrolled_frame, apply_aurora_theme_if_available, resolve_font_specs
 from ._toolbar import build_toolbar
 

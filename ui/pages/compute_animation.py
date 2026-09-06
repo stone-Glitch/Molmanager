@@ -4,8 +4,8 @@ import tkinter as tk
 from tkinter import ttk
 
 from ui.pages.paned_file_log import _build_paned_file_and_log
-from ui.ui_theme import COLORS, dark_card, section_title, themed_button
 from ui.ui_builder._theme import CollapsibleFrame, add_tooltip
+from ui.ui_theme import COLORS, dark_card, section_title, themed_button
 
 # ===========================================================
 # 🔬 Tab2：计算与动画

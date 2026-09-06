@@ -12,7 +12,6 @@ from utils.mo_diagram import (
     render_mo_svg,
 )
 
-
 _FCHK = """\
 Number of alpha electrons I       6
 Number of beta electrons I        6

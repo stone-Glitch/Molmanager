@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from utils.project_pack import (
-    MANIFEST_NAME,
     DEFAULT_EXCLUDE_EXTS,
+    MANIFEST_NAME,
     pack_project,
     read_manifest,
     unpack_project,

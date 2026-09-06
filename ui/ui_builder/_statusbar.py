@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 
+from ui.theme_tokens import SPACING, STATUSBAR_H
 from ui.ui_theme import (
     COLORS,
 )
@@ -8,7 +9,6 @@ from ui.ui_theme import (
 # ------------------------- 🎨 主题颜色常量 -------------------------
 from ._tabs import _inject_action_tips
 from ._theme import add_tooltip
-from ui.theme_tokens import SPACING, STATUSBAR_H
 
 
 def build_status_bar_new(app):

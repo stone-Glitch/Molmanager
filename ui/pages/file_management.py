@@ -5,8 +5,9 @@ from tkinter import ttk
 
 from ui.pages.paned_file_log import _build_paned_file_and_log
 from ui.theme_tokens import SPACING
-from ui.ui_theme import COLORS, dark_card, primary_button, section_title, themed_button
 from ui.ui_builder._theme import add_tooltip
+from ui.ui_theme import COLORS, dark_card, primary_button, section_title, themed_button
+
 
 def build_tab_file_management(app, parent):
     """

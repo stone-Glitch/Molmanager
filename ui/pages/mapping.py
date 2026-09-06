@@ -4,8 +4,8 @@ import tkinter as tk
 from tkinter import ttk
 
 from ui.theme_tokens import SPACING
-from ui.ui_theme import COLORS, dark_card, section_title, themed_button
 from ui.ui_builder._theme import add_tooltip
+from ui.ui_theme import COLORS, dark_card, section_title, themed_button
 
 # ===========================================================
 # 🧬 Tab：分子映射（设计落地：独立一级导航页）

@@ -3,8 +3,8 @@
 import tkinter as tk
 from tkinter import ttk
 
-from ui.ui_theme import COLORS, dark_card, themed_button
 from ui.ui_builder._theme import add_tooltip
+from ui.ui_theme import COLORS, dark_card, themed_button
 
 # ===========================================================
 # ⚙️ Tab3：高级工具（子 Notebook 4 页）

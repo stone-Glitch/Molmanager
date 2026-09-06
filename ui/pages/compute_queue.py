@@ -5,8 +5,8 @@ import tkinter as tk
 from tkinter import ttk
 
 import ui.ui_theme as ui_theme
-from ui.ui_theme import COLORS, dark_card, themed_button
 from ui.ui_builder._theme import add_tooltip
+from ui.ui_theme import COLORS, dark_card, themed_button
 
 # ===========================================================
 # 📊 Tab4：任务队列（设计落地 Phase 5）

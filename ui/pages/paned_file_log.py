@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import scrolledtext, ttk
 
 from ui.theme_tokens import SPACING, STROKE
-from ui.ui_theme import CHECK_GLYPH, LOG_CONSOLE, LOG_TAG_KEYS, COLORS, themed_button
+from ui.ui_theme import CHECK_GLYPH, COLORS, LOG_CONSOLE, LOG_TAG_KEYS, themed_button
 
 # ===========================================================
 # 📊 公共：文件列表 + 日志（垂直分割）

@@ -8,7 +8,6 @@ from utils.metadata_index import (
     parse_fchk,
 )
 
-
 _FCHK = """\
 Charge I                    0
 Multiplicity I              1
