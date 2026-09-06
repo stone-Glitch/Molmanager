@@ -7,6 +7,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox
 
+from utils.dialog_geom import fit_dialog_geometry
 from utils.logger import default_logger as logger
 from utils.path_utils import (
     cleanup_all_temp_dirs as _cleanup_all_temp_dirs,
@@ -250,3 +251,58 @@ def show_friendly_error(app, err: object, parent=None, title: str | None = None)
             tk.messagebox.showerror(title or d_title, f"{body}\n\n{hint}", parent=parent)
         except Exception:
             print(f"[{d_title}] {body}\n{hint}")  # noqa: T201
+
+
+# ============================================================
+# 对话框基类：统一窗口样板
+# ============================================================
+
+
+class ThemedDialog(tk.Toplevel):
+    """对话框基类：统一 标题/初始几何/自适应屏幕/模态/ESC 关闭/关闭钩子。
+
+    子类约定：
+      - 类属性 ``dialog_title``、``initial_size``（宽, 高）、``modal``（是否 grab_set）、
+        ``resizable``（宽, 高）——也可在 ``__init__`` 调 ``super()`` 前以实例属性覆盖
+        （标题动态时常用）；
+      - 在 ``_build_body()`` 中构建全部内容（``__init__`` 自动调用）；
+      - 需要退出清理时覆写 ``close()``，先清理再 ``super().close()``。
+    """
+
+    dialog_title = "对话框"
+    initial_size = (800, 500)
+    modal = True
+    resizable = (True, True)
+
+    def __init__(self, app, controller=None):
+        super().__init__(app)
+        self.app = app
+        self.controller = controller
+        self.title(self.dialog_title)
+        try:
+            self.geometry(fit_dialog_geometry(self, *self.initial_size))
+        except Exception:
+            self.geometry(f"{self.initial_size[0]}x{self.initial_size[1]}")
+        try:
+            self.resizable(*self.resizable)
+        except Exception:
+            pass
+        self.transient(app)
+        if self.modal:
+            try:
+                self.grab_set()
+            except Exception:
+                pass
+        self.bind("<Escape>", lambda _e: self.close())
+        self.protocol("WM_DELETE_WINDOW", self.close)
+        self._build_body()
+
+    def _build_body(self) -> None:
+        """子类在此构建对话框内容。"""
+
+    def close(self) -> None:
+        """关闭对话框；子类覆写以先执行清理，末尾调用 ``super().close()``。"""
+        try:
+            self.destroy()
+        except Exception:
+            pass

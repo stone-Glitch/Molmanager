@@ -7,43 +7,25 @@ import os
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from utils.dialog_geom import fit_dialog_geometry
-
-from .base import show_friendly_error
+from .base import ThemedDialog, show_friendly_error
 from .common import _safe_open_file
 
 
-def show_formula_dialog(app, controller):
-    """分子式 & 元素分析弹窗"""
-    sel = app.helpers.get_selected_filenames()
-    if not sel:
-        app.helpers.on_log("⚠️ 请先选择一个分子文件", "warning")
-        return
+class FormulaResultDialog(ThemedDialog):
+    """🧪 分子式 & 元素分析结果窗（非模态，与原实现一致）。"""
 
-    def _run(**_kw):
-        from pathlib import Path
+    modal = False
+    initial_size = (620, 520)
 
-        import chem.openbabel_utils as obu
+    def __init__(self, app, res, basename):
+        self.res = res
+        self.basename = basename
+        self.dialog_title = f"🧪 分子式 & 元素分析 — {basename}"
+        super().__init__(app)
 
-        work = app.work_dir_var.get().strip()
-        fp = str(Path(work) / sel[0]) if work and not os.path.isabs(sel[0]) else sel[0]
-        return obu.analyze_formula(fp), os.path.basename(fp)
-
-    def _on_done(r):
-        try:
-            (res, basename) = r
-        except Exception:
-            show_friendly_error(app, "分析失败")
-            return
-        if not res.get("success"):
-            show_friendly_error(app, res.get("message", "元素分析失败"))
-            return
-        dlg = tk.Toplevel(app)
-        dlg.title(f"🧪 分子式 & 元素分析 — {basename}")
-        dlg.geometry(fit_dialog_geometry(dlg, 620, 520))
-        dlg.resizable(True, True)
-        dlg.transient(app)
-        pad = ttk.Frame(dlg, padding=16)
+    def _build_body(self):
+        res = self.res
+        pad = ttk.Frame(self, padding=16)
         pad.pack(fill=tk.BOTH, expand=True)
 
         f = res.get("hill_formula") or res.get("formula") or ""
@@ -98,14 +80,42 @@ def show_formula_dialog(app, controller):
             for sym in sorted(els.keys(), key=lambda s: (-els[s], s)):
                 lines.append(f"{sym}\t{els[sym]}\t{pct.get(sym, 0.0)}")
             try:
-                app.clipboard_clear()
-                app.clipboard_append("\n".join(lines))
-                messagebox.showinfo("已复制", "元素表已复制为 TSV，直接粘贴到 Excel。", parent=dlg)
+                self.app.clipboard_clear()
+                self.app.clipboard_append("\n".join(lines))
+                messagebox.showinfo("已复制", "元素表已复制为 TSV，直接粘贴到 Excel。", parent=self)
             except Exception as e:
-                show_friendly_error(app, e)
+                show_friendly_error(self.app, e)
 
         ttk.Button(btns, text="📋 复制表格(TSV)", command=_copy_tsv).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btns, text="关闭", command=dlg.destroy).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btns, text="关闭", command=self.close).pack(side=tk.LEFT, padx=5)
+
+
+def show_formula_dialog(app, controller):
+    """分子式 & 元素分析弹窗"""
+    sel = app.helpers.get_selected_filenames()
+    if not sel:
+        app.helpers.on_log("⚠️ 请先选择一个分子文件", "warning")
+        return
+
+    def _run(**_kw):
+        from pathlib import Path
+
+        import chem.openbabel_utils as obu
+
+        work = app.work_dir_var.get().strip()
+        fp = str(Path(work) / sel[0]) if work and not os.path.isabs(sel[0]) else sel[0]
+        return obu.analyze_formula(fp), os.path.basename(fp)
+
+    def _on_done(r):
+        try:
+            (res, basename) = r
+        except Exception:
+            show_friendly_error(app, "分析失败")
+            return
+        if not res.get("success"):
+            show_friendly_error(app, res.get("message", "元素分析失败"))
+            return
+        FormulaResultDialog(app, res, basename)
 
     from core.task_manager import TaskManager
 
