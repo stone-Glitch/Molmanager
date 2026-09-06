@@ -30,6 +30,11 @@ from utils.chem_query import (
         ("MW:>60", ("mw", ">", "60")),  # 键不分大小写
         ("MolecularWeight:>60", ("molecularweight", ">", "60")),
         ("xlogp:<0.5", ("xlogp", "<", "0.5")),
+        # 无冒号裸比较式（README / UI 搜索框约定）
+        ("MW>100", ("mw", ">", "100")),
+        ("logP<0", ("logp", "<", "0")),
+        ("formula=C9", ("formula", "=", "C9")),
+        ("mass>=12.5", ("mass", ">=", "12.5")),
     ],
 )
 def test_split_operator_recognises(token: str, expected: tuple[str, str, str]) -> None:
@@ -39,7 +44,8 @@ def test_split_operator_recognises(token: str, expected: tuple[str, str, str]) -
 @pytest.mark.parametrize(
     "token",
     [
-        "benzene",  # 无冒号 → 自由文本
+        "benzene",  # 无冒号、无比较符 → 自由文本
+        "C6H6",  # 数字混排 → 自由文本（不是 key）
         "unknown:>10",  # 未知键 → 自由文本
         "mw:",  # 空值 → 自由文本
         ">",  # 垃圾输入

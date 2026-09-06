@@ -65,6 +65,42 @@ _FIELD_LOOKUP: dict[str, tuple[str, ...]] = {
 # 注意：冒号本身不是比较符，避免 `mw:>60` 被误拆成 op=':' value='>60'。
 _KEY_SPLIT = re.compile(r"^([A-Za-z_ ]+):(.*)$")
 _OP_SPLIT = re.compile(r"^(>=|<=|>|<|=)?(.*)$")
+# 无冒号形式（README / UI 搜索框约定）：`MW>100` / `logP<3` / `formula=C6H6`。
+# 比较符必须存在（否则纯字母自由词如 benzene 会被误判成 key）。
+_BARE_SPLIT = re.compile(r"^([A-Za-z_ ]+?)(>=|<=|=|>|<)(.+)$")
+
+
+def _split_operator(raw: str) -> tuple[str | None, str | None, str | None]:
+    """把查询词拆成 (key, op, value)。
+
+    支持两种书写：
+      - 冒号式（历史约定）：``mw:>60`` / ``formula:C6H6`` / ``logP:<3``
+      - 裸比较式（README/UI 约定）：``MW>100`` / ``logP<3`` / ``formula=C6H6``
+
+    未知 key / 无比较符 / 空值 → (None, None, None)（按自由文本处理）。
+    """
+    s = raw.strip()
+    m = _KEY_SPLIT.match(s)
+    if m:
+        key_raw = m.group(1).strip().lower()
+        norm = _KEY_ALIASES.get(key_raw)
+        if norm is None:
+            return (None, None, None)
+        om = _OP_SPLIT.match(m.group(2))
+        op = om.group(1) or ":"
+        value = (om.group(2) or "").strip()
+        if value == "":
+            return (None, None, None)
+        return (key_raw, op, value)
+    # 无冒号：必须带显式比较符（> < >= <= =），key 是已知别名才算化学条件
+    m2 = _BARE_SPLIT.match(s)
+    if m2:
+        key_raw = m2.group(1).strip().lower()
+        if key_raw in _KEY_ALIASES:
+            value = m2.group(3).strip()
+            if value:
+                return (key_raw, m2.group(2), value)
+    return (None, None, None)
 
 
 class ChemCondition:
@@ -81,28 +117,6 @@ class ChemCondition:
 
     def __repr__(self) -> str:  # pragma: no cover - 调试用
         return f"ChemCondition({self.key!r}{self.op!r}{self.value!r})"
-
-
-def _split_operator(raw: str) -> tuple[str | None, str | None, str | None]:
-    """把 'mw:>60' / 'formula:C6H6' 拆成 (key, op, value)。
-
-    格式：key 与值之间用冒号分隔；冒号之后可紧跟比较符 > < >= <= =，否则视为 ':'（数值相等 / 公式子串）。
-    无法识别（无冒号 / 未知 key / 空值）→ (None, None, None)。
-    """
-    m = _KEY_SPLIT.match(raw.strip())
-    if not m:
-        return (None, None, None)
-    key_raw = m.group(1).strip().lower()
-    norm = _KEY_ALIASES.get(key_raw)
-    if norm is None:
-        return (None, None, None)
-    rest = m.group(2)
-    om = _OP_SPLIT.match(rest)
-    op = om.group(1) or ":"
-    value = (om.group(2) or "").strip()
-    if value == "":
-        return (None, None, None)
-    return (key_raw, op, value)
 
 
 def parse_chem_query(query: str) -> tuple[list[ChemCondition], list[str]]:

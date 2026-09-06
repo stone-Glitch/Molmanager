@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import tempfile
 from typing import Any
@@ -16,67 +17,83 @@ from ._common import *  # noqa: F403  # 取 ob / pybel / PYBEL_AVAILABLE
 from ._io import _read_molecules
 
 
+def _perceive_stereo(obmol) -> None:
+    """跨版本的立体化学感知：swig 绑定差异下，``PerceiveStereo`` 既可能是
+    模块级函数（OpenBabel 3.x 正确签名 ``ob.PerceiveStereo(mol)``）也可能是成员方法。"""
+    try:
+        ob.PerceiveStereo(obmol)
+        return
+    except Exception:
+        pass
+    try:
+        obmol.PerceiveStereo()
+    except Exception:
+        pass
+
+
+def _symbol_of(atom) -> str:
+    """元素符号规范化：本机绑定无 ``OBAtom.GetSymbol``，``GetType()`` 返回的是
+    元素类型字符串（如 ``C3``/``Cl``/``Fe``），取字母前缀并首字母大写。"""
+    try:
+        t = str(atom.GetType())
+        m = re.match(r"[A-Za-z]+", t)
+        return m.group(0).capitalize() if m else "?"
+    except Exception:
+        return "?"
+
+
+def _tetrahedral_stereos(obmol) -> list[tuple[int, Any]]:
+    """收集四面体手性中心 → [(idx_1based, OBTetrahedralStereo), ...]。
+
+    优先 OBStereoFacade 逐原子查询（部分绑定 ``GetAllTetrahedralStereo`` 返回的
+    裸指针不可迭代，逐原子接口稳定可用）。
+    """
+    out: list[tuple[int, Any]] = []
+    try:
+        fac = ob.OBStereoFacade(obmol)
+        for atom in ob.OBMolAtomIter(obmol):
+            aid = atom.GetId()
+            if fac.HasTetrahedralStereo(aid):
+                ts = fac.GetTetrahedralStereo(aid)
+                if ts is not None:
+                    out.append((int(atom.GetIdx()), ts))
+    except Exception:
+        out = []
+    return out
+
+
 def analyze_chirality(input_path: str) -> dict[str, Any]:
     """
     返回：
       n_centers: int (sp3 手性中心个数)
       centers: [{ idx_1based, symbol, label: R|S|? }]
       has_unknown: bool
+
+    注：CIP R/S 标注依赖 OpenBabel 3.2+ 的 CIP 能力，3.1 下不谎报、恒为 ``?``；
+    手性中心**个数与位置**检测是可靠的。
     """
     try:
         ext = os.path.splitext(input_path)[1][1:].lower()
         mols = _read_molecules(input_path, ext)
         if not mols:
             return {"success": False, "message": "OpenBabel 无法读取该文件为分子"}
-        mol = mols[0]
-        obmol = mol.OBMol
-        try:
-            obmol.UnsetFlag(ob.OB_CHIRALITY_PERCEIVED)
-            obmol.PerceiveStereo()
-        except Exception:
-            pass
+        obmol = mols[0].OBMol
+        _perceive_stereo(obmol)
         centers: list[dict[str, Any]] = []
-        n_atoms = obmol.NumAtoms() if hasattr(obmol, "NumAtoms") else 0
-        try:
-            stereo_data = list(obmol.GetAllStereoData())
-        except Exception:
-            stereo_data = []
-        chiral_idxs: set[int] = set()
-        label_by_idx: dict[int, str] = {}
-        try:
-            for sd in stereo_data:
-                try:
-                    typ = sd.GetType()
-                    # OBStereo::Tetrahedral = 1
-                    if typ == 1 or getattr(sd, "IsTetrahedral", lambda: False)():
-                        refs = list(sd.GetReferenceAtoms())
-                        if refs:
-                            c = refs[0]
-                            chiral_idxs.add(int(c))
-                            try:
-                                cfg = sd.GetConfig()
-                                label_by_idx[int(c)] = "R" if cfg > 0 else ("S" if cfg < 0 else "?")
-                            except Exception:
-                                pass
-                except Exception:
-                    continue
-        except Exception:
-            pass
-        # 兜底：FindStereoCenters
-        if not chiral_idxs:
+        for idx, ts in _tetrahedral_stereos(obmol):
+            label = "?"
             try:
-                ch = list(obmol.FindStereoCenters())
-                for c in ch:
-                    chiral_idxs.add(int(c))
+                # OpenBabel 3.2+ 若提供 CIP 标签则采用，否则诚实保持 "?"
+                cfg = ts.GetConfig()
+                label = getattr(cfg, "label", None) or "?"
             except Exception:
-                pass
-        sym = {a.GetIdx(): a.GetSymbol() for a in obmol.GetAtoms()} if hasattr(obmol, "GetAtoms") else {}
-        for idx in sorted(chiral_idxs):
+                label = "?"
+            atom = obmol.GetAtom(idx)
             centers.append(
                 {
                     "idx_1based": int(idx),
-                    "symbol": sym.get(idx, "?"),
-                    "label": label_by_idx.get(idx, "?"),
+                    "symbol": _symbol_of(atom),
+                    "label": label,
                 }
             )
         return {
@@ -84,14 +101,19 @@ def analyze_chirality(input_path: str) -> dict[str, Any]:
             "n_centers": len(centers),
             "centers": centers,
             "has_unknown": any(c["label"] == "?" for c in centers),
-            "total_atoms": n_atoms,
+            "total_atoms": obmol.NumAtoms(),
         }
     except Exception as e:
         return {"success": False, "message": f"手性分析失败：{e}"}
 
 
 def invert_enantiomer(input_path: str, output_path: str) -> dict[str, Any]:
-    """翻转所有手性中心 → 生成对映体并写文件。"""
+    """翻转所有手性中心 → 生成对映体并写文件。
+
+    双重翻转保证任意输出格式手性一致：
+      1. **拓扑层**：每个四面体中心 winding 取反（写出 SMILES 时 @ ↔ @@ 互换）；
+      2. **几何层**：x 坐标镜像（3D 坐标即精确镜像几何，与对映体能量等价）。
+    """
     try:
         # 【审计 1.1】输出路径安全解析
         try:
@@ -105,33 +127,38 @@ def invert_enantiomer(input_path: str, output_path: str) -> dict[str, Any]:
         mols = _read_molecules(input_path, ext)
         if not mols:
             return {"success": False, "message": "OpenBabel 无法读取该文件为分子"}
-        mol = mols[0]
-        obmol = mol.OBMol
-        try:
-            obmol.UnsetFlag(ob.OB_CHIRALITY_PERCEIVED)
-            obmol.PerceiveStereo()
-        except Exception:
-            pass
-        try:
-            obmol.InvertStereo()
-        except Exception:
-            # 回退：每个四面体 stereo data 取反配置
+        obmol = mols[0].OBMol
+        _perceive_stereo(obmol)
+        tets = _tetrahedral_stereos(obmol)
+        if not tets:
+            return {"success": False, "message": "未检测到手性中心，无需反转"}
+        n_flipped = 0
+        for _idx, ts in tets:
             try:
-                for sd in list(obmol.GetAllStereoData()):
-                    try:
-                        typ = sd.GetType()
-                        if typ == 1 or getattr(sd, "IsTetrahedral", lambda: False)():
-                            cfg = sd.GetConfig()
-                            sd.SetConfig(-cfg)
-                    except Exception:
-                        continue
-            except Exception as e2:
-                return {"success": False, "message": f"InvertStereo 不可用: {e2}"}
+                cfg = ts.GetConfig()
+                cfg.winding = (
+                    ob.OBStereo.AntiClockwise
+                    if cfg.winding == ob.OBStereo.Clockwise
+                    else ob.OBStereo.Clockwise
+                )
+                ts.SetConfig(cfg)
+                n_flipped += 1
+            except Exception:
+                continue
+        # 几何镜像：x → -x（对映体 = 精确镜像，能量等价）
+        for atom in ob.OBMolAtomIter(obmol):
+            v = atom.GetVector()
+            atom.SetVector(-v.GetX(), v.GetY(), v.GetZ())
         mol2 = pybel.Molecule(obmol)
-        mol2.write(out_ext or "xyz", output_path, overwrite=True)
+        mol2.write(out_ext or "mol", output_path, overwrite=True)
         if not os.path.exists(output_path):
             return {"success": False, "message": "对映体写入失败"}
-        return {"success": True, "output_path": output_path}
+        return {
+            "success": True,
+            "output_path": output_path,
+            "n_flipped": n_flipped,
+            "message": f"已翻转 {n_flipped} 个手性中心（拓扑 @↔@@ + 3D 坐标镜像）",
+        }
     except Exception as e:
         return {"success": False, "message": f"生成对映体失败：{e}"}
 

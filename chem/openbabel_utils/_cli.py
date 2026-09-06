@@ -21,6 +21,11 @@ from ._common import *  # noqa: F403  # 取 ob / pybel / PYBEL_AVAILABLE / OB_IN
 # 本模块是手动路径的**真相源**，其他模块请走 get_manual_obabel_path() 读取。
 from ._common import _DEFAULT_BASE_DIR, _MANUAL_OBABEL_PATH, _OBABEL_CLI_LOCK
 
+# obabel CLI 可执行路径缓存（DCL 双检锁用）。**必须模块级初始化**：
+# 漏了它，_resolve_obabel_cli 首次访问就会 NameError（与下方 _MANUAL_OBABEL_PATH
+# 同一类事故——表现为「状态栏 OB 指示灯一直报错」）。
+_OBABEL_CLI_EXE: str | None = None
+
 
 def set_manual_obabel_path(path: str | None) -> None:
     """设置用户手动指定的 obabel 可执行文件路径。传入 None 或 "" 会清除手动设置并回退到自动查找。"""
