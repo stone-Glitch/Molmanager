@@ -8,7 +8,7 @@ from ui.ui_theme import (
 from ._menu import build_menu_bar
 from ._sidebar import build_sidebar
 from ._statusbar import build_status_bar_new
-from ._tabs import (
+from ui.pages import (
     build_tab_advanced_tools,
     build_tab_compute_and_animation,
     build_tab_compute_queue,
