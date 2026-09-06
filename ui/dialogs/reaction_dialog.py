@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
 反应动画对话框 - 多反应物/多产物动画生成
+
+B3 重构说明（行为不变）：
+- 原 770 行单函数拆为按 UI 块划分的 ``_build_*_section`` 构建函数；
+- 全部 Tk 变量 / 控件引用收进 ``_ReactionDialogState``（SimpleNamespace），
+  消除跨 section 闭包依赖；
+- 预设的 24 个字段读写集中为声明式 ``_PRESET_FIELDS`` 清单；
+- ``show_reaction_animation_dialog(app, controller)`` 对外签名不变。
 """
 
 import os
@@ -9,6 +16,7 @@ import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
+from types import SimpleNamespace
 
 from utils.dialog_geom import fit_dialog_geometry, make_scrollable_body
 from utils.preset_manager import get_preset_manager
@@ -16,402 +24,354 @@ from utils.preset_manager import get_preset_manager
 from .base import register_dialog_temp_dir, unregister_dialog_temp_dir
 from .common import _resolve_iqmol_exe, _safe_open_file
 
+# ============================================================
+# 模块级常量
+# ============================================================
 
-def show_reaction_animation_dialog(app, controller):
+# 参数行统一 padding（原主函数局部 pad，仅 QM/高级参数区使用）
+_ROW_PAD = {"padx": 12, "pady": 4}
 
-    dialog = tk.Toplevel(app)
-    dialog.title("🎬 制作反应动画（含 IQmol 可播放轨迹 · 支持多反应物+多产物）")
-    dialog.geometry(fit_dialog_geometry(dialog, 950, 880))
-    dialog.resizable(True, True)
-    dialog.transient(app)
+# 内置常见小分子的 XYZ 坐标（模板一键填充用；找不到同名文件时现场生成）
+_BUILTIN_XYZ = {
+    "ch4": (
+        5,
+        ["C", "H", "H", "H", "H"],
+        [
+            [0.00000, 0.00000, 0.00000],
+            [0.62912, 0.62912, 0.62912],
+            [-0.62912, -0.62912, 0.62912],
+            [-0.62912, 0.62912, -0.62912],
+            [0.62912, -0.62912, -0.62912],
+        ],
+    ),
+    "cl2": (2, ["Cl", "Cl"], [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]),
+    "hcl": (2, ["H", "Cl"], [[0.0, 0.0, 0.0], [1.28, 0.0, 0.0]]),
+    "ch3cl": (
+        5,
+        ["C", "Cl", "H", "H", "H"],
+        [
+            [0.00000, 0.00000, 0.00000],
+            [1.78000, 0.00000, 0.00000],
+            [-0.35700, 0.95000, 0.35700],
+            [-0.35700, -0.52000, 0.88600],
+            [-0.35700, -0.52000, -0.88600],
+        ],
+    ),
+    "h2": (2, ["H", "H"], [[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]]),
+    "h2o": (3, ["O", "H", "H"], [[0.0, 0.0, 0.0], [0.957, 0.0, 0.0], [-0.239, 0.927, 0.0]]),
+    "o2": (2, ["O", "O"], [[0.0, 0.0, 0.0], [1.21, 0.0, 0.0]]),
+    "co2": (3, ["C", "O", "O"], [[0.0, 0.0, 0.0], [1.16, 0.0, 0.0], [-1.16, 0.0, 0.0]]),
+    "n2": (2, ["N", "N"], [[0.0, 0.0, 0.0], [1.098, 0.0, 0.0]]),
+    "nh3": (
+        4,
+        ["N", "H", "H", "H"],
+        [
+            [0.00000, 0.00000, 0.00000],
+            [0.93770, 0.00000, 0.36690],
+            [-0.46890, 0.81200, 0.36690],
+            [-0.46890, -0.81200, 0.36690],
+        ],
+    ),
+    "ch3oh": (
+        6,
+        ["C", "O", "H", "H", "H", "H"],
+        [
+            [0.74410, 0.00000, 0.00000],
+            [-0.68660, 0.00000, 0.00000],
+            [1.10690, 0.96170, 0.34510],
+            [1.10690, -0.45960, 0.89340],
+            [1.10690, -0.50210, -0.92740],
+            [-1.07800, 0.81090, 0.00000],
+        ],
+    ),
+    "c2h4": (
+        6,
+        ["C", "C", "H", "H", "H", "H"],
+        [
+            [0.66950, 0.00000, 0.00000],
+            [-0.66950, 0.00000, 0.00000],
+            [1.24000, 0.92890, 0.00000],
+            [1.24000, -0.92890, 0.00000],
+            [-1.24000, 0.92890, 0.00000],
+            [-1.24000, -0.92890, 0.00000],
+        ],
+    ),
+    "c2h6": (
+        8,
+        ["C", "C", "H", "H", "H", "H", "H", "H"],
+        [
+            [0.76440, 0.00000, 0.00000],
+            [-0.76440, 0.00000, 0.00000],
+            [1.15590, 0.55840, 0.85880],
+            [1.15590, 0.38120, -0.97300],
+            [1.15590, -0.93960, 0.11420],
+            [-1.15590, -0.55840, -0.85880],
+            [-1.15590, -0.38120, 0.97300],
+            [-1.15590, 0.93960, -0.11420],
+        ],
+    ),
+}
+
+# 溶剂选项（显示名 → PSI4 溶剂键的映射一并模块常量化，值与原每次打开时构建一致）
+_SOLVENT_CHOICES = [
+    "（不使用溶剂，气相）",
+    "water (水)",
+    "methanol (甲醇)",
+    "ethanol (乙醇)",
+    "acetonitrile (乙腈，CH3CN)",
+    "dimethylsulfoxide (DMSO)",
+    "chloroform (氯仿，CHCl3)",
+    "dichloromethane (二氯甲烷，DCM)",
+    "tetrahydrofuran (THF)",
+    "toluene (甲苯)",
+    "benzene (苯)",
+    "acetone (丙酮)",
+    "diethyl ether (乙醚)",
+    "ethyl acetate (乙酸乙酯)",
+    "hexane (正己烷)",
+    "cyclohexane (环己烷)",
+    "dimethylformamide (DMF，N,N-二甲基甲酰胺)",
+]
+_SOLVENT_KEY_MAP = {}
+for _it in _SOLVENT_CHOICES:
+    if _it.startswith("（不"):
+        _SOLVENT_KEY_MAP[_it] = None
+    else:
+        _SOLVENT_KEY_MAP[_it] = _it.split(" ", 1)[0].strip()
+
+# 预设字段声明式清单：(预设 JSON 键, State 属性名)。
+# 属性指向 Listbox（r_list/p_list）时按列表字段处理，其余按 Tk 变量处理。
+# 顺序即保存 JSON 的键序（与原实现一致）。
+_PRESET_FIELDS = (
+    ("fps", "fps_var"),
+    ("steps", "steps_var"),
+    ("mode", "play_mode_var"),
+    ("fmt", "fmt_var"),
+    ("resolution", "res_var"),
+    ("smooth", "smooth_var"),
+    ("spacing", "spacing_var"),
+    ("reactants", "r_list"),
+    ("products", "p_list"),
+    ("solvent", "solvent_var"),
+    ("qm_method", "qm_method_var"),
+    ("qm_basis", "qm_basis_var"),
+    ("qm_d3", "qm_d3_var"),
+    ("qm_charge", "qm_charge_var"),
+    ("qm_mult", "qm_mult_var"),
+    ("qm_mem", "qm_mem_var"),
+    ("scan_steps", "scan_steps_var"),
+    ("scan_output", "scan_output_var"),
+    ("trajectory_format", "traj_fmt_var"),
+    ("iqmol_path", "iqmol_path_var"),
+    ("auto_open_iqmol", "auto_open_iqmol_var"),
+    ("gen_traj", "gen_traj_var"),
+    ("out_path", "out_var"),
+    ("traj_path", "traj_var"),
+)
+
+
+def _collect_preset_data(st) -> dict:
+    """从控件收集预设数据（键序与 _PRESET_FIELDS 一致）。"""
+    data = {}
+    for key, attr in _PRESET_FIELDS:
+        widget = getattr(st, attr)
+        if isinstance(widget, tk.Listbox):
+            data[key] = [widget.get(i) for i in range(widget.size())]
+        else:
+            data[key] = widget.get()
+    return data
+
+
+def _apply_preset_data(st, data) -> None:
+    """把预设数据写入控件（仅处理 data 中存在的键，与原 if 链等价）。"""
+    for key, attr in _PRESET_FIELDS:
+        if key not in data:
+            continue
+        widget = getattr(st, attr)
+        if isinstance(widget, tk.Listbox):
+            widget.delete(0, tk.END)
+            for p in data[key]:
+                if Path(p).exists():
+                    widget.insert(tk.END, p)
+        else:
+            widget.set(data[key])
+
+
+# ============================================================
+# 预设按钮回调
+# ============================================================
+
+
+def _preset_load(app, dialog, st, pm):
+    name = st.preset_var.get()
+    if not name:
+        return
+    data = pm.get_preset(name)
+    if not data:
+        return
     try:
-        dialog.grab_set()
-    except Exception:
-        pass
+        _apply_preset_data(st, data)
+        messagebox.showinfo("加载成功", f"已加载预设：{name}", parent=dialog)
+    except Exception as e:
+        from .base import show_friendly_error
 
-    # 可滚动主体：内容可能高于被屏幕钳制后的窗口，滚动条保证全部可见
-    _canvas, body = make_scrollable_body(dialog)
+        show_friendly_error(app, e, parent=dialog, title="加载失败")
 
-    pad = {"padx": 12, "pady": 4}
 
-    # 模式切换
-    mode_frame = ttk.Frame(body)
-    mode_frame.pack(fill=tk.X, padx=12, pady=6)
+def _preset_save(app, dialog, st, pm):
+    name = simpledialog.askstring("保存预设", "输入预设名称：", parent=dialog)
+    if not name:
+        return
+    data = _collect_preset_data(st)
+    if pm.save_preset(name, data):
+        st.preset_combo["values"] = pm.list_presets()
+        st.preset_var.set(name)
+        messagebox.showinfo("保存成功", f"预设 '{name}' 已保存", parent=dialog)
+    else:
+        messagebox.showerror("保存失败", "无法保存预设", parent=dialog)
 
-    mode_var = tk.StringVar(value=app.config_data.get("ui_mode", "simple"))
-    simple_btn = ttk.Radiobutton(
-        mode_frame,
-        text="🌟 简单模式（推荐）",
-        variable=mode_var,
-        value="simple",
-        command=lambda: _toggle_mode("simple"),
+
+def _preset_delete(app, dialog, st, pm):
+    name = st.preset_var.get()
+    if not name:
+        return
+    if messagebox.askyesno("确认删除", f"确定删除预设 '{name}' 吗？", parent=dialog):
+        if pm.delete_preset(name):
+            st.preset_combo["values"] = pm.list_presets()
+            st.preset_var.set("")
+            messagebox.showinfo("已删除", f"预设 '{name}' 已删除", parent=dialog)
+        else:
+            messagebox.showerror("删除失败", "删除预设失败", parent=dialog)
+
+
+def _preset_export(app, dialog, st, pm):
+    name = st.preset_var.get()
+    if not name:
+        return
+    export_path = filedialog.asksaveasfilename(
+        title="导出预设为 JSON",
+        defaultextension=".json",
+        filetypes=[("JSON 文件", "*.json"), ("所有文件", "*.*")],
+        parent=dialog,
     )
-    adv_btn = ttk.Radiobutton(
-        mode_frame, text="🔧 高级模式", variable=mode_var, value="advanced", command=lambda: _toggle_mode("advanced")
+    if export_path:
+        if pm.export_preset(name, export_path):
+            messagebox.showinfo("导出成功", f"预设已导出到：{export_path}", parent=dialog)
+        else:
+            messagebox.showerror("导出失败", "导出预设失败", parent=dialog)
+
+
+def _preset_import(app, dialog, st, pm):
+    import_path = filedialog.askopenfilename(
+        title="导入预设 JSON 文件", filetypes=[("JSON 文件", "*.json"), ("所有文件", "*.*")], parent=dialog
     )
-    simple_btn.pack(side=tk.LEFT, padx=4)
-    adv_btn.pack(side=tk.LEFT, padx=4)
-
-    mode_tip = ttk.Label(mode_frame, text="💡 简单模式只显示核心参数，高级选项已隐藏", foreground="#3B6EFF")
-    mode_tip.pack(side=tk.LEFT, padx=10)
-
-    # 预设管理
-    pm = get_preset_manager()
-    preset_frame = ttk.LabelFrame(body, text="📁 预设管理", padding="6")
-    preset_frame.pack(fill=tk.X, padx=12, pady=(6, 4))
-
-    preset_var = tk.StringVar()
-    preset_combo = ttk.Combobox(
-        preset_frame, textvariable=preset_var, values=pm.list_presets(), state="readonly", width=20
-    )
-    preset_combo.pack(side=tk.LEFT, padx=4)
-
-    def _load_preset():
-        name = preset_var.get()
-        if not name:
-            return
-        data = pm.get_preset(name)
-        if not data:
-            return
+    if import_path:
         try:
-            if "fps" in data:
-                fps_var.set(data["fps"])
-            if "steps" in data:
-                steps_var.set(data["steps"])
-            if "mode" in data:
-                mode_var.set(data["mode"])
-            if "fmt" in data:
-                fmt_var.set(data["fmt"])
-            if "resolution" in data:
-                res_var.set(data["resolution"])
-            if "smooth" in data:
-                smooth_var.set(data["smooth"])
-            if "spacing" in data:
-                spacing_var.set(data["spacing"])
-            if "reactants" in data:
-                r_list.delete(0, tk.END)
-                for p in data["reactants"]:
-                    if Path(p).exists():
-                        r_list.insert(tk.END, p)
-            if "products" in data:
-                p_list.delete(0, tk.END)
-                for p in data["products"]:
-                    if Path(p).exists():
-                        p_list.insert(tk.END, p)
-            if "solvent" in data:
-                solvent_var.set(data["solvent"])
-            if "qm_method" in data:
-                qm_method_var.set(data["qm_method"])
-            if "qm_basis" in data:
-                qm_basis_var.set(data["qm_basis"])
-            if "qm_d3" in data:
-                qm_d3_var.set(data["qm_d3"])
-            if "qm_charge" in data:
-                qm_charge_var.set(data["qm_charge"])
-            if "qm_mult" in data:
-                qm_mult_var.set(data["qm_mult"])
-            if "qm_mem" in data:
-                qm_mem_var.set(data["qm_mem"])
-            if "scan_steps" in data:
-                scan_steps_var.set(data["scan_steps"])
-            if "scan_output" in data:
-                scan_output_var.set(data["scan_output"])
-            if "trajectory_format" in data:
-                traj_fmt_var.set(data["trajectory_format"])
-            if "iqmol_path" in data:
-                iqmol_path_var.set(data["iqmol_path"])
-            if "auto_open_iqmol" in data:
-                auto_open_iqmol_var.set(data["auto_open_iqmol"])
-            if "gen_traj" in data:
-                gen_traj_var.set(data["gen_traj"])
-            if "out_path" in data:
-                out_var.set(data["out_path"])
-            if "traj_path" in data:
-                traj_var.set(data["traj_path"])
-            messagebox.showinfo("加载成功", f"已加载预设：{name}", parent=dialog)
+            name, data = pm.import_preset(import_path)
+            st.preset_combo["values"] = pm.list_presets()
+            st.preset_var.set(name)
+            messagebox.showinfo("导入成功", f"已导入预设：{name}", parent=dialog)
         except Exception as e:
             from .base import show_friendly_error
 
-            show_friendly_error(app, e, parent=dialog, title="加载失败")
+            show_friendly_error(app, e, parent=dialog, title="导入失败")
 
-    def _save_preset():
-        name = simpledialog.askstring("保存预设", "输入预设名称：", parent=dialog)
-        if not name:
-            return
-        data = {
-            "fps": fps_var.get(),
-            "steps": steps_var.get(),
-            "mode": mode_var.get(),
-            "fmt": fmt_var.get(),
-            "resolution": res_var.get(),
-            "smooth": smooth_var.get(),
-            "spacing": spacing_var.get(),
-            "reactants": [r_list.get(i) for i in range(r_list.size())],
-            "products": [p_list.get(i) for i in range(p_list.size())],
-            "solvent": solvent_var.get(),
-            "qm_method": qm_method_var.get(),
-            "qm_basis": qm_basis_var.get(),
-            "qm_d3": qm_d3_var.get(),
-            "qm_charge": qm_charge_var.get(),
-            "qm_mult": qm_mult_var.get(),
-            "qm_mem": qm_mem_var.get(),
-            "scan_steps": scan_steps_var.get(),
-            "scan_output": scan_output_var.get(),
-            "trajectory_format": traj_fmt_var.get(),
-            "iqmol_path": iqmol_path_var.get(),
-            "auto_open_iqmol": auto_open_iqmol_var.get(),
-            "gen_traj": gen_traj_var.get(),
-            "out_path": out_var.get(),
-            "traj_path": traj_var.get(),
-        }
-        if pm.save_preset(name, data):
-            preset_combo["values"] = pm.list_presets()
-            preset_var.set(name)
-            messagebox.showinfo("保存成功", f"预设 '{name}' 已保存", parent=dialog)
-        else:
-            messagebox.showerror("保存失败", "无法保存预设", parent=dialog)
 
-    def _delete_preset():
-        name = preset_var.get()
-        if not name:
-            return
-        if messagebox.askyesno("确认删除", f"确定删除预设 '{name}' 吗？", parent=dialog):
-            if pm.delete_preset(name):
-                preset_combo["values"] = pm.list_presets()
-                preset_var.set("")
-                messagebox.showinfo("已删除", f"预设 '{name}' 已删除", parent=dialog)
-            else:
-                messagebox.showerror("删除失败", "删除预设失败", parent=dialog)
+# ============================================================
+# 反应模板
+# ============================================================
 
-    def _export_preset():
-        name = preset_var.get()
-        if not name:
-            return
-        export_path = filedialog.asksaveasfilename(
-            title="导出预设为 JSON",
-            defaultextension=".json",
-            filetypes=[("JSON 文件", "*.json"), ("所有文件", "*.*")],
-            parent=dialog,
-        )
-        if export_path:
-            if pm.export_preset(name, export_path):
-                messagebox.showinfo("导出成功", f"预设已导出到：{export_path}", parent=dialog)
-            else:
-                messagebox.showerror("导出失败", "导出预设失败", parent=dialog)
 
-    def _import_preset():
-        import_path = filedialog.askopenfilename(
-            title="导入预设 JSON 文件", filetypes=[("JSON 文件", "*.json"), ("所有文件", "*.*")], parent=dialog
-        )
-        if import_path:
+def _resolve_or_build(controller, name, tmpdir):
+    """模板分子路径解析：优先工作目录同名文件，否则用内置坐标现场生成。"""
+    workdir = Path(controller.model.work_dir)
+    candidate = workdir / f"{name}.xyz"
+    if candidate.exists():
+        return str(candidate)
+    candidate2 = workdir / f"{name}.mol"
+    if candidate2.exists():
+        return str(candidate2)
+    if name not in _BUILTIN_XYZ:
+        return str(candidate)
+    n, syms, coords = _BUILTIN_XYZ[name]
+    lines = [str(n), ""]
+    for s, (x, y, z) in zip(syms, coords, strict=False):
+        lines.append(f"{s:2s} {x:12.6f} {y:12.6f} {z:12.6f}")
+    p = tmpdir / f"tpl_{name}.xyz"
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return str(p)
+
+
+def _apply_template(dialog, controller, st, r_names, p_names, def_solvent=None):
+    """一键填充反应物/产物列表（模板分子写入临时目录，随对话框销毁清理）。"""
+    st.r_list.delete(0, tk.END)
+    st.p_list.delete(0, tk.END)
+
+    import shutil as _shu
+    import tempfile
+
+    tpl_dirs = getattr(dialog, "_ra_tpl_dirs", None)
+    if tpl_dirs is None:
+        tpl_dirs = set()
+        dialog._ra_tpl_dirs = tpl_dirs
+
+        def _cleanup_all_tpl_dirs():
+            ds = getattr(dialog, "_ra_tpl_dirs", None) or set()
             try:
-                name, data = pm.import_preset(import_path)
-                preset_combo["values"] = pm.list_presets()
-                preset_var.set(name)
-                messagebox.showinfo("导入成功", f"已导入预设：{name}", parent=dialog)
-            except Exception as e:
-                from .base import show_friendly_error
-
-                show_friendly_error(app, e, parent=dialog, title="导入失败")
-
-    ttk.Button(preset_frame, text="📥 加载", command=_load_preset).pack(side=tk.LEFT, padx=2)
-    ttk.Button(preset_frame, text="💾 保存", command=_save_preset).pack(side=tk.LEFT, padx=2)
-    ttk.Button(preset_frame, text="🗑️ 删除", command=_delete_preset).pack(side=tk.LEFT, padx=2)
-    ttk.Button(preset_frame, text="📤 导出", command=_export_preset).pack(side=tk.LEFT, padx=2)
-    ttk.Button(preset_frame, text="📥 导入", command=_import_preset).pack(side=tk.LEFT, padx=2)
-
-    # 常见反应模板
-    tpl_frame = ttk.LabelFrame(body, text="✨ 常见反应模板（点一下自动填好反应物和产物）", padding=8)
-    tpl_frame.pack(fill="x", padx=12, pady=(0, 4))
-
-    # 内置常见反应
-    BUILTIN_XYZ = {
-        "ch4": (
-            5,
-            ["C", "H", "H", "H", "H"],
-            [
-                [0.00000, 0.00000, 0.00000],
-                [0.62912, 0.62912, 0.62912],
-                [-0.62912, -0.62912, 0.62912],
-                [-0.62912, 0.62912, -0.62912],
-                [0.62912, -0.62912, -0.62912],
-            ],
-        ),
-        "cl2": (2, ["Cl", "Cl"], [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]),
-        "hcl": (2, ["H", "Cl"], [[0.0, 0.0, 0.0], [1.28, 0.0, 0.0]]),
-        "ch3cl": (
-            5,
-            ["C", "Cl", "H", "H", "H"],
-            [
-                [0.00000, 0.00000, 0.00000],
-                [1.78000, 0.00000, 0.00000],
-                [-0.35700, 0.95000, 0.35700],
-                [-0.35700, -0.52000, 0.88600],
-                [-0.35700, -0.52000, -0.88600],
-            ],
-        ),
-        "h2": (2, ["H", "H"], [[0.0, 0.0, 0.0], [0.74, 0.0, 0.0]]),
-        "h2o": (3, ["O", "H", "H"], [[0.0, 0.0, 0.0], [0.957, 0.0, 0.0], [-0.239, 0.927, 0.0]]),
-        "o2": (2, ["O", "O"], [[0.0, 0.0, 0.0], [1.21, 0.0, 0.0]]),
-        "co2": (3, ["C", "O", "O"], [[0.0, 0.0, 0.0], [1.16, 0.0, 0.0], [-1.16, 0.0, 0.0]]),
-        "n2": (2, ["N", "N"], [[0.0, 0.0, 0.0], [1.098, 0.0, 0.0]]),
-        "nh3": (
-            4,
-            ["N", "H", "H", "H"],
-            [
-                [0.00000, 0.00000, 0.00000],
-                [0.93770, 0.00000, 0.36690],
-                [-0.46890, 0.81200, 0.36690],
-                [-0.46890, -0.81200, 0.36690],
-            ],
-        ),
-        "ch3oh": (
-            6,
-            ["C", "O", "H", "H", "H", "H"],
-            [
-                [0.74410, 0.00000, 0.00000],
-                [-0.68660, 0.00000, 0.00000],
-                [1.10690, 0.96170, 0.34510],
-                [1.10690, -0.45960, 0.89340],
-                [1.10690, -0.50210, -0.92740],
-                [-1.07800, 0.81090, 0.00000],
-            ],
-        ),
-        "c2h4": (
-            6,
-            ["C", "C", "H", "H", "H", "H"],
-            [
-                [0.66950, 0.00000, 0.00000],
-                [-0.66950, 0.00000, 0.00000],
-                [1.24000, 0.92890, 0.00000],
-                [1.24000, -0.92890, 0.00000],
-                [-1.24000, 0.92890, 0.00000],
-                [-1.24000, -0.92890, 0.00000],
-            ],
-        ),
-        "c2h6": (
-            8,
-            ["C", "C", "H", "H", "H", "H", "H", "H"],
-            [
-                [0.76440, 0.00000, 0.00000],
-                [-0.76440, 0.00000, 0.00000],
-                [1.15590, 0.55840, 0.85880],
-                [1.15590, 0.38120, -0.97300],
-                [1.15590, -0.93960, 0.11420],
-                [-1.15590, -0.55840, -0.85880],
-                [-1.15590, -0.38120, 0.97300],
-                [-1.15590, 0.93960, -0.11420],
-            ],
-        ),
-    }
-
-    def _resolve_or_build(name, tmpdir):
-        workdir = Path(controller.model.work_dir)
-        candidate = workdir / f"{name}.xyz"
-        if candidate.exists():
-            return str(candidate)
-        candidate2 = workdir / f"{name}.mol"
-        if candidate2.exists():
-            return str(candidate2)
-        if name not in BUILTIN_XYZ:
-            return str(candidate)
-        n, syms, coords = BUILTIN_XYZ[name]
-        lines = [str(n), ""]
-        for s, (x, y, z) in zip(syms, coords, strict=False):
-            lines.append(f"{s:2s} {x:12.6f} {y:12.6f} {z:12.6f}")
-        p = tmpdir / f"tpl_{name}.xyz"
-        p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return str(p)
-
-    SOLVENT_CHOICES = [
-        "（不使用溶剂，气相）",
-        "water (水)",
-        "methanol (甲醇)",
-        "ethanol (乙醇)",
-        "acetonitrile (乙腈，CH3CN)",
-        "dimethylsulfoxide (DMSO)",
-        "chloroform (氯仿，CHCl3)",
-        "dichloromethane (二氯甲烷，DCM)",
-        "tetrahydrofuran (THF)",
-        "toluene (甲苯)",
-        "benzene (苯)",
-        "acetone (丙酮)",
-        "diethyl ether (乙醚)",
-        "ethyl acetate (乙酸乙酯)",
-        "hexane (正己烷)",
-        "cyclohexane (环己烷)",
-        "dimethylformamide (DMF，N,N-二甲基甲酰胺)",
-    ]
-    solvent_cb_var_to_key_map = {}
-    for _it in SOLVENT_CHOICES:
-        if _it.startswith("（不"):
-            solvent_cb_var_to_key_map[_it] = None
-        else:
-            solvent_cb_var_to_key_map[_it] = _it.split(" ", 1)[0].strip()
-
-    def _apply_template(r_names, p_names, def_solvent=None):
-        r_list.delete(0, tk.END)
-        p_list.delete(0, tk.END)
-
-        import shutil as _shu
-        import tempfile
-
-        tpl_dirs = getattr(dialog, "_ra_tpl_dirs", None)
-        if tpl_dirs is None:
-            tpl_dirs = set()
-            dialog._ra_tpl_dirs = tpl_dirs
-
-            def _cleanup_all_tpl_dirs():
-                ds = getattr(dialog, "_ra_tpl_dirs", None) or set()
-                try:
-                    delattr(dialog, "_ra_tpl_dirs")
-                except Exception:
-                    pass
-                for d_ in list(ds):
-                    try:
-                        p_ = Path(d_)
-                        if p_.exists():
-                            _shu.rmtree(str(p_), ignore_errors=True)
-                        unregister_dialog_temp_dir(p_)
-                    except Exception:
-                        pass
-
-            dialog.protocol("WM_DELETE_WINDOW", lambda: (_cleanup_all_tpl_dirs(), dialog.destroy()))
-            dialog.bind("<Destroy>", lambda event: _cleanup_all_tpl_dirs() if event.widget is dialog else None)
-
-        _prev = getattr(dialog, "_ra_tpl_last", None)
-        if _prev is not None:
-            try:
-                _pp = Path(_prev)
-                if _pp.exists():
-                    _shu.rmtree(str(_pp), ignore_errors=True)
-                unregister_dialog_temp_dir(_pp)
-                tpl_dirs.discard(_pp)
+                delattr(dialog, "_ra_tpl_dirs")
             except Exception:
                 pass
-            dialog._ra_tpl_last = None
+            for d_ in list(ds):
+                try:
+                    p_ = Path(d_)
+                    if p_.exists():
+                        _shu.rmtree(str(p_), ignore_errors=True)
+                    unregister_dialog_temp_dir(p_)
+                except Exception:
+                    pass
 
-        td = Path(tempfile.mkdtemp(prefix="ra_tpl_"))
-        register_dialog_temp_dir(td)
-        tpl_dirs.add(td)
-        dialog._ra_tpl_last = td
+        dialog.protocol("WM_DELETE_WINDOW", lambda: (_cleanup_all_tpl_dirs(), dialog.destroy()))
+        dialog.bind("<Destroy>", lambda event: _cleanup_all_tpl_dirs() if event.widget is dialog else None)
 
-        for n in r_names:
-            _ra_add_unique_path(r_list, _resolve_or_build(n, td))
-        for n in p_names:
-            _ra_add_unique_path(p_list, _resolve_or_build(n, td))
-        if def_solvent is not None:
-            for k in SOLVENT_CHOICES:
-                if k.startswith(def_solvent + " "):
-                    solvent_var.set(k)
-                    break
-        result_text.configure(state="normal")
-        result_text.delete("1.0", tk.END)
-        result_text.insert(tk.END, f"✅ 已加载模板：反应物={'+'.join(r_names)} → 产物={'+'.join(p_names)}\n")
-        if def_solvent is not None:
-            result_text.insert(tk.END, f"   溶剂自动设为：{def_solvent}\n")
-        result_text.insert(tk.END, "   💡 直接点下方 「▶ 生成反应动画」 即可，其他参数默认就行\n")
-        result_text.configure(state="disabled")
+    _prev = getattr(dialog, "_ra_tpl_last", None)
+    if _prev is not None:
+        try:
+            _pp = Path(_prev)
+            if _pp.exists():
+                _shu.rmtree(str(_pp), ignore_errors=True)
+            unregister_dialog_temp_dir(_pp)
+            tpl_dirs.discard(_pp)
+        except Exception:
+            pass
+        dialog._ra_tpl_last = None
+
+    td = Path(tempfile.mkdtemp(prefix="ra_tpl_"))
+    register_dialog_temp_dir(td)
+    tpl_dirs.add(td)
+    dialog._ra_tpl_last = td
+
+    for n in r_names:
+        _ra_add_unique_path(st.r_list, _resolve_or_build(controller, n, td))
+    for n in p_names:
+        _ra_add_unique_path(st.p_list, _resolve_or_build(controller, n, td))
+    if def_solvent is not None:
+        for k in _SOLVENT_CHOICES:
+            if k.startswith(def_solvent + " "):
+                st.solvent_var.set(k)
+                break
+    st.result_text.configure(state="normal")
+    st.result_text.delete("1.0", tk.END)
+    st.result_text.insert(tk.END, f"✅ 已加载模板：反应物={'+'.join(r_names)} → 产物={'+'.join(p_names)}\n")
+    if def_solvent is not None:
+        st.result_text.insert(tk.END, f"   溶剂自动设为：{def_solvent}\n")
+    st.result_text.insert(tk.END, "   💡 直接点下方 「▶ 生成反应动画」 即可，其他参数默认就行\n")
+    st.result_text.configure(state="disabled")
+
+
+def _build_template_section(dialog, body, controller, st):
+    """✨ 常见反应模板区（点一下自动填好反应物和产物）。"""
+    tpl_frame = ttk.LabelFrame(body, text="✨ 常见反应模板（点一下自动填好反应物和产物）", padding=8)
+    tpl_frame.pack(fill="x", padx=12, pady=(0, 4))
 
     tpl_btns = [
         ("🔥 CH4 氯代 CH4+Cl2→CH3Cl+HCl", ["ch4", "cl2"], ["ch3cl", "hcl"], None),
@@ -428,58 +388,132 @@ def show_reaction_animation_dialog(app, controller):
             nr = ttk.Frame(tpl_frame)
             nr.pack(fill="x", pady=(4, 0))
             rows.append(nr)
-        b = ttk.Button(rows[row_idx], text=label, command=lambda _rs=rs, _ps=ps, _s=sol: _apply_template(_rs, _ps, _s))
+        b = ttk.Button(
+            rows[row_idx], text=label, command=lambda _rs=rs, _ps=ps, _s=sol: _apply_template(dialog, controller, st, _rs, _ps, _s)
+        )
         b.pack(side="left", padx=4, pady=2, fill="x", expand=True)
 
-    # 主界面 - 反应物/产物列表
+
+# ============================================================
+# 模式切换（简单/高级显隐）
+# ============================================================
+
+
+def _toggle_mode(st, mode):
+    """仅控制本对话框内的高级参数区显隐。
+
+    ui_mode 由「设置 / 工具」菜单栏统一控制（toggle_ui_mode_from_menu），
+    此处只读取初始值并控制本地显隐，不写回配置。
+    注意（保留原行为）：mode 参数既可能是 radio 的 "simple"/"advanced"，
+    也可能是播放模式下拉的取值（trace 绑定在播放模式变量上）。
+    """
+    if mode == "simple":
+        st.advanced_container.pack_forget()
+        st.mode_tip.config(text="💡 简单模式：只显示核心参数，高级选项已隐藏")
+    else:
+        st.advanced_container.pack(fill=tk.X, padx=12, pady=4, before=st.preview_btn)
+        st.mode_tip.config(text="🔧 高级模式：全部参数可调")
+
+
+def _build_mode_selector(dialog, body, app, st):
+    """顶部模式切换行：简单/高级 radio + 提示文字。"""
+    mode_frame = ttk.Frame(body)
+    mode_frame.pack(fill=tk.X, padx=12, pady=6)
+
+    st.ui_mode_var = tk.StringVar(value=app.config_data.get("ui_mode", "simple"))
+    simple_btn = ttk.Radiobutton(
+        mode_frame,
+        text="🌟 简单模式（推荐）",
+        variable=st.ui_mode_var,
+        value="simple",
+        command=lambda: _toggle_mode(st, "simple"),
+    )
+    adv_btn = ttk.Radiobutton(
+        mode_frame,
+        text="🔧 高级模式",
+        variable=st.ui_mode_var,
+        value="advanced",
+        command=lambda: _toggle_mode(st, "advanced"),
+    )
+    simple_btn.pack(side=tk.LEFT, padx=4)
+    adv_btn.pack(side=tk.LEFT, padx=4)
+
+    st.mode_tip = ttk.Label(mode_frame, text="💡 简单模式只显示核心参数，高级选项已隐藏", foreground="#3B6EFF")
+    st.mode_tip.pack(side=tk.LEFT, padx=10)
+
+
+def _build_preset_section(dialog, body, app, controller, st):
+    """📁 预设管理区。返回预设管理器（主函数 auto_load 需要）。"""
+    pm = get_preset_manager()
+    st.pm = pm
+    preset_frame = ttk.LabelFrame(body, text="📁 预设管理", padding="6")
+    preset_frame.pack(fill=tk.X, padx=12, pady=(6, 4))
+
+    st.preset_var = tk.StringVar()
+    st.preset_combo = ttk.Combobox(
+        preset_frame, textvariable=st.preset_var, values=pm.list_presets(), state="readonly", width=20
+    )
+    st.preset_combo.pack(side=tk.LEFT, padx=4)
+
+    ttk.Button(preset_frame, text="📥 加载", command=lambda: _preset_load(app, dialog, st, pm)).pack(side=tk.LEFT, padx=2)
+    ttk.Button(preset_frame, text="💾 保存", command=lambda: _preset_save(app, dialog, st, pm)).pack(side=tk.LEFT, padx=2)
+    ttk.Button(preset_frame, text="🗑️ 删除", command=lambda: _preset_delete(app, dialog, st, pm)).pack(side=tk.LEFT, padx=2)
+    ttk.Button(preset_frame, text="📤 导出", command=lambda: _preset_export(app, dialog, st, pm)).pack(side=tk.LEFT, padx=2)
+    ttk.Button(preset_frame, text="📥 导入", command=lambda: _preset_import(app, dialog, st, pm)).pack(side=tk.LEFT, padx=2)
+
+
+def _build_lists_section(body, controller, st):
+    """反应物/产物列表区（Listbox 进入 State）。"""
     r_frame = ttk.LabelFrame(body, text="反应物列表（可多选，按先后顺序沿 +X 拼接）")
     r_frame.pack(fill="x", padx=12, pady=4)
-    r_list = tk.Listbox(r_frame, height=6, selectmode=tk.EXTENDED)
-    r_sb = ttk.Scrollbar(r_frame, orient="vertical", command=r_list.yview)
-    r_list.configure(yscrollcommand=r_sb.set)
-    r_list.pack(side="left", fill="both", expand=True, padx=(8, 2), pady=6)
+    st.r_list = tk.Listbox(r_frame, height=6, selectmode=tk.EXTENDED)
+    r_sb = ttk.Scrollbar(r_frame, orient="vertical", command=st.r_list.yview)
+    st.r_list.configure(yscrollcommand=r_sb.set)
+    st.r_list.pack(side="left", fill="both", expand=True, padx=(8, 2), pady=6)
     r_sb.pack(side="left", fill="y", pady=6)
     r_btns = ttk.Frame(r_frame)
     r_btns.pack(side="left", fill="y", padx=6, pady=6)
-    ttk.Button(r_btns, text="➕ 添加", width=10, command=lambda: _browse_open_multi(r_list, controller)).pack(pady=2)
-    ttk.Button(r_btns, text="➖ 删除选中", width=10, command=lambda: _ra_delete_selected(r_list)).pack(pady=2)
+    ttk.Button(r_btns, text="➕ 添加", width=10, command=lambda: _browse_open_multi(st.r_list, controller)).pack(pady=2)
+    ttk.Button(r_btns, text="➖ 删除选中", width=10, command=lambda: _ra_delete_selected(st.r_list)).pack(pady=2)
 
     p_frame = ttk.LabelFrame(body, text="产物列表（可多选）")
     p_frame.pack(fill="x", padx=12, pady=4)
-    p_list = tk.Listbox(p_frame, height=6, selectmode=tk.EXTENDED)
-    p_sb = ttk.Scrollbar(p_frame, orient="vertical", command=p_list.yview)
-    p_list.configure(yscrollcommand=p_sb.set)
-    p_list.pack(side="left", fill="both", expand=True, padx=(8, 2), pady=6)
+    st.p_list = tk.Listbox(p_frame, height=6, selectmode=tk.EXTENDED)
+    p_sb = ttk.Scrollbar(p_frame, orient="vertical", command=st.p_list.yview)
+    st.p_list.configure(yscrollcommand=p_sb.set)
+    st.p_list.pack(side="left", fill="both", expand=True, padx=(8, 2), pady=6)
     p_sb.pack(side="left", fill="y", pady=6)
     p_btns = ttk.Frame(p_frame)
     p_btns.pack(side="left", fill="y", padx=6, pady=6)
-    ttk.Button(p_btns, text="➕ 添加", width=10, command=lambda: _browse_open_multi(p_list, controller)).pack(pady=2)
-    ttk.Button(p_btns, text="➖ 删除选中", width=10, command=lambda: _ra_delete_selected(p_list)).pack(pady=2)
+    ttk.Button(p_btns, text="➕ 添加", width=10, command=lambda: _browse_open_multi(st.p_list, controller)).pack(pady=2)
+    ttk.Button(p_btns, text="➖ 删除选中", width=10, command=lambda: _ra_delete_selected(st.p_list)).pack(pady=2)
 
-    # 溶剂和 QM 参数
+
+def _build_qm_section(dialog, body, controller, st):
+    """🧪 溶剂 & 能量（PSI4 线性扫描）参数区。"""
     qm = ttk.LabelFrame(body, text="🧪 溶剂 & 能量（可选：一键跑 PSI4 线性扫描，自动写入每帧 E= 注释）")
     qm.pack(fill="x", padx=12, pady=(6, 4))
 
     rq1 = ttk.Frame(qm)
-    rq1.pack(fill="x", **pad)
+    rq1.pack(fill="x", **_ROW_PAD)
     ttk.Label(rq1, text="隐式溶剂 (PCM/SMD):", width=22, anchor="w").pack(side="left")
-    solvent_var = tk.StringVar(value=SOLVENT_CHOICES[0])
-    solvent_cb = ttk.Combobox(rq1, textvariable=solvent_var, state="readonly", width=42, values=SOLVENT_CHOICES)
+    st.solvent_var = tk.StringVar(value=_SOLVENT_CHOICES[0])
+    solvent_cb = ttk.Combobox(rq1, textvariable=st.solvent_var, state="readonly", width=42, values=_SOLVENT_CHOICES)
     solvent_cb.pack(side="left", padx=(0, 8))
 
     ttk.Label(rq1, text="  方法/基组:", width=10, anchor="w").pack(side="left")
-    qm_method_var = tk.StringVar(value="b3lyp")
+    st.qm_method_var = tk.StringVar(value="b3lyp")
     ttk.Combobox(
         rq1,
-        textvariable=qm_method_var,
+        textvariable=st.qm_method_var,
         width=10,
         state="readonly",
         values=["b3lyp", "hf", "wb97x-d", "wb97xd", "m06-2x", "m062x", "pbe0", "bp86", "mp2"],
     ).pack(side="left")
-    qm_basis_var = tk.StringVar(value="6-31g*")
+    st.qm_basis_var = tk.StringVar(value="6-31g*")
     ttk.Combobox(
         rq1,
-        textvariable=qm_basis_var,
+        textvariable=st.qm_basis_var,
         width=14,
         values=[
             "sto-3g",
@@ -501,26 +535,26 @@ def show_reaction_animation_dialog(app, controller):
     ).pack(side="left", padx=6)
 
     rq2 = ttk.Frame(qm)
-    rq2.pack(fill="x", **pad)
+    rq2.pack(fill="x", **_ROW_PAD)
     ttk.Label(rq2, text="扫描帧数 (每帧单点能):", width=22, anchor="w").pack(side="left")
-    scan_steps_var = tk.IntVar(value=10)
-    ttk.Spinbox(rq2, from_=3, to=100, width=7, textvariable=scan_steps_var).pack(side="left")
+    st.scan_steps_var = tk.IntVar(value=10)
+    ttk.Spinbox(rq2, from_=3, to=100, width=7, textvariable=st.scan_steps_var).pack(side="left")
     ttk.Label(rq2, text="   电荷:", width=8, anchor="w").pack(side="left")
-    qm_charge_var = tk.IntVar(value=0)
-    ttk.Spinbox(rq2, from_=-10, to=10, width=5, textvariable=qm_charge_var).pack(side="left")
+    st.qm_charge_var = tk.IntVar(value=0)
+    ttk.Spinbox(rq2, from_=-10, to=10, width=5, textvariable=st.qm_charge_var).pack(side="left")
     ttk.Label(rq2, text="   多重度:", width=9, anchor="w").pack(side="left")
-    qm_mult_var = tk.IntVar(value=1)
-    ttk.Spinbox(rq2, from_=1, to=6, width=5, textvariable=qm_mult_var).pack(side="left")
+    st.qm_mult_var = tk.IntVar(value=1)
+    ttk.Spinbox(rq2, from_=1, to=6, width=5, textvariable=st.qm_mult_var).pack(side="left")
     ttk.Label(rq2, text="   PSI4 内存:", width=11, anchor="w").pack(side="left")
-    qm_mem_var = tk.StringVar(value="4 GB")
-    ttk.Entry(rq2, textvariable=qm_mem_var, width=8).pack(side="left")
+    st.qm_mem_var = tk.StringVar(value="4 GB")
+    ttk.Entry(rq2, textvariable=st.qm_mem_var, width=8).pack(side="left")
     # D3 色散校正从 rq1 挪到 rq2：rq1 一行（溶剂+方法+基组+散色）曾横向溢出被裁
-    qm_d3_var = tk.BooleanVar(value=False)
-    ttk.Checkbutton(rq2, text="D3 色散校正", variable=qm_d3_var).pack(side="left", padx=8)
+    st.qm_d3_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(rq2, text="D3 色散校正", variable=st.qm_d3_var).pack(side="left", padx=8)
 
     rq3 = ttk.Frame(qm)
-    rq3.pack(fill="x", **pad)
-    preset_psi4_var = tk.StringVar(value="（无预设）")
+    rq3.pack(fill="x", **_ROW_PAD)
+    st.preset_psi4_var = tk.StringVar(value="（无预设）")
     ttk.Label(rq3, text="PSI4 预设:", width=10, anchor="w").pack(side="left")
     try:
         from utils.constants import PSI4_PRESETS as _PP
@@ -528,74 +562,111 @@ def show_reaction_animation_dialog(app, controller):
         _presets_list = ["（无预设）"] + sorted(_PP.keys())
     except Exception:
         _presets_list = ["（无预设）"]
-    ttk.Combobox(rq3, textvariable=preset_psi4_var, width=28, state="readonly", values=_presets_list).pack(side="left")
-    scan_output_var = tk.StringVar(value=str(controller.model.work_dir / "scan_output"))
+    ttk.Combobox(rq3, textvariable=st.preset_psi4_var, width=28, state="readonly", values=_presets_list).pack(
+        side="left"
+    )
+    st.scan_output_var = tk.StringVar(value=str(controller.model.work_dir / "scan_output"))
     ttk.Label(rq3, text="  扫描输出目录:", width=14, anchor="w").pack(side="left")
-    ttk.Entry(rq3, textvariable=scan_output_var, width=30).pack(side="left", padx=(0, 4))
+    ttk.Entry(rq3, textvariable=st.scan_output_var, width=30).pack(side="left", padx=(0, 4))
     ttk.Button(
         rq3,
         text="浏览...",
         width=8,
-        command=lambda: scan_output_var.set(
+        command=lambda: st.scan_output_var.set(
             filedialog.askdirectory(
                 parent=dialog, initialdir=str(controller.model.work_dir), title="选择势能面扫描输出目录"
             )
-            or scan_output_var.get()
+            or st.scan_output_var.get()
         ),
     ).pack(side="left")
 
     # 「运行扫描」按钮移到独立行：rq3 一行塞了预设+输出目录+浏览+运行按钮，
     # 曾横向溢出把右侧按钮裁掉。独立行右对齐，彻底规避。
+    # ⚠️ 遗留问题（原实现即如此）：该按钮未绑定 command，点击无动作。
     rq4 = ttk.Frame(qm)
-    rq4.pack(fill="x", **pad)
+    rq4.pack(fill="x", **_ROW_PAD)
     run_scan_btn = ttk.Button(rq4, text="⚡ 运行 PSI4 线性扫描并自动填 CSV")
     run_scan_btn.pack(side="right", padx=4)
 
-    # 高级参数容器
+
+def _def_ext_for_format(fmt_tok, traj):
+    """按输出格式推导默认扩展名与文件过滤器。"""
+    if traj:
+        if fmt_tok.startswith("sdf"):
+            return ".sdf", [("SDF 轨迹", "*.sdf"), ("XYZ 轨迹", "*.xyz"), ("所有文件", "*.*")]
+        return ".xyz", [("IQmol 多帧 XYZ", "*.xyz"), ("SDF 轨迹", "*.sdf"), ("所有文件", "*.*")]
+    if fmt_tok.startswith("mp4"):
+        return ".mp4", [("MP4 视频", "*.mp4"), ("GIF", "*.gif"), ("所有文件", "*.*")]
+    if fmt_tok.startswith(("png_dir", "none")):
+        return "", [("PNG 目录 / 无", "*")]
+    return ".gif", [("GIF 动图", "*.gif"), ("MP4", "*.mp4"), ("所有文件", "*.*")]
+
+
+def _on_change_fmt(controller, st):
+    """输出格式 / 轨迹格式变化时，同步输出文件扩展名。"""
+    tok = st.fmt_var.get().strip().lower()
+    default_ext, _ = _def_ext_for_format(tok, False)
+    if tok.startswith("none"):
+        st.out_var.set("")
+    else:
+        p_ = Path(st.out_var.get().strip() or str(controller.model.work_dir / "reaction_animation.gif"))
+        if default_ext:
+            p_ = p_.with_suffix(default_ext)
+        st.out_var.set(str(p_))
+    ttok = st.traj_fmt_var.get().strip().lower()
+    text, _ = _def_ext_for_format(ttok, True)
+    tp = Path(st.traj_var.get().strip() or str(controller.model.work_dir / "reaction_trajectory.xyz"))
+    if text:
+        tp = tp.with_suffix(text)
+    st.traj_var.set(str(tp))
+
+
+def _build_advanced_section(dialog, body, controller, st):
+    """⚙️ 高级参数区（默认不 pack，由 _toggle_mode 控制）。"""
     advanced_container = ttk.LabelFrame(body, text="⚙️ 高级参数（步数/模式/FFmpeg/轨迹等）", padding="8")
-    # 暂不 pack，由 _toggle_mode 控制
+    st.advanced_container = advanced_container
 
     opts = advanced_container
     r1 = ttk.Frame(opts)
-    r1.pack(fill="x", **pad)
+    r1.pack(fill="x", **_ROW_PAD)
     ttk.Label(r1, text="插值步数 (单程):", width=18, anchor="w").pack(side="left")
-    steps_var = tk.IntVar(value=30)
-    ttk.Spinbox(r1, from_=5, to=500, width=7, textvariable=steps_var).pack(side="left")
+    st.steps_var = tk.IntVar(value=30)
+    ttk.Spinbox(r1, from_=5, to=500, width=7, textvariable=st.steps_var).pack(side="left")
 
     ttk.Label(r1, text="   播放模式:", width=12, anchor="w").pack(side="left")
-    mode_var = tk.StringVar(value="bounce")
+    st.play_mode_var = tk.StringVar(value="bounce")
     ttk.Combobox(
-        r1, textvariable=mode_var, state="readonly", width=20, values=["bounce (R→P→R 循环)", "forward (R→P 单程)"]
+        r1, textvariable=st.play_mode_var, state="readonly", width=20, values=["bounce (R→P→R 循环)", "forward (R→P 单程)"]
     ).pack(side="left")
 
     ttk.Label(r1, text="   FPS:", width=6, anchor="w").pack(side="left")
-    fps_var = tk.IntVar(value=15)
-    ttk.Spinbox(r1, from_=1, to=120, width=6, textvariable=fps_var).pack(side="left")
+    st.fps_var = tk.IntVar(value=15)
+    ttk.Spinbox(r1, from_=1, to=120, width=6, textvariable=st.fps_var).pack(side="left")
 
     ttk.Label(r1, text="   分子间距 (Å):", width=16, anchor="w").pack(side="left")
-    spacing_var = tk.DoubleVar(value=5.0)
-    ttk.Spinbox(r1, from_=2.0, to=30.0, increment=0.5, width=6, textvariable=spacing_var).pack(side="left")
+    st.spacing_var = tk.DoubleVar(value=5.0)
+    ttk.Spinbox(r1, from_=2.0, to=30.0, increment=0.5, width=6, textvariable=st.spacing_var).pack(side="left")
 
     r2 = ttk.Frame(opts)
-    r2.pack(fill="x", **pad)
-    smooth_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(r2, text="cosine 缓动（首尾更平滑）", variable=smooth_var).pack(side="left")
+    r2.pack(fill="x", **_ROW_PAD)
+    st.smooth_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(r2, text="cosine 缓动（首尾更平滑）", variable=st.smooth_var).pack(side="left")
 
     ttk.Label(r2, text="   分辨率:", width=10, anchor="w").pack(side="left")
-    res_var = tk.StringVar(value="hd")
+    st.res_var = tk.StringVar(value="hd")
     ttk.Combobox(
         r2,
-        textvariable=res_var,
+        textvariable=st.res_var,
         state="readonly",
         width=18,
         values=["sd (640x480)", "hd (1280x720)", "fullhd (1920x1080)"],
     ).pack(side="left")
 
     ttk.Label(r2, text="   输出格式:", width=10, anchor="w").pack(side="left")
-    fmt_var = tk.StringVar(value="gif")
+    st.fmt_var = tk.StringVar(value="gif")
     ttk.Combobox(
         r2,
-        textvariable=fmt_var,
+        textvariable=st.fmt_var,
         state="readonly",
         width=28,
         values=[
@@ -607,199 +678,118 @@ def show_reaction_animation_dialog(app, controller):
     ).pack(side="left")
 
     r3 = ttk.Frame(opts)
-    r3.pack(fill="x", **pad)
+    r3.pack(fill="x", **_ROW_PAD)
     ttk.Label(r3, text="ffmpeg 路径:", width=18, anchor="w").pack(side="left")
-    ffmpeg_var = tk.StringVar(value="ffmpeg")
-    ttk.Entry(r3, textvariable=ffmpeg_var, width=32).pack(side="left")
+    st.ffmpeg_var = tk.StringVar(value="ffmpeg")
+    ttk.Entry(r3, textvariable=st.ffmpeg_var, width=32).pack(side="left")
     cap = "（仅 MP4 格式需要；默认 PATH 的 ffmpeg）"
     ttk.Label(r3, text=cap, foreground="#6a737d").pack(side="left", padx=(8, 0))
 
     # IQmol 轨迹输出
     iq = ttk.LabelFrame(advanced_container, text="🧪 IQmol 可播放轨迹输出（推荐！支持多反应物/多产物）")
     iq.pack(fill="x", padx=12, pady=(4, 4))
-    gen_traj_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(iq, text="同时生成 IQmol 多帧轨迹文件（推荐 always on）", variable=gen_traj_var).pack(
+    st.gen_traj_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(iq, text="同时生成 IQmol 多帧轨迹文件（推荐 always on）", variable=st.gen_traj_var).pack(
         padx=10, pady=(6, 2), anchor="w"
     )
     row_t = ttk.Frame(iq)
-    row_t.pack(fill="x", **pad)
+    row_t.pack(fill="x", **_ROW_PAD)
     ttk.Label(row_t, text="IQmol 轨迹输出:", width=18, anchor="w").pack(side="left")
-    traj_var = tk.StringVar(value=str(controller.model.work_dir / "reaction_trajectory.xyz"))
-    ttk.Entry(row_t, textvariable=traj_var).pack(side="left", fill="x", expand=True, padx=(4, 4))
+    st.traj_var = tk.StringVar(value=str(controller.model.work_dir / "reaction_trajectory.xyz"))
+    ttk.Entry(row_t, textvariable=st.traj_var).pack(side="left", fill="x", expand=True, padx=(4, 4))
     ttk.Button(
         row_t,
         text="浏览...",
         width=8,
         command=lambda: _browse_save(
-            traj_var,
+            st.traj_var,
             "保存 IQmol 轨迹文件",
             ".xyz",
             [("IQmol 多帧 XYZ", "*.xyz"), ("SDF 轨迹", "*.sdf"), ("所有文件", "*.*")],
         ),
     ).pack(side="left")
     rq = ttk.Frame(iq)
-    rq.pack(fill="x", **pad)
+    rq.pack(fill="x", **_ROW_PAD)
     ttk.Label(rq, text="轨迹格式:", width=18, anchor="w").pack(side="left")
-    traj_fmt_var = tk.StringVar(value="xyz (Concatenated 多帧 XYZ，IQmol 直接播放)")
+    st.traj_fmt_var = tk.StringVar(value="xyz (Concatenated 多帧 XYZ，IQmol 直接播放)")
     ttk.Combobox(
         rq,
-        textvariable=traj_fmt_var,
+        textvariable=st.traj_fmt_var,
         state="readonly",
         width=26,
         values=["xyz (Concatenated 多帧 XYZ，IQmol 直接播放)", "sdf (SDF 多构象，带 >  <Energy> 字段)"],
     ).pack(side="left")
 
     ttk.Label(rq, text="   IQmol 程序路径:", width=16, anchor="w").pack(side="left")
-    iqmol_path_var = tk.StringVar(value="IQmol")
-    ttk.Entry(rq, textvariable=iqmol_path_var, width=22).pack(side="left")
-    auto_open_iqmol_var = tk.BooleanVar(value=False)
-    ttk.Checkbutton(rq, text="生成后立即打开", variable=auto_open_iqmol_var).pack(side="left", padx=(10, 0))
+    st.iqmol_path_var = tk.StringVar(value="IQmol")
+    ttk.Entry(rq, textvariable=st.iqmol_path_var, width=22).pack(side="left")
+    st.auto_open_iqmol_var = tk.BooleanVar(value=False)
+    ttk.Checkbutton(rq, text="生成后立即打开", variable=st.auto_open_iqmol_var).pack(side="left", padx=(10, 0))
 
     # 可视化输出路径
     row_out = ttk.Frame(advanced_container)
-    row_out.pack(fill="x", **pad)
+    row_out.pack(fill="x", **_ROW_PAD)
     ttk.Label(row_out, text="可视化输出:", width=18, anchor="w").pack(side="left")
-    out_var = tk.StringVar(value=str(controller.model.work_dir / "reaction_animation.gif"))
-    ttk.Entry(row_out, textvariable=out_var).pack(side="left", fill="x", expand=True, padx=(4, 4))
+    st.out_var = tk.StringVar(value=str(controller.model.work_dir / "reaction_animation.gif"))
+    ttk.Entry(row_out, textvariable=st.out_var).pack(side="left", fill="x", expand=True, padx=(4, 4))
 
-    def _def_ext_for_format(fmt_tok, traj):
-        if traj:
-            if fmt_tok.startswith("sdf"):
-                return ".sdf", [("SDF 轨迹", "*.sdf"), ("XYZ 轨迹", "*.xyz"), ("所有文件", "*.*")]
-            return ".xyz", [("IQmol 多帧 XYZ", "*.xyz"), ("SDF 轨迹", "*.sdf"), ("所有文件", "*.*")]
-        if fmt_tok.startswith("mp4"):
-            return ".mp4", [("MP4 视频", "*.mp4"), ("GIF", "*.gif"), ("所有文件", "*.*")]
-        if fmt_tok.startswith(("png_dir", "none")):
-            return "", [("PNG 目录 / 无", "*")]
-        return ".gif", [("GIF 动图", "*.gif"), ("MP4", "*.mp4"), ("所有文件", "*.*")]
-
-    def _on_change_fmt(_e=None):
-        tok = fmt_var.get().strip().lower()
-        default_ext, _ = _def_ext_for_format(tok, False)
-        if tok.startswith("none"):
-            out_var.set("")
-        else:
-            p_ = Path(out_var.get().strip() or str(controller.model.work_dir / "reaction_animation.gif"))
-            if default_ext:
-                p_ = p_.with_suffix(default_ext)
-            out_var.set(str(p_))
-        ttok = traj_fmt_var.get().strip().lower()
-        text, _ = _def_ext_for_format(ttok, True)
-        tp = Path(traj_var.get().strip() or str(controller.model.work_dir / "reaction_trajectory.xyz"))
-        if text:
-            tp = tp.with_suffix(text)
-        traj_var.set(str(tp))
-
-    fmt_var.trace_add("write", lambda *_: _on_change_fmt())
-    traj_fmt_var.trace_add("write", lambda *_: _on_change_fmt())
+    st.fmt_var.trace_add("write", lambda *_: _on_change_fmt(controller, st))
+    st.traj_fmt_var.trace_add("write", lambda *_: _on_change_fmt(controller, st))
 
     ttk.Button(
         row_out,
         text="浏览...",
         width=8,
         command=lambda: _browse_save(
-            out_var,
+            st.out_var,
             "选择可视化输出",
-            _def_ext_for_format(fmt_var.get().strip().lower(), False)[0],
-            _def_ext_for_format(fmt_var.get().strip().lower(), False)[1],
+            _def_ext_for_format(st.fmt_var.get().strip().lower(), False)[0],
+            _def_ext_for_format(st.fmt_var.get().strip().lower(), False)[1],
         ),
     ).pack(side="left")
 
-    # 预览按钮和生成按钮
+
+def _build_actions(dialog, body, app, controller, st):
+    """预览按钮 + 结果显示区 + 底部生成/关闭按钮。"""
     preview_btn = ttk.Button(
         body,
         text="👁️ 预览第一帧（快速查看效果）",
-        command=lambda: _preview_frame(dialog, r_list, p_list, spacing_var, app),
+        command=lambda: _preview_frame(dialog, st, app),
     )
     preview_btn.pack(pady=4)
+    st.preview_btn = preview_btn
 
     # 结果显示区
-    result_text = scrolledtext.ScrolledText(body, height=4, wrap=tk.WORD, font=("Consolas", 9))
-    result_text.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 4))
-    result_text.configure(state="disabled")
+    st.result_text = scrolledtext.ScrolledText(body, height=4, wrap=tk.WORD, font=("Consolas", 9))
+    st.result_text.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 4))
+    st.result_text.configure(state="disabled")
 
     # 底部按钮
     btn_row = ttk.Frame(body)
     btn_row.pack(fill=tk.X, padx=12, pady=(8, 12))
-
-    def _start():
-        _start_animation(
-            app,
-            dialog,
-            r_list,
-            p_list,
-            steps_var,
-            mode_var,
-            fps_var,
-            spacing_var,
-            smooth_var,
-            res_var,
-            fmt_var,
-            ffmpeg_var,
-            gen_traj_var,
-            traj_var,
-            traj_fmt_var,
-            iqmol_path_var,
-            auto_open_iqmol_var,
-            out_var,
-            solvent_var,
-            qm_method_var,
-            qm_basis_var,
-            qm_d3_var,
-            qm_charge_var,
-            qm_mult_var,
-            qm_mem_var,
-            scan_steps_var,
-            scan_output_var,
-            preset_psi4_var,
-            solvent_cb_var_to_key_map,
-            result_text,
-            controller,
-        )
-
-    ttk.Button(btn_row, text="🎬 开始生成动画 / 轨迹", command=_start).pack(side="right", padx=4)
+    ttk.Button(btn_row, text="🎬 开始生成动画 / 轨迹", command=lambda: _start_animation(app, dialog, st, controller)).pack(
+        side="right", padx=4
+    )
     ttk.Button(btn_row, text="关闭", command=dialog.destroy).pack(side="right", padx=4)
 
-    # 辅助函数：仅控制本对话框内的高级参数区显隐。
-    # ui_mode 由「设置 / 工具」菜单栏统一控制（toggle_ui_mode_from_menu），
-    # 此处只读取初始值（mode_var 在顶部从 config.ui_mode 初始化）并控制本地显隐，不写回配置。
-    def _toggle_mode(mode):
-        if mode == "simple":
-            advanced_container.pack_forget()
-            mode_tip.config(text="💡 简单模式：只显示核心参数，高级选项已隐藏")
-        else:
-            advanced_container.pack(fill=tk.X, padx=12, pady=4, before=preview_btn)
-            mode_tip.config(text="🔧 高级模式：全部参数可调")
 
-    # 初始显示
-    _toggle_mode(mode_var.get())
-    mode_var.trace_add("write", lambda *_: _toggle_mode(mode_var.get()))
-
-    # 保存对话框引用供预览使用
-    app._anim_dialog = dialog
-    app._anim_r_list = r_list
-    app._anim_p_list = p_list
-    app._anim_spacing_var = spacing_var
-
-    # 初始化时加载默认预设
-    auto_load = app.config_data.get("preset_auto_load", "")
-    if auto_load and auto_load in pm.list_presets():
-        preset_var.set(auto_load)
-        _load_preset()
+# ============================================================
+# 动作：预览 / 生成
+# ============================================================
 
 
-def _preview_frame(dialog, r_list, p_list, spacing_var, app):
+def _preview_frame(dialog, st, app):
     import tempfile
 
     if not dialog or not dialog.winfo_exists():
         return
-    reactants = [r_list.get(i) for i in range(r_list.size())]
-    products = [p_list.get(i) for i in range(p_list.size())]
+    reactants = [st.r_list.get(i) for i in range(st.r_list.size())]
+    products = [st.p_list.get(i) for i in range(st.p_list.size())]
     if not reactants or not products:
         messagebox.showwarning("提示", "请先添加反应物和产物", parent=dialog)
         return
 
-    spacing = float(spacing_var.get()) if spacing_var else 5.0
+    spacing = float(st.spacing_var.get()) if st.spacing_var else 5.0
     preview_path = Path(tempfile.gettempdir()) / "preview_frame.png"
 
     def _task(**kwargs):
@@ -840,47 +830,15 @@ def _preview_frame(dialog, r_list, p_list, spacing_var, app):
     app.helpers.run_task(_task)
 
 
-def _start_animation(
-    app,
-    dialog,
-    r_list,
-    p_list,
-    steps_var,
-    mode_var,
-    fps_var,
-    spacing_var,
-    smooth_var,
-    res_var,
-    fmt_var,
-    ffmpeg_var,
-    gen_traj_var,
-    traj_var,
-    traj_fmt_var,
-    iqmol_path_var,
-    auto_open_iqmol_var,
-    out_var,
-    solvent_var,
-    qm_method_var,
-    qm_basis_var,
-    qm_d3_var,
-    qm_charge_var,
-    qm_mult_var,
-    qm_mem_var,
-    scan_steps_var,
-    scan_output_var,
-    preset_psi4_var,
-    solvent_cb_var_to_key_map,
-    result_text,
-    controller,
-):
+def _start_animation(app, dialog, st, controller):
     import subprocess as _sp
 
     import chem.reaction_animation as ra
 
-    reactants = [r_list.get(i) for i in range(r_list.size())]
-    products = [p_list.get(i) for i in range(p_list.size())]
-    out = out_var.get().strip()
-    traj = traj_var.get().strip() if gen_traj_var.get() else ""
+    reactants = [st.r_list.get(i) for i in range(st.r_list.size())]
+    products = [st.p_list.get(i) for i in range(st.p_list.size())]
+    out = st.out_var.get().strip()
+    traj = st.traj_var.get().strip() if st.gen_traj_var.get() else ""
     if len(reactants) == 0:
         messagebox.showwarning("提示", "请至少添加 1 个反应物文件", parent=dialog)
         return
@@ -895,18 +853,18 @@ def _start_animation(
         messagebox.showwarning("提示", "请至少选择：可视化输出 或 IQmol 轨迹输出", parent=dialog)
         return
 
-    mode_s = mode_var.get().strip().lower()
+    mode_s = st.play_mode_var.get().strip().lower()
     mode = "forward" if mode_s.startswith("forward") else "bounce"
-    fmt_s = fmt_var.get().strip().lower()
+    fmt_s = st.fmt_var.get().strip().lower()
     fmt = (
         "mp4"
         if fmt_s.startswith("mp4")
         else ("png_dir" if fmt_s.startswith("png_dir") else ("none" if fmt_s.startswith("none") else "gif"))
     )
-    res_s = res_var.get().strip().lower()
+    res_s = st.res_var.get().strip().lower()
     resolution = "sd" if res_s.startswith("sd") else ("fullhd" if res_s.startswith("fullhd") else "hd")
-    traj_fmt = "sdf" if traj_fmt_var.get().strip().lower().startswith("sdf") else "xyz"
-    spacing = float(spacing_var.get())
+    traj_fmt = "sdf" if st.traj_fmt_var.get().strip().lower().startswith("sdf") else "xyz"
+    spacing = float(st.spacing_var.get())
 
     def _task(**kwargs):
         progress_cb = kwargs.get("_progress_callback")
@@ -922,13 +880,13 @@ def _start_animation(
                     reactants[0],
                     products[0],
                     out,
-                    steps=max(2, int(steps_var.get())),
+                    steps=max(2, int(st.steps_var.get())),
                     mode=mode,
-                    smooth=bool(smooth_var.get()),
+                    smooth=bool(st.smooth_var.get()),
                     fmt=fmt,
                     resolution=resolution,
-                    ffmpeg_path=ffmpeg_var.get().strip() or "ffmpeg",
-                    fps=max(1, int(fps_var.get())),
+                    ffmpeg_path=st.ffmpeg_var.get().strip() or "ffmpeg",
+                    fps=max(1, int(st.fps_var.get())),
                     progress_callback=progress_cb,
                 )
             else:
@@ -955,13 +913,13 @@ def _start_animation(
                             str(_rx),
                             str(_px),
                             out,
-                            steps=max(2, int(steps_var.get())),
+                            steps=max(2, int(st.steps_var.get())),
                             mode=mode,
-                            smooth=bool(smooth_var.get()),
+                            smooth=bool(st.smooth_var.get()),
                             fmt=fmt,
                             resolution=resolution,
-                            ffmpeg_path=ffmpeg_var.get().strip() or "ffmpeg",
-                            fps=max(1, int(fps_var.get())),
+                            ffmpeg_path=st.ffmpeg_var.get().strip() or "ffmpeg",
+                            fps=max(1, int(st.fps_var.get())),
                             progress_callback=progress_cb,
                         )
             viz_ok = bool(r.get("success"))
@@ -981,9 +939,9 @@ def _start_animation(
                     reactants[0],
                     products[0],
                     traj,
-                    steps=max(2, int(steps_var.get())),
+                    steps=max(2, int(st.steps_var.get())),
                     mode=mode,
-                    smooth=bool(smooth_var.get()),
+                    smooth=bool(st.smooth_var.get()),
                     trajectory_format=traj_fmt,
                     progress_callback=progress_cb,
                 )
@@ -992,9 +950,9 @@ def _start_animation(
                     reactants,
                     products,
                     traj,
-                    steps=max(2, int(steps_var.get())),
+                    steps=max(2, int(st.steps_var.get())),
                     mode=mode,
-                    smooth=bool(smooth_var.get()),
+                    smooth=bool(st.smooth_var.get()),
                     trajectory_format=traj_fmt,
                     translate_spacing=spacing,
                     progress_callback=progress_cb,
@@ -1010,18 +968,18 @@ def _start_animation(
         def _after():
             any_ok = viz_ok or traj_ok
             body = "\n".join(msgs)
-            if auto_open_iqmol_var.get() and traj_ok and traj_out:
+            if st.auto_open_iqmol_var.get() and traj_ok and traj_out:
                 try:
-                    exe = iqmol_path_var.get().strip() or "IQmol"
+                    exe = st.iqmol_path_var.get().strip() or "IQmol"
                     resolved = _resolve_iqmol_exe(exe)
                     _sp.Popen([resolved, str(traj_out)])
                     body += "\n\n🚀 已用 IQmol 打开轨迹"
                 except Exception as e:
                     body += f"\n\n⚠️  未能打开 IQmol: {e}"
-            result_text.configure(state="normal")
-            result_text.delete("1.0", tk.END)
-            result_text.insert(tk.END, body)
-            result_text.configure(state="disabled")
+            st.result_text.configure(state="normal")
+            st.result_text.delete("1.0", tk.END)
+            st.result_text.insert(tk.END, body)
+            st.result_text.configure(state="disabled")
             if any_ok:
                 result_dialog = tk.Toplevel(dialog)
                 result_dialog.title("✅ 生成完成")
@@ -1106,3 +1064,51 @@ def _browse_save(store_var, title, ext, filters):
     f = filedialog.asksaveasfilename(initialdir=init, title=title, defaultextension=ext, filetypes=filters)
     if f:
         store_var.set(f)
+
+
+# ============================================================
+# 主入口（装配序列）
+# ============================================================
+
+
+def show_reaction_animation_dialog(app, controller):
+    dialog = tk.Toplevel(app)
+    dialog.title("🎬 制作反应动画（含 IQmol 可播放轨迹 · 支持多反应物+多产物）")
+    dialog.geometry(fit_dialog_geometry(dialog, 950, 880))
+    dialog.resizable(True, True)
+    dialog.transient(app)
+    try:
+        dialog.grab_set()
+    except Exception:
+        pass
+
+    # 可滚动主体：内容可能高于被屏幕钳制后的窗口，滚动条保证全部可见
+    _canvas, body = make_scrollable_body(dialog)
+
+    # 对话框状态容器：全部 Tk 变量与跨区控件引用集中于此
+    st = SimpleNamespace(dialog=dialog)
+
+    _build_mode_selector(dialog, body, app, st)
+    _build_preset_section(dialog, body, app, controller, st)
+    _build_template_section(dialog, body, controller, st)
+    _build_lists_section(body, controller, st)
+    _build_qm_section(dialog, body, controller, st)
+    _build_advanced_section(dialog, body, controller, st)
+    _build_actions(dialog, body, app, controller, st)
+
+    # 初始显示（原实现：此时读取的是播放模式变量的值，如 "bounce" → 显示高级区）
+    _toggle_mode(st, st.play_mode_var.get())
+    st.play_mode_var.trace_add("write", lambda *_: _toggle_mode(st, st.play_mode_var.get()))
+
+    # 保存对话框引用供预览使用（_anim_state 供测试/调试钩住全部控件变量）
+    app._anim_dialog = dialog
+    app._anim_state = st
+    app._anim_r_list = st.r_list
+    app._anim_p_list = st.p_list
+    app._anim_spacing_var = st.spacing_var
+
+    # 初始化时加载默认预设
+    auto_load = app.config_data.get("preset_auto_load", "")
+    if auto_load and auto_load in st.pm.list_presets():
+        st.preset_var.set(auto_load)
+        _preset_load(app, dialog, st, st.pm)
