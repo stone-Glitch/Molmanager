@@ -3,46 +3,63 @@ import tkinter as tk
 from tkinter import ttk
 
 from ui.ui_theme import COLORS
+from ui.ui_theme import DARK as _DARK
 
 # ------------------------- 🎨 主题颜色常量 -------------------------
 
 
 class AuroraTheme:
-    # 已切换为深色（与主窗口 ui_theme.DARK 一致），所有引用 AuroraTheme.* 的对话框自动转深色
-    BG_START = "#0F1419"
-    BG_END = "#161B22"
-    CARD_BG = "#161B22"
-    CARD_BORDER = "#232B3A"
-    CARD_HL = "#2DD4BF"
-    CARD_SHADE = "#1C2330"
-    TEXT_MAIN = "#E6EDF3"
-    TEXT_MUTED = "#9DA7B3"
-    TEXT_BADGE = "#0F1419"
-    BRAND_BLUE = "#2DD4BF"
-    BRAND_GREEN = "#3FB950"
-    BRAND_PURPLE = "#8B5CF6"
-    BRAND_ORANGE = "#D29922"
-    BRAND_RED = "#F85149"
-    STEP_1 = "#2DD4BF"
-    STEP_2 = "#8B5CF6"
-    STEP_3 = "#3FB950"
-    TOOLTIP_BG = "#1C2330"
-    TOOLTIP_FG = "#E6EDF3"
-    TREE_EVEN = "#161B22"
-    TREE_ODD = "#1C2330"
-    TREE_SEL_BG = "#2DD4BF"
-    TREE_SEL_FG = "#1A2142"
-    LOG_BG = "#F8FAFF"
-    LOG_SEL = "#3B6EFF"
+    """B5 主题归一：颜色唯一来源是 ``ui_theme`` 调色板，此处只做语义别名。
+
+    不再定义任何 hex——调色板改动自动同步到这里（消除历史上的双定义源
+    与值漂移，如 TEXT_MUTED/TREE_SEL_FG/LOG_SEL 均已对齐 DARK 现值）。
+    语义别名保持深色基线（与类注释一致的历史行为：引用 AuroraTheme.* 的
+    对话框恒为深色基调）。
+    """
+
+    BG_START = _DARK["bg"]
+    BG_END = _DARK["surface"]
+    CARD_BG = _DARK["card_bg"]
+    CARD_BORDER = _DARK["card_border"]
+    CARD_HL = _DARK["accent"]
+    CARD_SHADE = _DARK["elevated"]
+    TEXT_MAIN = _DARK["text"]
+    TEXT_MUTED = _DARK["text_muted"]
+    TEXT_BADGE = _DARK["btn_text"]
+    BRAND_BLUE = _DARK["accent"]  # 历史键名（值为主强调青绿）
+    BRAND_GREEN = _DARK["success"]
+    BRAND_PURPLE = _DARK["purple"]
+    BRAND_ORANGE = _DARK["warning"]
+    BRAND_RED = _DARK["danger"]
+    STEP_1 = _DARK["accent"]
+    STEP_2 = _DARK["purple"]
+    STEP_3 = _DARK["success"]
+    TOOLTIP_BG = _DARK["elevated"]
+    TOOLTIP_FG = _DARK["text"]
+    TREE_EVEN = _DARK["surface"]
+    TREE_ODD = _DARK["elevated"]
+    TREE_SEL_BG = _DARK["accent"]
+    TREE_SEL_FG = _DARK["tree_sel_fg"]
+    LOG_BG = _DARK["input"]  # 日志台深色底（原浅色死常量，与文件页日志一致）
+    LOG_SEL = _DARK["link"]
 
     @staticmethod
     def glow(base: str, pct: float = 0.2) -> str:
+        """向白色方向混合 pct（变亮）。"""
         base = base.lstrip("#")
         r, g, b = (int(base[i : i + 2], 16) for i in (0, 2, 4))
         r = int(r + (255 - r) * pct)
         g = int(g + (255 - g) * pct)
         b = int(b + (255 - b) * pct)
         return f"#{r:02x}{g:02x}{b:02x}"
+
+    @staticmethod
+    def shade(base: str, pct: float = 0.2) -> str:
+        """按 pct 变暗（与 glow 对偶），用于按钮 pressed 态。"""
+        base = base.lstrip("#")
+        r, g, b = (int(base[i : i + 2], 16) for i in (0, 2, 4))
+        f = 1.0 - pct
+        return f"#{int(r * f):02x}{int(g * f):02x}{int(b * f):02x}"
 
 
 # ------------------------- 🔠 字体基线（问题一：字太小 修复） -------------------------
@@ -224,7 +241,7 @@ def apply_aurora_theme(app) -> None:
     )
     style.map(
         "Aurora.BigAccent.TButton",
-        background=[("active", "#11B99A"), ("pressed", "#0C8873")],
+        background=[("active", T.glow(T.BRAND_GREEN, 0.12)), ("pressed", T.shade(T.BRAND_GREEN, 0.15))],
         foreground=[("active", T.TEXT_BADGE), ("pressed", T.TEXT_BADGE)],
     )
 
@@ -240,7 +257,7 @@ def apply_aurora_theme(app) -> None:
     )
     style.map(
         "Aurora.Primary.TButton",
-        background=[("active", "#5A85FF"), ("pressed", "#2E58D6")],
+        background=[("active", T.glow(T.BRAND_BLUE, 0.12)), ("pressed", T.shade(T.BRAND_BLUE, 0.15))],
     )
 
     style.configure(
@@ -255,7 +272,7 @@ def apply_aurora_theme(app) -> None:
     )
     style.map(
         "Aurora.Purple.TButton",
-        background=[("active", "#9B75F7"), ("pressed", "#7348D6")],
+        background=[("active", T.glow(T.BRAND_PURPLE, 0.12)), ("pressed", T.shade(T.BRAND_PURPLE, 0.15))],
     )
 
     style.configure(

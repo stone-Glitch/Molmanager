@@ -97,7 +97,7 @@ def build_status_bar_new(app):
         _ok = bool(getattr(_app, "dnd_available", False))
         try:
             _app.dnd_status_var.set("🖱️ 拖放就绪" if _ok else "🖱️ 拖放不可用（需 tkinterdnd2）")
-            _color = COLORS.get("success", "#3fb950") if _ok else COLORS.get("danger", "#f85149")
+            _color = COLORS["success"] if _ok else COLORS["danger"]
             if getattr(_app, "dnd_dot_canvas", None) is not None:
                 _app.dnd_dot_canvas.itemconfig("dot", fill=_color, outline=_color)
         except Exception:

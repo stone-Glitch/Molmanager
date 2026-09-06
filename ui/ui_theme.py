@@ -46,6 +46,7 @@ DARK = {
     "error_hover": "#FF7B72",
     "muted": "#8B97AC",  # 中性（计算文件/禁用）· 语义令牌
     "info": "#58A6FF",  # 信息 · 语义令牌（同 link）
+    "purple": "#8B5CF6",  # 紫色强调（步骤条/第三强调色）
     "btn_text": "#0F1419",  # 强调色按钮上的深字
     "btn_recommend_bg": "#3FB950",
     "btn_info_bg": "#2DD4BF",
@@ -83,6 +84,7 @@ LIGHT = {
     "error_hover": "#EF4444",
     "muted": "#64748B",  # 中性（计算文件/禁用）· 语义令牌
     "info": "#2563EB",  # 信息 · 语义令牌（同 link）
+    "purple": "#7C3AED",  # 紫色强调（步骤条/第三强调色）
     "btn_text": "#FFFFFF",  # 强调色按钮上的白字
     "btn_recommend_bg": "#16A34A",
     "btn_info_bg": "#0D948B",

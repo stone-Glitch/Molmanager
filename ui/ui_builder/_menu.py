@@ -24,9 +24,9 @@ def build_menu_bar(app) -> None:
     # 菜单栏整体背景：用浅色，比主内容稍深一点做层级感
     bar = tk.Frame(
         app,
-        bg=COLORS.get("menu_bar_bg", "#E1EBFF"),
+        bg=COLORS["menu_bar_bg"],
         bd=0,
-        highlightbackground=COLORS.get("card_border", "#C7D5FF"),
+        highlightbackground=COLORS["card_border"],
         highlightthickness=1,
     )
     bar.pack(side=tk.TOP, fill=tk.X, padx=0, pady=0)
@@ -36,8 +36,8 @@ def build_menu_bar(app) -> None:
         tk.Label(
             bar,
             text="  分子管理器  ",
-            bg=COLORS.get("menu_bar_bg", "#E1EBFF"),
-            fg=COLORS.get("primary", "#3B6EFF"),
+            bg=COLORS["menu_bar_bg"],
+            fg=COLORS["primary"],
             font=BOLD,
             anchor="w",
             padx=6,
@@ -52,10 +52,10 @@ def build_menu_bar(app) -> None:
         mb = tk.Menubutton(
             bar_parent,
             text=label,
-            bg=COLORS.get("menu_bar_bg", "#E1EBFF"),
-            fg=COLORS.get("text", "#1A2142"),
-            activebackground=COLORS.get("menu_hover_bg", "#1C2330"),
-            activeforeground=COLORS.get("primary", "#3B6EFF"),
+            bg=COLORS["menu_bar_bg"],
+            fg=COLORS["text"],
+            activebackground=COLORS["menu_hover_bg"],
+            activeforeground=COLORS["primary"],
             font=BTN,
             relief=tk.FLAT,
             bd=0,
@@ -67,10 +67,10 @@ def build_menu_bar(app) -> None:
         menu = tk.Menu(
             mb,
             tearoff=0,
-            bg=COLORS.get("card_bg", "#161B22"),
-            fg=COLORS.get("text", "#E6EDF3"),
-            activebackground=COLORS.get("primary", "#2DD4BF"),
-            activeforeground=COLORS.get("btn_text", "#0F1419"),
+            bg=COLORS["card_bg"],
+            fg=COLORS["text"],
+            activebackground=COLORS["primary"],
+            activeforeground=COLORS["btn_text"],
             font=MENU_ITEM,
             bd=1,
             relief=tk.SOLID,
@@ -236,7 +236,7 @@ def build_menu_bar(app) -> None:
 
     # —— 4) 右侧状态：字体大小 + 工作目录信息（可选）——
     try:
-        right_row = tk.Frame(bar, bg=COLORS.get("menu_bar_bg", "#E1EBFF"))
+        right_row = tk.Frame(bar, bg=COLORS["menu_bar_bg"])
         right_row.pack(side=tk.RIGHT, padx=6, pady=0)
         # 字体大小显示（点击可快捷改）
         try:
@@ -248,10 +248,10 @@ def build_menu_bar(app) -> None:
         _font_btn = tk.Button(
             right_row,
             textvariable=_font_pt_var,
-            bg=COLORS.get("menu_bar_bg", "#E1EBFF"),
-            fg=COLORS.get("primary", "#3B6EFF"),
-            activebackground=COLORS.get("menu_hover_bg", "#1C2330"),
-            activeforeground=COLORS.get("primary", "#3B6EFF"),
+            bg=COLORS["menu_bar_bg"],
+            fg=COLORS["primary"],
+            activebackground=COLORS["menu_hover_bg"],
+            activeforeground=COLORS["primary"],
             font=SMALL,
             relief=tk.FLAT,
             bd=0,
