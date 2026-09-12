@@ -263,9 +263,14 @@ def show_advanced_tools_dialog(app, controller):
         except Exception as e:
             _log(f"打开目录失败：{e}", "warn")
 
-    from core.task_manager import TaskManager
-
-    _tm = TaskManager(app, controller=None)
+    def _on_destroy(future, _ev=None):
+        # 对话框销毁时取消后台任务，避免回调持有已销毁窗口导致内存泄漏（报告 #8）
+        try:
+            app.task_manager.request_cancel()
+            if future is not None:
+                future.cancel()
+        except Exception:
+            pass
 
     def _submit_work(fn, on_done=None):
         def _on_ok(r):
@@ -295,32 +300,12 @@ def show_advanced_tools_dialog(app, controller):
             except Exception:
                 pass
 
-        future = _tm.run_async(
-            _wrap_throwaway_task(fn),
-            on_done=_on_ok,
-            on_error=_on_err,
-            on_progress=None,
-        )
-
-        # 对话框销毁时取消后台任务，避免回调持有已销毁窗口导致内存泄漏（报告 #8）
-        def _on_destroy(_ev=None):
-            try:
-                _tm.request_cancel()
-                if future is not None:
-                    future.cancel()
-            except Exception:
-                pass
-
+        # 统一复用主窗口共享线程池（修复原本自建 TaskManager 的 Bug）
+        future = app.services.advanced.submit(fn, on_done=_on_ok, on_error=_on_err)
         try:
-            dialog.bind("<Destroy>", _on_destroy)
+            dialog.bind("<Destroy>", lambda _ev=None: _on_destroy(future, _ev))
         except Exception:
             pass
-
-    def _wrap_throwaway_task(fn):
-        def _inner(*, _progress_callback=None, _log=None):
-            return fn()
-
-        return _inner
 
     def _help(title, body):
         messagebox.showinfo(title, body, parent=dialog)
