@@ -98,6 +98,7 @@ markers = [
     "requires_openbabel: 需要 OpenBabel 环境（CI 上自动跳过）",
     "requires_psi4: 需要 PSI4 环境（CI 上自动跳过）",
     "requires_gui: 需要 Tkinter 显示环境",
+    "api: 标记 API 层测试（需安装 .[api] 依赖，importorskip 自动跳过）",
 ]
 
 # ------------------------------------------------------------------ mypy
