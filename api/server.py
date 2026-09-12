@@ -15,11 +15,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
+import tempfile
 import traceback
+import uuid
+from pathlib import Path
+from typing import Any
 
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
     from fastapi.responses import JSONResponse
 except ImportError as _exc:  # pragma: no cover - 取决于是否安装了 [api] 依赖
     raise ImportError(f'接口层需要额外依赖，请先安装：\n    pip install -e ".[api]"\n（原始错误：{_exc}）') from _exc
@@ -27,6 +32,7 @@ except ImportError as _exc:  # pragma: no cover - 取决于是否安装了 [api]
 from utils.version import APP_DISPLAY_NAME, APP_NAME, get_full_version
 
 from . import capabilities
+from .jobs import jobs
 from .models import (
     Capabilities,
     ChemQueryRequest,
@@ -38,6 +44,10 @@ from .models import (
     InChIKeyItem,
     InChIKeyRequest,
     InChIKeyResponse,
+    JobStatus,
+    JobSubmitResponse,
+    Psi4ComputeRequest,
+    ReactionAnimateRequest,
     SimilarityHit,
     SimilarityRequest,
     SimilarityResponse,
@@ -256,6 +266,181 @@ def create_app() -> FastAPI:
             matched_count=len(matched),
         )
 
+    # ---------------- 量子反应计算（PSI4，后台任务 + WebSocket 进度） ----------------
+    @application.post(
+        "/psi4/compute",
+        response_model=JobSubmitResponse,
+        responses={503: {"model": ErrorResponse}},
+        summary="提交 PSI4 量子反应能计算（后台执行，立即返回 job_id）",
+        tags=["计算"],
+    )
+    def psi4_compute(req: Psi4ComputeRequest) -> JobSubmitResponse:
+        _require_psi4()
+        job_id = uuid.uuid4().hex
+        payload: dict[str, Any] = {
+            "method": req.method,
+            "basis": req.basis,
+            "n_frames": req.n_frames,
+            "do_traj_energy": req.do_traj_energy,
+            "do_thermo": req.do_thermo,
+        }
+        if req.reaction_id:
+            payload["reaction_id"] = req.reaction_id
+        else:
+            assert req.custom is not None  # model_validator 已保证二选一
+            payload["custom"] = {
+                "reactants": list(req.custom.reactants),
+                "products": list(req.custom.products),
+            }
+        run_dir = Path(tempfile.mkdtemp(prefix="mm_psi4_"))
+
+        def _work(*, emit: Any, should_cancel: Any) -> dict[str, Any]:
+            from chem.quantum_reaction import run_reaction
+
+            return run_reaction(
+                payload,
+                run_dir=run_dir,
+                on_log=lambda m: emit({"type": "log", "message": str(m)}),
+                on_stage=lambda name, frac: emit(
+                    {"type": "stage", "message": str(name), "fraction": float(frac)}
+                ),
+                should_cancel=should_cancel,
+            )
+
+        jobs.submit(job_id, _work, pool="psi4")
+        return JobSubmitResponse(job_id=job_id, status="queued", ws_url=f"/ws/jobs/{job_id}")
+
+    # ---------------- 反应动画 / IQmol 轨迹（后台任务 + WebSocket 进度） ----------------
+    @application.post(
+        "/reaction/animate",
+        response_model=JobSubmitResponse,
+        summary="生成反应动画 / IQmol 轨迹（后台执行，立即返回 job_id）",
+        tags=["计算"],
+    )
+    def reaction_animate(req: ReactionAnimateRequest) -> JobSubmitResponse:
+        job_id = uuid.uuid4().hex
+        out_dir = Path(tempfile.mkdtemp(prefix="mm_rxn_"))
+        single = len(req.reactants) == 1 and len(req.products) == 1
+
+        def _work(*, emit: Any, should_cancel: Any) -> dict[str, Any]:
+            import chem.reaction_animation as ra
+
+            def _pc(frac: float, msg: str = "") -> None:
+                emit({"type": "stage", "message": str(msg), "fraction": float(frac)})
+
+            if req.traj:
+                if single:
+                    return ra.generate_xyz_trajectory(
+                        req.reactants[0],
+                        req.products[0],
+                        str(out_dir / f"traj.{req.traj_fmt}"),
+                        steps=req.steps,
+                        mode=req.mode,
+                        smooth=req.smooth,
+                        trajectory_format=req.traj_fmt,
+                        progress_callback=_pc,
+                    )
+                return ra.generate_reaction_multispecies(
+                    list(req.reactants),
+                    list(req.products),
+                    str(out_dir / f"traj.{req.traj_fmt}"),
+                    steps=req.steps,
+                    mode=req.mode,
+                    smooth=req.smooth,
+                    trajectory_format=req.traj_fmt,
+                    translate_spacing=5.0,
+                    progress_callback=_pc,
+                )
+            out_path = str(out_dir / ("anim.mp4" if req.fmt == "mp4" else "anim.gif"))
+            if single:
+                return ra.generate_reaction_animation(
+                    req.reactants[0],
+                    req.products[0],
+                    out_path,
+                    steps=req.steps,
+                    mode=req.mode,
+                    smooth=req.smooth,
+                    fmt=req.fmt,
+                    fps=req.fps,
+                    ffmpeg_path=req.ffmpeg_path,
+                    progress_callback=_pc,
+                )
+            return ra.generate_reaction_multispecies(
+                list(req.reactants),
+                list(req.products),
+                out_path,
+                steps=req.steps,
+                mode=req.mode,
+                smooth=req.smooth,
+                fmt=req.fmt,
+                fps=req.fps,
+                ffmpeg_path=req.ffmpeg_path,
+                translate_spacing=5.0,
+                progress_callback=_pc,
+            )
+
+        jobs.submit(job_id, _work, pool="io")
+        return JobSubmitResponse(job_id=job_id, status="queued", ws_url=f"/ws/jobs/{job_id}")
+
+    # ---------------- 任务状态查询（轮询兜底） ----------------
+    @application.get(
+        "/jobs/{job_id}",
+        response_model=JobStatus,
+        responses={404: {"model": ErrorResponse}},
+        summary="查询后台任务状态（WebSocket 不可用时的轮询兜底）",
+        tags=["计算"],
+    )
+    def get_job(job_id: str) -> JobStatus:
+        st = jobs.get_status(job_id)
+        if st is None:
+            raise HTTPException(status_code=404, detail=f"未知 job_id: {job_id}")
+        return JobStatus(**st)
+
+    # ---------------- 任务进度（WebSocket 实时推送） ----------------
+    @application.websocket("/ws/jobs/{job_id}")
+    async def ws_job(websocket: WebSocket, job_id: str) -> None:
+        await websocket.accept()
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+        jobs.attach_emit(job_id, lambda e: loop.call_soon_threadsafe(queue.put_nowait, e))
+        try:
+            # 未知任务：直接报错关闭，避免无限等待
+            if jobs.get_status(job_id) is None:
+                await websocket.send_json(
+                    {"type": "error", "job_id": job_id, "error": f"未知 job_id: {job_id}"}
+                )
+                return
+            while True:
+                # 接收客户端消息（支持取消）
+                try:
+                    msg = await asyncio.wait_for(websocket.receive_json(), timeout=0.1)
+                    if isinstance(msg, dict) and msg.get("action") == "cancel":
+                        jobs.cancel(job_id)
+                except asyncio.TimeoutError:
+                    pass
+                # 排空队列
+                while not queue.empty():
+                    event = queue.get_nowait()
+                    await websocket.send_json(event)
+                    if event.get("type") in ("done", "error", "cancelled"):
+                        return
+                # 兜底：任务已终态且队列已空 → 合成终态事件后关闭
+                st = jobs.get_status(job_id)
+                if st is not None and st["status"] in ("done", "error", "cancelled"):
+                    await websocket.send_json(
+                        {
+                            "type": st["status"],
+                            "job_id": job_id,
+                            "result": st["result"],
+                            "error": st["error"],
+                        }
+                    )
+                    return
+        except WebSocketDisconnect:
+            pass
+        finally:
+            jobs.detach_emit(job_id)
+
     # ---------------- 全局异常兜底 ----------------
     @application.exception_handler(Exception)
     async def _unhandled(request, exc):  # type: ignore[no-untyped-def]  # FastAPI 要求此签名
@@ -301,6 +486,21 @@ def _require_pybel() -> None:
             "conda：conda install -c conda-forge openbabel\n"
             "pip  ：pip install openbabel-wheel\n"
             "仅装了命令行 obabel 时，请用桌面版 GUI 执行该操作。"
+        ),
+    )
+
+
+def _require_psi4() -> None:
+    """PSI4 不可用时抛 503（量子化学计算依赖它）。"""
+    caps = capabilities.detect()
+    if caps.get("psi4"):
+        return
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "后端缺少 PSI4，无法执行量子化学计算。\n"
+            "conda：conda install -c conda-forge psi4\n"
+            "仅装了 OpenBabel 时，请用桌面版 GUI 执行该操作。"
         ),
     )
 

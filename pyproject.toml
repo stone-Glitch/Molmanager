@@ -33,6 +33,7 @@ dependencies = [
 api = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
+    "websockets>=12",          # WebSocket 进度推送（uvicorn[standard] 已传递，显式声明更稳妥）
 ]
 # 可选：改用 RDKit 指纹（默认走 OpenBabel FP2，无需安装）
 rdkit = ["rdkit>=2024.3.1"]
