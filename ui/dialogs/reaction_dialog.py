@@ -792,48 +792,28 @@ def _preview_frame(dialog, st, app):
     spacing = float(st.spacing_var.get()) if st.spacing_var else 5.0
     preview_path = Path(tempfile.gettempdir()) / "preview_frame.png"
 
-    def _task(**kwargs):
-        import tempfile
-
-        import chem.reaction_animation as ra
-
-        if len(reactants) == 1 and len(products) == 1:
-            r = ra.preview_first_frame(reactants[0], products[0], preview_path, width=800, height=600)
+    def _show(r):
+        if r.get("success"):
+            try:
+                if sys.platform == "win32":
+                    os.startfile(preview_path)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(["open", preview_path])
+                else:
+                    subprocess.Popen(["xdg-open", preview_path])
+            except Exception:
+                messagebox.showinfo("预览已生成", f"预览图片保存在:\n{preview_path}", parent=dialog)
         else:
-            with tempfile.TemporaryDirectory(prefix="ms_preview_") as td:
-                tdp = Path(td)
-                nR, aR, cR = ra._concat_xyz_files(reactants, translate_spacing=spacing)
-                nP, aP, cP = ra._concat_xyz_files(products, translate_spacing=spacing)
-                aP2, cP2 = ra._auto_reorder_atoms(aR, cR, aP, cP)
-                rx = tdp / "R.xyz"
-                px = tdp / "P.xyz"
-                rx.write_text(ra._write_xyz(nR, aR, cR), encoding="utf-8")
-                px.write_text(ra._write_xyz(nP, aP2, cP2), encoding="utf-8")
-                r = ra.preview_first_frame(str(rx), str(px), preview_path, width=800, height=600)
+            messagebox.showerror("预览失败", r.get("error", "未知错误"), parent=dialog)
 
-        def _show():
-            if r.get("success"):
-                try:
-                    if sys.platform == "win32":
-                        os.startfile(preview_path)
-                    elif sys.platform == "darwin":
-                        subprocess.Popen(["open", preview_path])
-                    else:
-                        subprocess.Popen(["xdg-open", preview_path])
-                except Exception:
-                    messagebox.showinfo("预览已生成", f"预览图片保存在:\n{preview_path}", parent=dialog)
-            else:
-                messagebox.showerror("预览失败", r.get("error", "未知错误"), parent=dialog)
-
-        app.after(0, _show)
-
-    app.helpers.run_task(_task)
+    # 领域计算收口到 ReactionService（后台线程执行，on_done 经 run_async 回主线程）
+    app.services.reaction.preview_frame(
+        reactants, products, spacing, preview_path, on_done=_show
+    )
 
 
 def _start_animation(app, dialog, st, controller):
     import subprocess as _sp
-
-    import chem.reaction_animation as ra
 
     reactants = [st.r_list.get(i) for i in range(st.r_list.size())]
     products = [st.p_list.get(i) for i in range(st.p_list.size())]
@@ -866,171 +846,95 @@ def _start_animation(app, dialog, st, controller):
     traj_fmt = "sdf" if st.traj_fmt_var.get().strip().lower().startswith("sdf") else "xyz"
     spacing = float(st.spacing_var.get())
 
-    def _task(**kwargs):
-        progress_cb = kwargs.get("_progress_callback")
-        msgs = []
-        viz_ok = traj_ok = False
-        viz_out = traj_out = None
+    steps = max(2, int(st.steps_var.get()))
+    smooth = bool(st.smooth_var.get())
+    ffmpeg = st.ffmpeg_var.get().strip() or "ffmpeg"
+    fps = max(1, int(st.fps_var.get()))
 
-        if fmt != "none" and out:
-            if progress_cb:
-                progress_cb(0, "开始生成可视化动画")
-            if len(reactants) == 1 and len(products) == 1:
-                r = ra.generate_reaction_animation(
-                    reactants[0],
-                    products[0],
-                    out,
-                    steps=max(2, int(st.steps_var.get())),
-                    mode=mode,
-                    smooth=bool(st.smooth_var.get()),
-                    fmt=fmt,
-                    resolution=resolution,
-                    ffmpeg_path=st.ffmpeg_var.get().strip() or "ffmpeg",
-                    fps=max(1, int(st.fps_var.get())),
-                    progress_callback=progress_cb,
-                )
-            else:
-                import tempfile as _tf
+    def _after(result):
+        msgs = result["msgs"]
+        viz_ok = result["viz_ok"]
+        traj_ok = result["traj_ok"]
+        viz_out = result["viz_out"]
+        traj_out = result["traj_out"]
+        any_ok = viz_ok or traj_ok
+        body = "\n".join(msgs)
+        if st.auto_open_iqmol_var.get() and traj_ok and traj_out:
+            try:
+                exe = st.iqmol_path_var.get().strip() or "IQmol"
+                resolved = _resolve_iqmol_exe(exe)
+                _sp.Popen([resolved, str(traj_out)])
+                body += "\n\n🚀 已用 IQmol 打开轨迹"
+            except Exception as e:
+                body += f"\n\n⚠️  未能打开 IQmol: {e}"
+        st.result_text.configure(state="normal")
+        st.result_text.delete("1.0", tk.END)
+        st.result_text.insert(tk.END, body)
+        st.result_text.configure(state="disabled")
+        if any_ok:
+            result_dialog = tk.Toplevel(dialog)
+            result_dialog.title("✅ 生成完成")
+            result_dialog.geometry(fit_dialog_geometry(result_dialog, 480, 350))
+            result_dialog.resizable(True, True)
+            result_dialog.transient(dialog)
+            result_dialog.grab_set()
+            tk.Label(
+                result_dialog, text="🎉 反应动画生成完成！", font=("Microsoft YaHei", 14, "bold"), fg="#0EA288"
+            ).pack(pady=(20, 10))
+            tk.Label(
+                result_dialog, text=body[:200] + ("..." if len(body) > 200 else ""), wraplength=440, justify="left"
+            ).pack(padx=20, pady=5)
+            btn_frame = ttk.Frame(result_dialog)
+            btn_frame.pack(pady=15)
 
-                from chem.psi4.utils import _write_xyz
+            def _open_file():
+                if traj_out and Path(traj_out).exists():
+                    _safe_open_file(traj_out)
+                elif viz_out and Path(viz_out).exists():
+                    _safe_open_file(viz_out)
 
-                with _tf.TemporaryDirectory(prefix="ms_viz_") as _td:
-                    _tdp = Path(_td)
-                    _nR, _aR, _cR = ra._concat_xyz_files(reactants, translate_spacing=spacing)
-                    _nP, _aP, _cP = ra._concat_xyz_files(products, translate_spacing=spacing)
-                    try:
-                        _aP2, _cP2 = ra._auto_reorder_atoms(_aR, _cR, _aP, _cP)
-                    except Exception as _e:
-                        msgs.append("❌ 可视化（反应物/产物）原子对齐失败: " + str(_e))
-                        r = {"success": False, "error": "原子对齐失败"}
-                        _aP2, _cP2 = _aP, _cP
-                    else:
-                        _rx = _tdp / "R.xyz"
-                        _px = _tdp / "P.xyz"
-                        _rx.write_text(_write_xyz(_nR, _aR, _cR), encoding="utf-8")
-                        _px.write_text(_write_xyz(_nP, _aP2, _cP2), encoding="utf-8")
-                        r = ra.generate_reaction_animation(
-                            str(_rx),
-                            str(_px),
-                            out,
-                            steps=max(2, int(st.steps_var.get())),
-                            mode=mode,
-                            smooth=bool(st.smooth_var.get()),
-                            fmt=fmt,
-                            resolution=resolution,
-                            ffmpeg_path=st.ffmpeg_var.get().strip() or "ffmpeg",
-                            fps=max(1, int(st.fps_var.get())),
-                            progress_callback=progress_cb,
-                        )
-            viz_ok = bool(r.get("success"))
-            viz_out = r.get("output")
-            if viz_ok:
-                msgs.append(f"✅ 可视化: {viz_out} （{r.get('n_frames')} 帧）")
-            else:
-                msgs.append("❌ 可视化: " + (r.get("error") or "未知错误"))
-                if r.get("frames_dir"):
-                    msgs.append("   帧目录已保留: " + r["frames_dir"])
+            def _open_folder():
+                path = traj_out or viz_out
+                if path:
+                    _safe_open_file(str(Path(path).parent))
 
-        if traj:
-            if progress_cb:
-                progress_cb(0, "开始生成 IQmol 轨迹")
-            if len(reactants) == 1 and len(products) == 1:
-                rr = ra.generate_xyz_trajectory(
-                    reactants[0],
-                    products[0],
-                    traj,
-                    steps=max(2, int(st.steps_var.get())),
-                    mode=mode,
-                    smooth=bool(st.smooth_var.get()),
-                    trajectory_format=traj_fmt,
-                    progress_callback=progress_cb,
-                )
-            else:
-                rr = ra.generate_reaction_multispecies(
-                    reactants,
-                    products,
-                    traj,
-                    steps=max(2, int(st.steps_var.get())),
-                    mode=mode,
-                    smooth=bool(st.smooth_var.get()),
-                    trajectory_format=traj_fmt,
-                    translate_spacing=spacing,
-                    progress_callback=progress_cb,
-                )
-            traj_ok = bool(rr.get("success"))
-            traj_out = rr.get("output")
-            if traj_ok:
-                tag = "（含每帧能量 E）" if rr.get("energies_written") else ""
-                msgs.append(f"✅ IQmol 轨迹: {traj_out} （{rr.get('n_frames')} 帧） {tag}")
-            else:
-                msgs.append("❌ IQmol 轨迹: " + (rr.get("error") or "未知错误"))
+            ttk.Button(btn_frame, text="📂 打开文件", command=_open_file).pack(side=tk.LEFT, padx=5)
+            ttk.Button(btn_frame, text="📁 打开所在文件夹", command=_open_folder).pack(side=tk.LEFT, padx=5)
+            ttk.Button(btn_frame, text="关闭", command=result_dialog.destroy).pack(side=tk.LEFT, padx=5)
+            try:
+                recent = app.config_data.get("recent_files", [])
+                for p in (traj_out, viz_out):
+                    if p and Path(p).exists():
+                        if p in recent:
+                            recent.remove(p)
+                        recent.insert(0, p)
+                app.config_data["recent_files"] = recent[:10]
+                from utils.config import save_config
 
-        def _after():
-            any_ok = viz_ok or traj_ok
-            body = "\n".join(msgs)
-            if st.auto_open_iqmol_var.get() and traj_ok and traj_out:
-                try:
-                    exe = st.iqmol_path_var.get().strip() or "IQmol"
-                    resolved = _resolve_iqmol_exe(exe)
-                    _sp.Popen([resolved, str(traj_out)])
-                    body += "\n\n🚀 已用 IQmol 打开轨迹"
-                except Exception as e:
-                    body += f"\n\n⚠️  未能打开 IQmol: {e}"
-            st.result_text.configure(state="normal")
-            st.result_text.delete("1.0", tk.END)
-            st.result_text.insert(tk.END, body)
-            st.result_text.configure(state="disabled")
-            if any_ok:
-                result_dialog = tk.Toplevel(dialog)
-                result_dialog.title("✅ 生成完成")
-                result_dialog.geometry(fit_dialog_geometry(result_dialog, 480, 350))
-                result_dialog.resizable(True, True)
-                result_dialog.transient(dialog)
-                result_dialog.grab_set()
-                tk.Label(
-                    result_dialog, text="🎉 反应动画生成完成！", font=("Microsoft YaHei", 14, "bold"), fg="#0EA288"
-                ).pack(pady=(20, 10))
-                tk.Label(
-                    result_dialog, text=body[:200] + ("..." if len(body) > 200 else ""), wraplength=440, justify="left"
-                ).pack(padx=20, pady=5)
-                btn_frame = ttk.Frame(result_dialog)
-                btn_frame.pack(pady=15)
-
-                def _open_file():
-                    if traj_out and Path(traj_out).exists():
-                        _safe_open_file(traj_out)
-                    elif viz_out and Path(viz_out).exists():
-                        _safe_open_file(viz_out)
-
-                def _open_folder():
-                    path = traj_out or viz_out
-                    if path:
-                        _safe_open_file(str(Path(path).parent))
-
-                ttk.Button(btn_frame, text="📂 打开文件", command=_open_file).pack(side=tk.LEFT, padx=5)
-                ttk.Button(btn_frame, text="📁 打开所在文件夹", command=_open_folder).pack(side=tk.LEFT, padx=5)
-                ttk.Button(btn_frame, text="关闭", command=result_dialog.destroy).pack(side=tk.LEFT, padx=5)
-                try:
-                    recent = app.config_data.get("recent_files", [])
-                    for p in (traj_out, viz_out):
-                        if p and Path(p).exists():
-                            if p in recent:
-                                recent.remove(p)
-                            recent.insert(0, p)
-                    app.config_data["recent_files"] = recent[:10]
-                    from utils.config import save_config
-
-                    save_config(app.config_data)
-                except Exception:
-                    pass
-                controller.scan_files()
-            else:
-                messagebox.showerror("失败", body or "未产生任何产出", parent=dialog)
-
-        app.after(0, _after)
+                save_config(app.config_data)
+            except Exception:
+                pass
+            controller.scan_files()
+        else:
+            messagebox.showerror("失败", body or "未产生任何产出", parent=dialog)
 
     dialog.withdraw()
-    app.helpers.run_task(_task)
+    app.services.reaction.start_animation(
+        reactants=reactants,
+        products=products,
+        out=out,
+        traj=traj,
+        mode=mode,
+        fmt=fmt,
+        resolution=resolution,
+        traj_fmt=traj_fmt,
+        spacing=spacing,
+        steps=steps,
+        smooth=smooth,
+        ffmpeg=ffmpeg,
+        fps=fps,
+        on_done=_after,
+    )
 
 
 def _browse_open_multi(listbox, controller):
@@ -1099,13 +1003,6 @@ def show_reaction_animation_dialog(app, controller):
     # 初始显示（原实现：此时读取的是播放模式变量的值，如 "bounce" → 显示高级区）
     _toggle_mode(st, st.play_mode_var.get())
     st.play_mode_var.trace_add("write", lambda *_: _toggle_mode(st, st.play_mode_var.get()))
-
-    # 保存对话框引用供预览使用（_anim_state 供测试/调试钩住全部控件变量）
-    app._anim_dialog = dialog
-    app._anim_state = st
-    app._anim_r_list = st.r_list
-    app._anim_p_list = st.p_list
-    app._anim_spacing_var = st.spacing_var
 
     # 初始化时加载默认预设
     auto_load = app.config_data.get("preset_auto_load", "")
