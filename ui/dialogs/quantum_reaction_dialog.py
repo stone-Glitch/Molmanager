@@ -303,38 +303,24 @@ def show_quantum_reaction_dialog(app, controller=None) -> None:
         run_btn.configure(state=tk.DISABLED)
         progress.configure(value=2)
         stage_var.set("准备中…")
+        app.set_cancel_visible(True)
 
-        def _task(progress_callback=None):
-            def _log(msg):
-                app.after(0, lambda m=str(msg): _append_text(app, log_txt, m + "\n"))
+        def _log(msg):
+            app.after(0, lambda m=str(msg): _append_text(app, log_txt, m + "\n"))
 
-            def _stage(name, p):
-                app.after(0, lambda n=name, pp=p: (progress.configure(value=max(2, int(pp * 100))), stage_var.set(n)))
+        def _stage(name, p):
+            app.after(0, lambda n=name, pp=p: (progress.configure(value=max(2, int(pp * 100))), stage_var.set(n)))
 
-            def _cancel():
-                try:
-                    return bool(app.task_manager.is_cancelled())
-                except Exception:
-                    return False
-
+        def _cancel():
             try:
-                from chem.quantum_reaction import run_reaction
-
-                result = run_reaction(
-                    payload,
-                    run_dir=run_dir,
-                    on_log=_log,
-                    on_stage=_stage,
-                    should_cancel=_cancel,
-                )
-            except Exception as e:
-                app.after(0, lambda err=e: _finish_error(err))
-                return
-            app.after(0, lambda res=result: _finish_ok(res))
+                return bool(app.task_manager.is_cancelled())
+            except Exception:
+                return False
 
         def _restore():
             running["flag"] = False
             run_btn.configure(state=tk.NORMAL)
+            app.set_cancel_visible(False)
 
         def _finish_error(err):
             _restore()
@@ -350,7 +336,15 @@ def show_quantum_reaction_dialog(app, controller=None) -> None:
             stage_var.set(f"完成（{result.get('elapsed_s', '?')}s）")
             _show_result(result)
 
-        app.helpers.run_task(_task)
+        app.services.quantum.compute(
+            payload,
+            run_dir=run_dir,
+            on_log=_log,
+            on_stage=_stage,
+            should_cancel=_cancel,
+            on_done=_finish_ok,
+            on_error=_finish_error,
+        )
 
     run_btn.configure(command=_run)
 
