@@ -3,6 +3,26 @@
 本文件记录 MolManager 每个版本值得注意的变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.0] - 2026-09-13
+
+Web 迁移阶段1：在现有 FastAPI 层上验证路线图中「最不确定的一环」——PSI4 在 Web 下的异步计算与实时进度。领域层（`chem/`）零改动，全量测试 311 → 322（新增 11 个 API 验收用例）。
+
+### 新增（Added）
+
+- **`api/jobs.py`**：框架无关的后台任务编排器。双线程池——PSI4 池 `max_workers=1`（串行，尊重 `chem/quantum_reaction/quantum._PSI_LOCK`，PSI4 非线程安全）；动画/IO 池 `max_workers=4`（ffmpeg 走子进程）；含事件缓冲 + 迟到回放 + 协作式取消
+- **`api/server.py` 新增端点**：
+  - `POST /psi4/compute`、`POST /reaction/animate`：接收请求即返回 `job_id`，后台线程执行，**不阻塞**
+  - `GET /jobs/{id}`：轮询兜底状态查询
+  - `WebSocket /ws/jobs/{id}`：实时推送 `log`/`stage`/`done`/`error`/`cancelled`，支持客户端发送 `{"action":"cancel"}` 取消（thread→asyncio 经 `call_soon_threadsafe` 桥接）
+  - `_require_psi4`：PSI4 缺失返回 503 + 安装指引
+- 复用 `chem/quantum_reaction.runner.run_reaction` 与 `chem/reaction_animation`，**领域层零改动**
+- `pyproject.toml` 的 `[api]` extra 显式声明 `websockets>=12`
+
+### 已知问题（Known）
+
+- 阶段1 的 `POST /reaction/animate` 直接接收**服务端文件路径**，尚未接入 `utils/path_utils` 校验（路径遍历在 Web 下风险更大，已在迁移路线图中点出）——留待 Web 迁移阶段3（上传 + 校验）
+- `api/` 仍直连 `chem.*`，与 `services/` 并存（已知 duplication）；阶段2 将统一 `api → services`，并把剩余对话框迁到 Service 层
+
 ## [1.3.0] - 2026-09-13
 
 工程结构优化版本：引入 Service 业务编排层，把逻辑从 UI/对话框中抽离，并修复两处真实耦合 bug。
