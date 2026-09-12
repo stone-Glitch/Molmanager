@@ -3,6 +3,35 @@
 本文件记录 MolManager 每个版本值得注意的变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.0] - 2026-09-13
+
+Web 迁移阶段2：**Service 层全覆盖 + api→services 统一**。剩余 5 个对话框（15 个后台调用点）全部收口到 `services/`，`api/` 不再直连 `chem.*`，重复实现彻底消除。功能行为零变更，全量测试 322 → 343（新增 21 个验收用例）。
+
+### 重构（Refactored）
+
+- **`ServiceBase` 调度器解耦（`services/base.py`）**：后台执行从「硬编码 `task_manager`」改为**可注入的调度器**（`Scheduler` 协议）：
+  - 桌面路径 → 默认 `TkinterScheduler`（复用共享 `task_manager` + `app.after(0)` 回主线程，行为与旧版完全等价）；
+  - Web 路径 → `api.dispatcher.WebDispatcher`（复用 `api.jobs.JobManager`，**按 job_id 取消** + WebSocket 事件推送）。
+  - 进度/日志统一为 WebSocket 友好 dict 事件（`{type:stage,fraction,message}` / `{type:log,message}` / `{type:error,message}`），`_run` 自动拆回桌面 `on_progress`/`on_log`，既有对话框零改动。
+  - 新增 `ServiceBase.with_scheduler()`，同一批 Service 定义可按请求绑定不同调度器。
+- **新增 4 个 Service**：
+  - `AnalyticsService`——分子式/元素分析、几何参数导出（修复 `analytics_dialog` 自建 `TaskManager` 的旧 Bug）；
+  - `SyncService`——两工作目录的一键复制/覆盖（`sync_dialog` 的 3 个调用点）；
+  - `OpenBabelService`——描述符/批量 CSV/格式转换/几何优化/SMILES→3D/分子叠加/2D 渲染（`openbabel_dialog` 的 7 个调用点，批量循环在 Service 内**聚合回调**，避免逐条 `after(0)` 淹没 UI）；
+  - `Psi4ScanService`——线性插值扫描/刚性扫描/批量 PSI4（`psi4_dialog` 的 3 个调用点，保留协作式取消 + 逐文件进度）。
+- **`core/view.py`**：`MainView` 装配 7 个 Service；`openbabel`/`psi4scan` 在 `controller` 就绪后绑定领域 `model`。
+- **api→services 统一（`api/server.py`）**：`POST /psi4/compute` → `QuantumReactionService.compute`、`POST /reaction/animate` → `ReactionService.start_animation`（均经 `WebDispatcher`），删除 `server.py` 内直连 `chem.quantum_reaction.run_reaction` / `chem.reaction_animation` 的闭包，消除与桌面端的重复领域调用。`jobs.get_status` / `attach_emit` / WebSocket 路由保持不变。
+
+### 修复（Fixed）
+
+- **`analytics_dialog` 自建 TaskManager**：原先 `TaskManager(app, controller).run_async(...)` 与主窗口线程池彼此独立、取消状态无法互通；现统一复用共享调度器。
+- **`common.py` 环境诊断的裸线程**：PSI4 快速测试原先用 `threading.Thread(..., daemon=True)` 自行开线程 + `dialog.after(0, ...)` 手工回主线程；现改为经 `app.services.advanced.submit` 派发，由调度器统一回主线程。
+
+### 已知问题（Known）
+
+- 阶段2 的 `POST /reaction/animate` 仍直接接收**服务端文件路径**，尚未接入 `utils/path_utils` 校验（与 v1.4.0 相同）——留待 Web 迁移阶段3（上传 + 校验）。
+- 剩余 17 个 Tkinter 对话框本身仍为 UI 层代码（阶段2 只迁其后台任务调用，未改 UI 结构）。
+
 ## [1.4.0] - 2026-09-13
 
 Web 迁移阶段1：在现有 FastAPI 层上验证路线图中「最不确定的一环」——PSI4 在 Web 下的异步计算与实时进度。领域层（`chem/`）零改动，全量测试 311 → 322（新增 11 个 API 验收用例）。

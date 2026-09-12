@@ -4,15 +4,11 @@ PSI4 计算设置对话框
 """
 
 import os
-import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, scrolledtext, ttk
 
-from chem.psi4_compute import (
-    check_psi4_installed,
-    run_psi4_task_cancellable,
-)
+from chem.psi4_compute import check_psi4_installed
 from utils.constants import PSI4_PRESETS, PSI4_TASKS, RUN_PRESETS
 from utils.dialog_geom import fit_dialog_geometry
 
@@ -427,8 +423,6 @@ def _run_psi4_batch(
     memory_var,
     ff_hint_label,
 ):
-    from chem.psi4_compute import run_rigid_scan
-
     # U-02：运行状态管理。开始运行时锁定「开始」按钮、启用「取消计算」；
     # 任务结束（含取消）后复位；若用户在运行中点了「关闭」则自动关闭窗口。
     def _begin_run():
@@ -518,32 +512,28 @@ def _run_psi4_batch(
                 result_text.insert(tk.END, "❌ 步数必须为大于1的整数\n")
                 return
 
-            def task_process(**kwargs):
-                _append_text(app, result_text, "🔬 开始线性插值扫描\n")
-                _append_text(app, result_text, f"   反应物: {len(reactant_files)} 个文件\n")
-                _append_text(app, result_text, f"   产物: {len(product_files)} 个文件\n")
-                _append_text(app, result_text, f"   步数: {steps}, 方法: {method}, 基组: {basis}\n")
-
-                res = controller.model.run_linear_scan(
-                    reactant_files,
-                    product_files,
-                    steps,
-                    method,
-                    basis,
-                    out_dir,
-                    preset,
-                    solvent,
-                    d3,
-                    charge,
-                    mult,
-                    progress_callback=kwargs.get("_progress_callback"),
-                )
+            def _on_scan_done(res):
                 _display_scan_result(app, res, result_text)
                 controller.scan_files()
-                app.after(0, _on_done)
+                _on_done()
 
             _begin_run()
-            app.helpers.run_task(task_process)
+            # 迁移至 Service 层：线性插值扫描收口到 Psi4ScanService
+            app.services.psi4scan.linear_scan(
+                reactant_files,
+                product_files,
+                steps,
+                method,
+                basis,
+                out_dir,
+                preset,
+                solvent,
+                d3,
+                charge,
+                mult,
+                on_event=lambda e: _psi4_event(app, result_text, e),
+                on_done=_on_scan_done,
+            )
             return
 
         else:  # 刚性扫描
@@ -570,34 +560,29 @@ def _run_psi4_batch(
                 result_text.insert(tk.END, "❌ 距离范围或步数格式错误\n")
                 return
 
-            def task_process(**kwargs):
-                _append_text(app, result_text, f"🔬 开始刚性扫描: {fname}\n")
-                _append_text(app, result_text, f"   方法: {method}, 基组: {basis}\n")
-                _append_text(
-                    app, result_text, f"   原子对: {idx1 + 1}-{idx2 + 1}, 距离: {start}~{end} Å, 步数: {steps}\n"
-                )
-
-                res = run_rigid_scan(
-                    str(file_path),
-                    (idx1, idx2),
-                    (start, end, steps),
-                    method,
-                    basis,
-                    out_dir,
-                    preset,
-                    solvent,
-                    d3,
-                    charge,
-                    mult,
-                    memory,
-                    _progress_callback=kwargs.get("_progress_callback"),
-                )
+            def _on_rigid_done(res):
                 _display_scan_result(app, res, result_text)
                 controller.scan_files()
-                app.after(0, _on_done)
+                _on_done()
 
             _begin_run()
-            app.helpers.run_task(task_process)
+            # 迁移至 Service 层：刚性扫描收口到 Psi4ScanService
+            app.services.psi4scan.rigid_scan(
+                str(file_path),
+                (idx1, idx2),
+                (start, end, steps),
+                method,
+                basis,
+                out_dir,
+                preset,
+                solvent,
+                d3,
+                charge,
+                mult,
+                memory,
+                on_event=lambda e: _psi4_event(app, result_text, e),
+                on_done=_on_rigid_done,
+            )
             return
 
     # 非扫描任务：批量计算
@@ -610,86 +595,87 @@ def _run_psi4_batch(
         result_text.insert(tk.END, "   DFT-D3 已启用\n")
     result_text.see(tk.END)
 
-    def task_process(**kwargs):
-        cancelled_any = False
-        for idx, fname in enumerate(files):
-            file_path = Path(controller.model.work_dir) / fname
-            _append_text(app, result_text, f"\n--- ({idx + 1}/{total}) {fname} ---\n")
-
-            try:
-                res = run_psi4_task_cancellable(
-                    str(file_path),
-                    task,
-                    method,
-                    basis,
-                    out_dir,
-                    preset,
-                    solvent,
-                    d3,
-                    charge,
-                    mult,
-                    memory,
-                    _progress_callback=kwargs.get("_progress_callback"),
-                    cancel_check=app.task_manager.is_cancelled,
-                    extra_options=scf_options,
+    def _render_batch_result(fname, r):
+        """把单个文件的 PSI4 结果渲染进结果框（在 UI 主线程执行）。"""
+        _append_text(app, result_text, f"\n--- {fname} ---\n")
+        if r.get("cancelled"):
+            _append_text(app, result_text, "⏹ 该任务已取消\n")
+            app.helpers.on_log(f"⏹ PSI4 计算已取消: {fname}", "warning")
+            return
+        if r.get("success"):
+            _append_text(app, result_text, "✅ 成功!\n")
+            _append_plain_conclusion(app, result_text, r)
+            if r.get("energy") is not None:
+                _append_text(app, result_text, f"   能量: {r['energy']:.6f} Hartree\n")
+            if r.get("optimized_xyz"):
+                _append_text(app, result_text, "   优化结构已保存\n")
+            if r.get("fchk_file"):
+                _append_text(app, result_text, f"   .fchk: {os.path.basename(r['fchk_file'])}\n")
+            # 科学红线 S-04：PCM 溶剂不可用已静默回退为气相 → 必须醒目告知
+            if r.get("pcm_rolled_back"):
+                _append_text(
+                    app,
+                    result_text,
+                    "   ⚠️ 溶剂模型不可用，已自动回退为气相计算（PCM 未生效）！\n"
+                    f"      原因：{r.get('solvent_rollback_reason', '未知')}\n"
+                    "      请检查溶剂名拼写 / PSI4 编译是否含 PCM，否则溶剂效应被完全忽略。\n",
+                    "warn",
                 )
-                if res.get("cancelled"):
-                    _append_text(app, result_text, "⏹ 该任务已取消\n")
-                    app.helpers.on_log(f"⏹ PSI4 计算已取消: {fname}", "warning")
-                    cancelled_any = True
-                    break
+            # 科学红线 S-05：热化学校正失败，仅电子能（无热校正）→ 必须醒目告知
+            if r.get("thermo_fallback"):
+                _append_text(
+                    app,
+                    result_text,
+                    f"   ⚠️ 热化学校正失败，该点仅电子能（无热校正），自由能不可靠："
+                    f"{', '.join(r['thermo_fallback'])}\n",
+                    "warn",
+                )
+            app.helpers.on_log(f"✅ PSI4 计算完成: {fname}", "success")
+        else:
+            _append_text(app, result_text, f"❌ 失败: {r.get('error', '未知错误')}\n")
+            app.helpers.on_log(f"❌ PSI4 计算失败: {fname}", "error")
 
-                def update_result(r=res, fname=fname):
-                    if r["success"]:
-                        _append_text(app, result_text, "✅ 成功!\n")
-                        _append_plain_conclusion(app, result_text, r)
-                        if r.get("energy") is not None:
-                            _append_text(app, result_text, f"   能量: {r['energy']:.6f} Hartree\n")
-                        if r.get("optimized_xyz"):
-                            _append_text(app, result_text, "   优化结构已保存\n")
-                        if r.get("fchk_file"):
-                            _append_text(app, result_text, f"   .fchk: {os.path.basename(r['fchk_file'])}\n")
-                        # 科学红线 S-04：PCM 溶剂不可用已静默回退为气相 → 必须醒目告知
-                        if r.get("pcm_rolled_back"):
-                            _append_text(
-                                app,
-                                result_text,
-                                "   ⚠️ 溶剂模型不可用，已自动回退为气相计算（PCM 未生效）！\n"
-                                f"      原因：{r.get('solvent_rollback_reason', '未知')}\n"
-                                "      请检查溶剂名拼写 / PSI4 编译是否含 PCM，否则溶剂效应被完全忽略。\n",
-                                "warn",
-                            )
-                        # 科学红线 S-05：热化学校正失败，仅电子能（无热校正）→ 必须醒目告知
-                        if r.get("thermo_fallback"):
-                            _append_text(
-                                app,
-                                result_text,
-                                f"   ⚠️ 热化学校正失败，该点仅电子能（无热校正），自由能不可靠："
-                                f"{', '.join(r['thermo_fallback'])}\n",
-                                "warn",
-                            )
-                        app.helpers.on_log(f"✅ PSI4 计算完成: {fname}", "success")
-                    else:
-                        _append_text(app, result_text, f"❌ 失败: {r.get('error', '未知错误')}\n")
-                        app.helpers.on_log(f"❌ PSI4 计算失败: {fname}", "error")
-
-                if threading.current_thread() is threading.main_thread():
-                    update_result()
-                else:
-                    app.after(0, update_result)
-            except Exception as e:
-                _append_text(app, result_text, f"❌ 异常: {e}\n")
-                app.helpers.on_log(f"❌ PSI4 异常: {e}", "error")
-
-        if cancelled_any:
+    def _on_batch_done(payload):
+        payload = payload or {}
+        for item in payload.get("results", []):
+            _render_batch_result(item.get("file", ""), item.get("res", {}) or {})
+        if payload.get("cancelled"):
             _append_text(app, result_text, "\n⏹ 计算已被取消，未完成的任务已停止。\n")
         else:
             _append_text(app, result_text, "\n🎉 所有任务处理完成！\n")
         controller.scan_files()
-        app.after(0, _on_done)
+        _on_done()
 
     _begin_run()
-    app.helpers.run_task(task_process)
+    # 迁移至 Service 层：批量计算收口到 Psi4ScanService（保留取消 + 进度，结果回调 UI 渲染）
+    app.services.psi4scan.batch_compute(
+        files,
+        controller.model.work_dir,
+        task,
+        method,
+        basis,
+        out_dir,
+        preset,
+        solvent,
+        d3,
+        charge,
+        mult,
+        memory,
+        scf_options,
+        on_event=lambda e: _psi4_event(app, result_text, e),
+        on_done=_on_batch_done,
+    )
+
+
+def _psi4_event(app, result_text, event):
+    """把 Service 统一事件 dict 落到 PSI4 结果框 + 日志（log 类型）。"""
+    if not isinstance(event, dict) or event.get("type") != "log":
+        return
+    msg = event.get("message", "")
+    _append_text(app, result_text, f"{msg}\n")
+    level = event.get("level", "info")
+    if level in ("success", "error", "warning"):
+        app.helpers.on_log(msg, level)
 
 
 def _append_plain_conclusion(app, result_text, res):

@@ -32,7 +32,7 @@ class FakeTaskManager:
         self.calls = []
         self._cancelled = False
 
-    def run_async(self, fn, *, on_done=None, on_error=None, on_progress=None):
+    def run_async(self, fn, *, on_done=None, on_error=None, on_progress=None, on_cancelled=None):
         self.calls.append((fn, on_done, on_error, on_progress))
 
         def _prog(*_a):

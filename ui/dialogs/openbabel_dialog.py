@@ -3,7 +3,6 @@
 OpenBabel 工具对话框 - 格式转换、SMILES生成、结构优化、描述符、分子叠加、2D预览
 """
 
-import csv
 import os
 import tkinter as tk
 from pathlib import Path
@@ -261,22 +260,19 @@ def show_openbabel_dialog(app, controller):
         else:
             fname = items[0]
 
-        def task_process(**kwargs):
-            path = Path(work_dir) / fname
-            desc = controller.model.calculate_descriptors(str(path))
+        def _update_desc(desc):
+            if not isinstance(desc, dict):
+                return
+            _clear_text(app, desc_result)
+            if "error" in desc:
+                _append_text(app, desc_result, f"❌ 错误: {desc['error']}")
+            else:
+                _append_text(app, desc_result, f"📋 {fname} 计算结果:\n")
+                for key, val in desc.items():
+                    _append_text(app, desc_result, f"{key}: {val}\n", see_end=False)
 
-            def update_ui():
-                _clear_text(app, desc_result)
-                if "error" in desc:
-                    _append_text(app, desc_result, f"❌ 错误: {desc['error']}")
-                else:
-                    _append_text(app, desc_result, f"📋 {fname} 计算结果:\n")
-                    for key, val in desc.items():
-                        _append_text(app, desc_result, f"{key}: {val}\n", see_end=False)
-
-            app.after(0, update_ui)
-
-        app.helpers.run_task(task_process)
+        # 迁移至 Service 层：统一经调度器派发
+        app.services.openbabel.calculate_descriptors(Path(work_dir) / fname, on_done=_update_desc)
 
     def do_batch_csv():
         items = list(desc_listbox.get(0, tk.END))
@@ -289,48 +285,27 @@ def show_openbabel_dialog(app, controller):
         if not out_path:
             return
 
-        def task_process(**kwargs):
-            rows = []
-            fieldnames = ["file"]
-            for fname in items:
-                path = Path(work_dir) / fname
-                base = os.path.basename(fname)
-                try:
-                    desc = controller.model.calculate_descriptors(str(path))
-                    if "error" in desc:
-                        row = {"file": base, "error": desc["error"]}
-                    else:
-                        row = {"file": base, **desc}
-                        for k in desc.keys():
-                            if k not in fieldnames:
-                                fieldnames.append(k)
-                except Exception as e:
-                    row = {"file": base, "error": str(e)}
-                if "error" in row and "error" not in fieldnames:
-                    fieldnames.append("error")
-                rows.append(row)
+        def _on_csv_done(r):
             try:
-                with open(out_path, "w", newline="", encoding="utf-8-sig") as f:
-                    writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
-                    writer.writeheader()
-                    writer.writerows(rows)
+                app.helpers.on_log(
+                    f"💾 CSV 已导出: {os.path.basename(out_path)}（共 {r.get('count', 0)} 条）", "success"
+                )
+                controller.scan_files()
+            except Exception:
+                pass
 
-                def done():
-                    app.helpers.on_log(f"💾 CSV 已导出: {os.path.basename(out_path)}（共 {len(rows)} 条）", "success")
-                    controller.scan_files()
+        def _on_csv_error(err):
+            app.helpers.on_log(f"❌ CSV 写出失败: {err}", "error")
 
-                app.after(0, done)
-            except Exception as e:
-                # 🔴 捕获异常信息：Python 3 中 except 块变量 `e` 在退出 except 后即被清除，
-                # 若放在嵌套的 fail() 里延迟调用会 NameError。先转成字符串固化。
-                err_msg = str(e)
-
-                def fail():
-                    app.helpers.on_log(f"❌ CSV 写出失败: {err_msg}", "error")
-
-                app.after(0, fail)
-
-        app.helpers.run_task(task_process)
+        # 迁移至 Service 层：批量计算 + CSV 写出收口到 OpenBabelService（内部聚合回调）
+        app.services.openbabel.descriptors_to_csv(
+            items, work_dir, out_path,
+            on_event=lambda e: app.helpers.on_log(
+                e.get("message", ""), e.get("level", "info")
+            ) if e.get("type") == "log" else None,
+            on_done=_on_csv_done,
+            on_error=_on_csv_error,
+        )
 
     desc_btn_row = ttk.Frame(tab_desc)
     desc_btn_row.grid(row=3, column=0, columnspan=4, pady=5)
@@ -439,26 +414,21 @@ def _run_convert_batch(app, listbox, out_fmt, dialog, controller):
 
     work_dir = controller.model.work_dir
 
-    def task_process(**kwargs):
-        all_ok = True
-        for name in items:
-            input_path = Path(work_dir) / name
-            base = input_path.stem
-            output_path = work_dir / f"{base}.{out_fmt}"
-            try:
-                res = controller.model.convert_file(str(input_path), str(output_path), out_fmt)
-                success = res.get("success", False)
-                msg = res.get("message", "")
-                app.helpers.on_log(f"{'✅' if success else '❌'} 转换 {name}: {msg}", "success" if success else "error")
-                if not success:
-                    all_ok = False
-            except Exception as e:
-                app.helpers.on_log(f"❌ 转换 {name} 异常: {e}", "error")
-                all_ok = False
-        if all_ok:
-            controller.scan_files()
+    def _after(_r=None):
+        controller.scan_files()
 
-    app.helpers.run_task(task_process)
+    # 迁移至 Service 层：批量转换收口到 OpenBabelService
+    app.services.openbabel.convert_batch(
+        items, work_dir, out_fmt,
+        on_event=lambda e: _log_event(app, e),
+        on_done=_after,
+    )
+
+
+def _log_event(app, event):
+    """把 Service 的统一事件 dict 落到桌面日志（仅 log 类型）。"""
+    if isinstance(event, dict) and event.get("type") == "log":
+        app.helpers.on_log(event.get("message", ""), event.get("level", "info"))
 
 
 def _run_optimize_batch(app, listbox, forcefield, dialog, controller):
@@ -470,27 +440,14 @@ def _run_optimize_batch(app, listbox, forcefield, dialog, controller):
 
     work_dir = controller.model.work_dir
 
-    def task_process(**kwargs):
-        all_ok = True
-        for name in items:
-            input_path = Path(work_dir) / name
-            base = input_path.stem
-            ext = input_path.suffix
-            output_path = work_dir / f"{base}_opt{ext}"
-            try:
-                res = controller.model.optimize_geometry(str(input_path), str(output_path), forcefield)
-                success = res.get("success", False)
-                msg = res.get("message", "")
-                app.helpers.on_log(f"{'✅' if success else '❌'} 优化 {name}: {msg}", "success" if success else "error")
-                if not success:
-                    all_ok = False
-            except Exception as e:
-                app.helpers.on_log(f"❌ 优化 {name} 异常: {e}", "error")
-                all_ok = False
-        if all_ok:
-            controller.scan_files()
+    def _after(_r=None):
+        controller.scan_files()
 
-    app.helpers.run_task(task_process)
+    app.services.openbabel.optimize_batch(
+        items, work_dir, forcefield,
+        on_event=lambda e: _log_event(app, e),
+        on_done=_after,
+    )
 
 
 def _run_smiles_batch(app, text_widget, gen3d, opt, dialog, controller):
@@ -504,28 +461,14 @@ def _run_smiles_batch(app, text_widget, gen3d, opt, dialog, controller):
         return
     dialog.destroy()
 
-    def task_process(**kwargs):
-        all_ok = True
-        for idx, line in enumerate(lines):
-            parts = line.split(None, 1)
-            smiles = parts[0].strip()
-            name = parts[1].strip() if len(parts) > 1 else f"smi_idx_{idx + 1:03d}"
-            if not smiles:
-                continue
-            try:
-                res = controller.model.generate_from_smiles(smiles, name, generate_3d=gen3d, optimize=opt)
-                if res.get("error"):
-                    app.helpers.on_log(f"❌ SMILES 生成失败 {name}: {res['error']}", "error")
-                    all_ok = False
-                else:
-                    app.helpers.on_log(f"✅ 生成成功 {name}: {os.path.basename(res['mol'])}", "success")
-            except Exception as e:
-                app.helpers.on_log(f"❌ SMILES 生成异常 {name}: {e}", "error")
-                all_ok = False
-        if all_ok:
-            controller.scan_files()
+    def _after(_r=None):
+        controller.scan_files()
 
-    app.helpers.run_task(task_process)
+    app.services.openbabel.smiles_batch(
+        lines, gen3d, opt,
+        on_event=lambda e: _log_event(app, e),
+        on_done=_after,
+    )
 
 
 def _run_align_batch(app, ref_listbox, mob_listbox, dialog, controller):
@@ -541,31 +484,15 @@ def _run_align_batch(app, ref_listbox, mob_listbox, dialog, controller):
     dialog.destroy()
 
     work_dir = controller.model.work_dir
-    ref_path = Path(work_dir) / ref_name
-    ref_stem = ref_path.stem
 
-    def task_process(**kwargs):
-        all_ok = True
-        for mob_name in mob_items:
-            mob_path = Path(work_dir) / mob_name
-            mob_stem = mob_path.stem
-            out_path = work_dir / f"{mob_stem}_aligned_to_{ref_stem}.xyz"
-            try:
-                res = controller.model.align_molecules(str(ref_path), str(mob_path), str(out_path))
-                success = res.get("success", False)
-                msg = res.get("message", "")
-                app.helpers.on_log(
-                    f"{'✅' if success else '❌'} 叠加 {mob_name}: {msg}", "success" if success else "error"
-                )
-                if not success:
-                    all_ok = False
-            except Exception as e:
-                app.helpers.on_log(f"❌ 叠加 {mob_name} 异常: {e}", "error")
-                all_ok = False
-        if all_ok:
-            controller.scan_files()
+    def _after(_r=None):
+        controller.scan_files()
 
-    app.helpers.run_task(task_process)
+    app.services.openbabel.align_batch(
+        ref_name, mob_items, work_dir,
+        on_event=lambda e: _log_event(app, e),
+        on_done=_after,
+    )
 
 
 def preview_2d_structure(app, controller):
@@ -581,23 +508,20 @@ def preview_2d_structure(app, controller):
         messagebox.showwarning("不支持", f"仅支持以下分子文件类型:\n{', '.join(mol_exts)}")
         return
 
-    def task_process(**kwargs):
-        res = controller.model.render_png_2d(fname)
+    def _done(res):
+        res = res or {}
         success = res.get("success", False)
         msg = res.get("message", "")
         png_path = res.get("output_path")
+        if not success or not png_path or not os.path.exists(png_path):
+            app.helpers.on_log(f"❌ 2D 预览失败: {msg}", "error")
+            messagebox.showerror("预览失败", f"2D 结构渲染失败:\n{msg}")
+            return
+        app.helpers.on_log(f"✅ 2D 预览: {msg}", "success")
+        _show_png_preview(app, png_path, fname)
 
-        def done():
-            if not success or not png_path or not os.path.exists(png_path):
-                app.helpers.on_log(f"❌ 2D 预览失败: {msg}", "error")
-                messagebox.showerror("预览失败", f"2D 结构渲染失败:\n{msg}")
-                return
-            app.helpers.on_log(f"✅ 2D 预览: {msg}", "success")
-            _show_png_preview(app, png_path, fname)
-
-        app.after(0, done)
-
-    app.helpers.run_task(task_process)
+    # 迁移至 Service 层：统一经调度器派发
+    app.services.openbabel.render_2d(fname, on_done=_done)
 
 
 def _show_png_preview(app, png_path: str, fname: str):

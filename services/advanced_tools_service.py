@@ -26,7 +26,7 @@ class AdvancedToolsService(ServiceBase):
         本方法不强制，沿用既有高级工具任务的取消语义。
         """
 
-        def _wrapped(_progress_callback=None, _log=None):
+        def _wrapped(*, emit=None, should_cancel=None, progress_callback=None, log=None):  # noqa: ARG001
             return fn()
 
         return self._run(_wrapped, on_done=on_done, on_error=on_error)

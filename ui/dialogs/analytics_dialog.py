@@ -97,14 +97,8 @@ def show_formula_dialog(app, controller):
         app.helpers.on_log("⚠️ 请先选择一个分子文件", "warning")
         return
 
-    def _run(**_kw):
-        from pathlib import Path
-
-        import chem.openbabel_utils as obu
-
-        work = app.work_dir_var.get().strip()
-        fp = str(Path(work) / sel[0]) if work and not os.path.isabs(sel[0]) else sel[0]
-        return obu.analyze_formula(fp), os.path.basename(fp)
+    work = app.work_dir_var.get().strip()
+    fp = _resolve_path(sel[0], work)
 
     def _on_done(r):
         try:
@@ -117,9 +111,17 @@ def show_formula_dialog(app, controller):
             return
         FormulaResultDialog(app, res, basename)
 
-    from core.task_manager import TaskManager
+    # 迁移至 Service 层：复用共享线程池，不再各自新建任务管理器
+    app.services.analytics.analyze_formula(fp, on_done=_on_done)
 
-    TaskManager(app, controller).run_async(_run, on_done=_on_done)
+
+def _resolve_path(sel0: str, work: str) -> str:
+    """把主界面选中文件名解析为绝对路径（work 为空或已是绝对路径则原样）。"""
+    if work and not os.path.isabs(sel0):
+        from pathlib import Path
+
+        return str(Path(work) / sel0)
+    return sel0
 
 
 def export_geometry_csv(app, controller):

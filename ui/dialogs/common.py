@@ -6,7 +6,6 @@
 import os
 import subprocess
 import sys
-import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
@@ -563,18 +562,14 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
             psi_test_btn.configure(state="normal")
             _psi4_test_running["flag"] = False
 
-        def _do():
+        def _do(*, emit=None, should_cancel=None, progress_callback=None, log=None):  # noqa: ARG001
             import time as _time
 
             try:
                 import chem.psi4_compute as _pc
             except Exception as _imp_err:
-                # ⚠ except 绑定的名字在 except 块结束时会被 Python 自动删除，
-                # 直接放进 lambda 里延迟求值会抛 NameError —— 先固化成局部字符串。
-                _msg = f"❌ 无法加载 PSI4 计算模块（不影响文件整理）：{_imp_err}"
-                dialog.after(0, lambda _m=_msg: _finish_test(_m, False))
-                return
-            _tdir = None
+                # 返回错误信息给 on_done（不再自行 after(0)，由 Service 调度回主线程）
+                return {"ok": False, "msg": f"❌ 无法加载 PSI4 计算模块（不影响文件整理）：{_imp_err}"}
             try:
                 from utils.path_utils import make_temp_dir
 
@@ -597,9 +592,7 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
                 )
                 elapsed = _time.time() - t0
             except Exception as _e:
-                _msg = f"❌ 快速测试异常：{_e}"
-                dialog.after(0, lambda _m=_msg: _finish_test(_m, False))
-                return
+                return {"ok": False, "msg": f"❌ 快速测试异常：{_e}"}
             if res.get("success"):
                 e = res.get("energy")
                 if e is not None:
@@ -608,15 +601,20 @@ def show_environment_dialog(app, parent=None, ob_details=None, psi4_details=None
                         f"    能量 = {e:.6f} Hartree（参考 ≈ -74.96）\n"
                         f"    耗时 = {elapsed:.1f} 秒"
                     )
-                else:
-                    msg = f"⚠️ 任务成功但能量为空，请检查 PSI4 输出\n    耗时 = {elapsed:.1f} 秒"
-                dialog.after(0, lambda: _finish_test(msg, e is not None))
-            else:
-                msg = f"❌ 快速测试失败\n    错误：{res.get('error', '未知')}"
-                dialog.after(0, lambda: _finish_test(msg, False))
+                    return {"ok": True, "msg": msg}
+                msg = f"⚠️ 任务成功但能量为空，请检查 PSI4 输出\n    耗时 = {elapsed:.1f} 秒"
+                return {"ok": False, "msg": msg}
+            msg = f"❌ 快速测试失败\n    错误：{res.get('error', '未知')}"
+            return {"ok": False, "msg": msg}
 
-        _t = threading.Thread(target=_do, daemon=True)
-        _t.start()
+        def _on_test_done(r):
+            try:
+                _finish_test(r.get("msg", ""), bool(r.get("ok")))
+            except Exception:
+                pass
+
+        # 迁移至 Service 层：删掉裸 threading.Thread，改用共享调度器
+        app.services.advanced.submit(lambda: _do(), on_done=_on_test_done)
 
     psi_test_btn = ttk.Button(
         psi_btn_row, text="▶ 运行 PSI4 快速测试", command=_run_psi4_quick_test, style="Aurora.Primary.TButton"

@@ -244,3 +244,85 @@ def test_psi4_request_requires_source(client: TestClient, monkeypatch) -> None:
         json={"reaction_id": "X", "custom": {"reactants": ["O=O"], "products": ["[O]"]}},
     )
     assert r2.status_code == 422
+
+
+# ---------------------------------------------------------------- 阶段2：api → services（WebDispatcher）
+def test_webdispatcher_bridges_service_to_jobmanager() -> None:
+    """ServiceBase 经 WebDispatcher 派发的任务应由 JobManager 记录并推送事件。"""
+    from api.dispatcher import WebDispatcher
+    from services.base import ServiceBase
+
+    mgr = JobManager()
+    svc = ServiceBase(scheduler=WebDispatcher(mgr))
+
+    def _work(*, emit, should_cancel, progress_callback, log):
+        progress_callback(0.5, "half")
+        log("hi")
+        return {"value": 7}
+
+    svc._run(_work, dispatch_kwargs={"job_id": "svc-job", "pool": "io"})
+    for _ in range(200):
+        st = mgr.get_status("svc-job")
+        if st and st["status"] in ("done", "error"):
+            break
+        time.sleep(0.01)
+
+    st = mgr.get_status("svc-job")
+    assert st["status"] == "done"
+    assert st["result"] == {"value": 7}
+    assert st["progress"] == 1.0
+
+
+def test_webdispatcher_cancel_by_job_id() -> None:
+    from api.dispatcher import WebDispatcher
+    from services.base import ServiceBase
+
+    mgr = JobManager()
+    svc = ServiceBase(scheduler=WebDispatcher(mgr))
+
+    def _work(*, emit, should_cancel, progress_callback, log):
+        for _ in range(200):
+            if should_cancel():
+                return {"interrupted": True}
+            time.sleep(0.01)
+        return {"done": True}
+
+    handle = svc._run(_work, dispatch_kwargs={"job_id": "svc-cancel", "pool": "io"})
+    time.sleep(0.05)
+    handle.cancel()
+    for _ in range(200):
+        st = mgr.get_status("svc-cancel")
+        if st and st["status"] in ("cancelled", "done", "error"):
+            break
+        time.sleep(0.01)
+    assert mgr.get_status("svc-cancel")["status"] == "cancelled"
+
+
+def test_reaction_animate_routes_through_service(client: TestClient) -> None:
+    """POST /reaction/animate 单物种分支应经 ReactionService 落到领域函数。"""
+    import chem.reaction_animation as ra
+
+    seen = {}
+
+    def fake_anim(r, p, out, **kw):
+        seen["out"] = str(out)
+        return {"success": True, "output": str(out), "n_frames": 3}
+
+    monkeypatch_orig = ra.generate_reaction_animation
+    ra.generate_reaction_animation = fake_anim
+    try:
+        r = client.post(
+            "/reaction/animate",
+            json={"reactants": ["a.xyz"], "products": ["b.xyz"], "fmt": "gif"},
+        )
+        assert r.status_code == 200
+        job_id = r.json()["job_id"]
+        for _ in range(200):
+            st = jobs.get_status(job_id)
+            if st and st["status"] in ("done", "error", "cancelled"):
+                break
+            time.sleep(0.01)
+        assert st["status"] == "done"
+        assert seen["out"].endswith("anim.gif")
+    finally:
+        ra.generate_reaction_animation = monkeypatch_orig

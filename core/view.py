@@ -180,14 +180,23 @@ class MainView(*_DND_BASES):
             # Service 层：业务编排收口，复用共享 task_manager（不另开线程池）
             from services import (
                 AdvancedToolsService,
+                AnalyticsService,
+                OpenBabelService,
+                Psi4ScanService,
                 QuantumReactionService,
                 ReactionService,
+                SyncService,
             )
 
             self.services = SimpleNamespace(
                 quantum=QuantumReactionService(self.task_manager),
                 advanced=AdvancedToolsService(self.task_manager),
                 reaction=ReactionService(self.task_manager),
+                analytics=AnalyticsService(self.task_manager),
+                sync=SyncService(self.task_manager),
+                # OpenBabel / PSI4 扫描类 Service 需要领域 model，延迟到 controller 就绪后绑定
+                openbabel=OpenBabelService(self.task_manager),
+                psi4scan=Psi4ScanService(self.task_manager),
             )
 
             # 1. 先创建 AppHelpers
@@ -195,6 +204,13 @@ class MainView(*_DND_BASES):
 
             # 2. 再创建 Controller（传入 helpers）
             self.controller = Controller(self, self.helpers)
+
+            # 2b. 绑定领域 model 给需要它的 Service（OpenBabel / PSI4 扫描）
+            try:
+                self.services.openbabel.bind_model(self.controller.model)
+                self.services.psi4scan.bind_model(self.controller.model)
+            except Exception:
+                pass
 
             # 3. 最后创建 Dialogs
             self.dialogs = Dialogs(self, self.controller)

@@ -294,20 +294,11 @@ def create_app() -> FastAPI:
             }
         run_dir = Path(tempfile.mkdtemp(prefix="mm_psi4_"))
 
-        def _work(*, emit: Any, should_cancel: Any) -> dict[str, Any]:
-            from chem.quantum_reaction import run_reaction
+        # 统一走 Service 层（api → services），消除与桌面端的领域调用重复。
+        # 领域回调不传，由 WebDispatcher 的 emit 事件桥接为 WebSocket 推送。
+        service = _get_quantum_service()
+        service.compute(payload, run_dir, scheduler_id=job_id)
 
-            return run_reaction(
-                payload,
-                run_dir=run_dir,
-                on_log=lambda m: emit({"type": "log", "message": str(m)}),
-                on_stage=lambda name, frac: emit(
-                    {"type": "stage", "message": str(name), "fraction": float(frac)}
-                ),
-                should_cancel=should_cancel,
-            )
-
-        jobs.submit(job_id, _work, pool="psi4")
         return JobSubmitResponse(job_id=job_id, status="queued", ws_url=f"/ws/jobs/{job_id}")
 
     # ---------------- 反应动画 / IQmol 轨迹（后台任务 + WebSocket 进度） ----------------
@@ -322,64 +313,41 @@ def create_app() -> FastAPI:
         out_dir = Path(tempfile.mkdtemp(prefix="mm_rxn_"))
         single = len(req.reactants) == 1 and len(req.products) == 1
 
-        def _work(*, emit: Any, should_cancel: Any) -> dict[str, Any]:
-            import chem.reaction_animation as ra
+        out_ext = "mp4" if req.fmt == "mp4" else "gif"
+        out_path = str(out_dir / f"anim.{out_ext}")
+        traj_path = str(out_dir / f"traj.{req.traj_fmt}") if req.traj else ""
 
-            def _pc(frac: float, msg: str = "") -> None:
-                emit({"type": "stage", "message": str(msg), "fraction": float(frac)})
+        # 统一走 Service 层（api → services）：把请求参数映射为 Service 参数，
+        # 由 ReactionService 内部决定调用 generate_reaction_animation /
+        # generate_xyz_trajectory / generate_reaction_multispecies。
+        if req.traj:
+            fmt = "none"  # 仅生成轨迹，不生成可视化动画
+            out_path = ""
+        elif single:
+            fmt = req.fmt
+        else:
+            # 多物种可视化走 multispecies 分支（Service 内按 len(reactants) 自动分流）
+            fmt = req.fmt
 
-            if req.traj:
-                if single:
-                    return ra.generate_xyz_trajectory(
-                        req.reactants[0],
-                        req.products[0],
-                        str(out_dir / f"traj.{req.traj_fmt}"),
-                        steps=req.steps,
-                        mode=req.mode,
-                        smooth=req.smooth,
-                        trajectory_format=req.traj_fmt,
-                        progress_callback=_pc,
-                    )
-                return ra.generate_reaction_multispecies(
-                    list(req.reactants),
-                    list(req.products),
-                    str(out_dir / f"traj.{req.traj_fmt}"),
-                    steps=req.steps,
-                    mode=req.mode,
-                    smooth=req.smooth,
-                    trajectory_format=req.traj_fmt,
-                    translate_spacing=5.0,
-                    progress_callback=_pc,
-                )
-            out_path = str(out_dir / ("anim.mp4" if req.fmt == "mp4" else "anim.gif"))
-            if single:
-                return ra.generate_reaction_animation(
-                    req.reactants[0],
-                    req.products[0],
-                    out_path,
-                    steps=req.steps,
-                    mode=req.mode,
-                    smooth=req.smooth,
-                    fmt=req.fmt,
-                    fps=req.fps,
-                    ffmpeg_path=req.ffmpeg_path,
-                    progress_callback=_pc,
-                )
-            return ra.generate_reaction_multispecies(
-                list(req.reactants),
-                list(req.products),
-                out_path,
-                steps=req.steps,
-                mode=req.mode,
-                smooth=req.smooth,
-                fmt=req.fmt,
-                fps=req.fps,
-                ffmpeg_path=req.ffmpeg_path,
-                translate_spacing=5.0,
-                progress_callback=_pc,
-            )
+        service = _get_reaction_service()
+        service.start_animation(
+            reactants=list(req.reactants),
+            products=list(req.products),
+            out=out_path,
+            traj=traj_path,
+            mode=req.mode,
+            fmt=fmt,
+            resolution="hd",
+            traj_fmt=req.traj_fmt,
+            spacing=5.0,
+            steps=req.steps,
+            smooth=req.smooth,
+            ffmpeg=req.ffmpeg_path,
+            fps=req.fps,
+            scheduler_id=job_id,
+            pool="io",
+        )
 
-        jobs.submit(job_id, _work, pool="io")
         return JobSubmitResponse(job_id=job_id, status="queued", ws_url=f"/ws/jobs/{job_id}")
 
     # ---------------- 任务状态查询（轮询兜底） ----------------
@@ -457,6 +425,28 @@ app = create_app()
 
 
 # ---------------------------------------------------------------- 内部辅助
+
+
+def _get_quantum_service():
+    """返回绑定到 WebDispatcher（共享 ``api.jobs.jobs``）的 QuantumReactionService。
+
+    Service 复用桌面端的领域调用（``chem.quantum_reaction.run_reaction``），
+    本例不再直连 chem.*，从而消除 ``api/`` 与 ``services/`` 的重复。
+    """
+    from services import QuantumReactionService
+
+    from .dispatcher import WebDispatcher
+
+    return QuantumReactionService(scheduler=WebDispatcher(jobs))
+
+
+def _get_reaction_service():
+    """返回绑定到 WebDispatcher 的 ReactionService（反应动画/轨迹）。"""
+    from services import ReactionService
+
+    from .dispatcher import WebDispatcher
+
+    return ReactionService(scheduler=WebDispatcher(jobs))
 
 
 def _require_openbabel() -> None:

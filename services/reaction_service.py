@@ -179,7 +179,7 @@ class ReactionService(ServiceBase):
         on_done: Optional[Callable[[dict], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
     ):
-        def _work(_progress_callback=None, _log=None):
+        def _work(*, emit=None, should_cancel=None, progress_callback=None, log=None):  # noqa: ARG001
             return _do_preview(reactants, products, spacing, preview_path)
 
         self._run(_work, on_done=on_done, on_error=on_error)
@@ -202,8 +202,17 @@ class ReactionService(ServiceBase):
         fps,
         on_done: Optional[Callable[[dict], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
+        scheduler_id: Optional[str] = None,
+        pool: str = "io",
     ):
-        def _work(_progress_callback=None, _log=None):
+        def _work(*, emit=None, should_cancel=None, progress_callback=None, log=None):  # noqa: ARG001
+            def _pc(frac: float, msg: str = "") -> None:
+                # 优先调用方注入的 progress_callback；否则走统一 emit 事件。
+                if progress_callback is not None:
+                    progress_callback(frac, msg)
+                if emit is not None:
+                    emit({"type": "stage", "message": str(msg), "fraction": float(frac)})
+
             return _do_generate(
                 reactants,
                 products,
@@ -218,7 +227,10 @@ class ReactionService(ServiceBase):
                 smooth=smooth,
                 ffmpeg=ffmpeg,
                 fps=fps,
-                progress_callback=_progress_callback,
+                progress_callback=_pc,
             )
 
-        self._run(_work, on_done=on_done, on_error=on_error)
+        kwargs = {}
+        if scheduler_id:
+            kwargs["dispatch_kwargs"] = {"job_id": scheduler_id, "pool": pool}
+        self._run(_work, on_done=on_done, on_error=on_error, **kwargs)

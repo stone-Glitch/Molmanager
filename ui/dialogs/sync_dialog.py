@@ -160,12 +160,12 @@ class DiffSyncDialog(ThemedDialog):
             return left, right
 
         def _run_copy(direction, names, left, right):
-            def task(**kwargs):
-                direction(names, left, right)
-                app.after(0, _do_compare)
-                app.after(0, lambda: controller.scan_files())
+            def _after(_r=None):
+                _do_compare()
+                controller.scan_files()
 
-            app.helpers.run_task(task)
+            # 迁移至 Service 层：统一经共享调度器派发
+            app.services.sync.copy(direction, names, left, right, on_done=_after)
 
         def _only_left_copy_right():
             names = _get_selected_names(tv_left)
@@ -248,12 +248,11 @@ class DiffSyncDialog(ThemedDialog):
                 return
             left, right = _require_dirs()
 
-            def task(**kwargs):
-                model.sync_overwrite_left_to_right(names, left, right)
-                app.after(0, _do_compare)
-                app.after(0, lambda: controller.scan_files())
+            def _after(_r=None):
+                _do_compare()
+                controller.scan_files()
 
-            app.helpers.run_task(task)
+            app.services.sync.overwrite(model.sync_overwrite_left_to_right, names, left, right, on_done=_after)
 
         def _diff_overwrite_left():
             names = _get_selected_names(tv_diff)
@@ -266,12 +265,11 @@ class DiffSyncDialog(ThemedDialog):
                 return
             left, right = _require_dirs()
 
-            def task(**kwargs):
-                model.sync_overwrite_right_to_left(names, left, right)
-                app.after(0, _do_compare)
-                app.after(0, lambda: controller.scan_files())
+            def _after(_r=None):
+                _do_compare()
+                controller.scan_files()
 
-            app.helpers.run_task(task)
+            app.services.sync.overwrite(model.sync_overwrite_right_to_left, names, left, right, on_done=_after)
 
         btn_diff_frame = ttk.Frame(tab_diff)
         btn_diff_frame.pack(fill=tk.X, pady=8)
