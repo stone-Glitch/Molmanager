@@ -3,6 +3,36 @@
 本文件记录 MolManager 每个版本值得注意的变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.0] - 2026-09-13
+
+工程结构优化版本：引入 Service 业务编排层，把逻辑从 UI/对话框中抽离，并修复两处真实耦合 bug。
+功能行为零变更，全量测试 301 → 311（新增 10 个 Service 层验收用例）。
+
+### 重构（Refactored）
+
+- **新增 `services/` 业务编排层（仿 `chem/quantum_reaction/runner.py` 回调范式）**：
+  `ServiceBase` 统一 `run_async` 派发（框架无关、禁止 `import ui.*`）；
+  `QuantumReactionService` / `AdvancedToolsService` / `ReactionService` 三个试点 Service，
+  收口量子反应能计算、高级工具后台任务、反应动画生成三大领域的调用与派发
+- **三个对话框迁移至 Service 层**：`quantum_reaction_dialog` / `advanced_tools_dialog` /
+  `reaction_dialog` 不再直接碰 `task_manager.run_async` / `helpers.run_task`，改为经
+  `app.services.*` 调度；`core/view.py` 的 `MainView` 装配 `self.services`（复用共享线程池）
+- **打包修正**：`pyproject.toml` 的 `packages.find` 追加 `"services*"`，修复安装版漏包
+
+### 修复（Fixed）
+
+- **Bug1（高级工具自建线程池）**：`advanced_tools_dialog` 原先 `TaskManager(app, controller=None)`
+  自建实例、与主窗口线程池彼此独立、取消状态无法互通；现统一复用 `app.task_manager` 共享实例
+- **Bug2（全局状态污染）**：`reaction_dialog` 原先把动画状态写到 `app._anim_dialog/_anim_state/
+  _anim_r_list/_anim_p_list/_anim_spacing_var`，污染 `MainView` 命名空间（全仓无读取点）；现
+  状态已由 `SimpleNamespace st` 收敛，不再挂到 `app`
+
+### 已知问题（Known）
+
+- `ui/dialogs/analytics_dialog.py` 仍存在同类「自建 `TaskManager(app, controller)`」写法（非本次试点范围），
+  留待后续统一迁移
+- 量子反应对话框仍走 `helpers.run_task` 的旧式 `set_cancel_visible` 语义由 Service 调用方手动保持
+
 ## [1.2.0] - 2026-09-06
 
 一轮「先实测加固、再重构、后视觉精修」的工程质量版本：功能行为零变更，测试函数 157 → 279，
