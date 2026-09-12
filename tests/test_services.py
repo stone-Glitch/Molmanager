@@ -11,11 +11,9 @@ from __future__ import annotations
 import pathlib
 from unittest.mock import patch
 
-import pytest
-
 from services.advanced_tools_service import AdvancedToolsService
 from services.quantum_reaction_service import QuantumReactionService
-from services.reaction_service import ReactionService, _do_generate, _do_preview
+from services.reaction_service import ReactionService
 
 
 class FakeFuture:
