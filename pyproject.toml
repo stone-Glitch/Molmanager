@@ -51,7 +51,7 @@ molmanager = "main:main"
 py-modules = ["main"]
 
 [tool.setuptools.packages.find]
-include = ["core*", "ui*", "chem*", "utils*", "api*"]
+include = ["core*", "ui*", "chem*", "utils*", "api*", "services*"]
 # 排除全角命名的运维脚本（更新.py）与任何构建产物
 exclude = ["tests*", "build*", "dist*", "更新*"]
 

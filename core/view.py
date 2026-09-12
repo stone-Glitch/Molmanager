@@ -6,6 +6,7 @@
 import sys
 import tkinter as tk
 from tkinter import ttk
+from types import SimpleNamespace
 
 from core.controller import Controller
 from core.task_manager import TaskManager
@@ -175,6 +176,19 @@ class MainView(*_DND_BASES):
             # 核心组件（顺序很重要）
             self.task_manager = TaskManager(self)
             self.task_manager.start()
+
+            # Service 层：业务编排收口，复用共享 task_manager（不另开线程池）
+            from services import (
+                AdvancedToolsService,
+                QuantumReactionService,
+                ReactionService,
+            )
+
+            self.services = SimpleNamespace(
+                quantum=QuantumReactionService(self.task_manager),
+                advanced=AdvancedToolsService(self.task_manager),
+                reaction=ReactionService(self.task_manager),
+            )
 
             # 1. 先创建 AppHelpers
             self.helpers = AppHelpers(self)
