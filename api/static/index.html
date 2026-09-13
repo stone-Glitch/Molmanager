@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MolManager · Web</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --panel: #171d24;
+    --panel-2: #1e262f;
+    --border: #2b3540;
+    --fg: #e6edf3;
+    --muted: #8b98a5;
+    --accent: #4c9aff;
+    --accent-2: #2f7ce0;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 0 48px;
+    background: var(--bg); color: var(--fg);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 18px 24px; border-bottom: 1px solid var(--border); background: var(--panel);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: .2px; }
+  header .ver { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+  header a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  header a:hover { text-decoration: underline; }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 22px 24px; display: grid; gap: 18px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  }
+  .panel > h2 {
+    margin: 0; padding: 12px 16px; font-size: 13px; font-weight: 600; letter-spacing: .4px;
+    text-transform: uppercase; color: var(--muted);
+    background: var(--panel-2); border-bottom: 1px solid var(--border);
+  }
+  .body { padding: 16px; display: grid; gap: 14px; }
+  .row { display: grid; gap: 12px; }
+  .row.two { grid-template-columns: 1fr 1fr; }
+  .row.three { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 720px) { .row.two, .row.three { grid-template-columns: 1fr; } }
+
+  label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%; padding: 9px 10px; border-radius: 7px;
+    border: 1px solid var(--border); background: #0b1014; color: var(--fg);
+    font: inherit; font-family: var(--mono); font-size: 13px;
+  }
+  textarea { resize: vertical; min-height: 64px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+  .tabs { display: flex; gap: 4px; padding: 4px; background: var(--panel-2); border-radius: 8px; width: fit-content; }
+  .tabs button {
+    border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  }
+  .tabs button[aria-selected=true] { background: var(--accent); color: #fff; }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button.primary, button.ghost, button.danger {
+    border-radius: 7px; padding: 9px 16px; font: inherit; font-size: 13px; cursor: pointer;
+    border: 1px solid transparent; transition: background .12s, border-color .12s;
+  }
+  button.primary { background: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: var(--accent-2); }
+  button.ghost { background: transparent; color: var(--fg); border-color: var(--border); }
+  button.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button.danger { background: transparent; color: var(--err); border-color: #5c2b2b; }
+  button.danger:hover:not(:disabled) { background: #3a1d1d; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  .drop {
+    border: 1.5px dashed var(--border); border-radius: 9px; padding: 20px; text-align: center;
+    color: var(--muted); cursor: pointer; background: #0b1014; font-size: 13px;
+  }
+  .drop:hover, .drop.over { border-color: var(--accent); color: var(--accent); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px;
+    background: #0b1014; border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px;
+  }
+  .chip b { color: var(--ok); font-weight: 600; }
+  .chip button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; }
+  .chip button:hover { color: var(--err); }
+
+  .bar { height: 7px; background: #0b1014; border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+  .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width .25s; }
+
+  .log {
+    font-family: var(--mono); font-size: 12px; line-height: 1.6;
+    background: #080c10; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  .log .l-error { color: var(--err); }
+  .log .l-warning { color: var(--warn); }
+  .log .l-stage { color: var(--accent); }
+  .log .l-done { color: var(--ok); }
+
+  .status { font-size: 12px; color: var(--muted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .badge { padding: 2px 9px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border); }
+  .badge.running { color: var(--accent); border-color: var(--accent); }
+  .badge.done { color: var(--ok); border-color: var(--ok); }
+  .badge.error { color: var(--err); border-color: var(--err); }
+  .badge.cancelled { color: var(--warn); border-color: var(--warn); }
+
+  pre.result {
+    margin: 0; font-family: var(--mono); font-size: 12px; background: #080c10;
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+    max-height: 340px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  }
+  .hint { font-size: 12px; color: var(--muted); }
+  .hint code { font-family: var(--mono); color: var(--fg); background: #0b1014; padding: 1px 5px; border-radius: 4px; }
+  .hide { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>MolManager · Web</h1>
+  <span class="ver" id="ver"></span>
+  <span class="spacer"></span>
+  <a href="/docs" target="_blank" rel="noopener">API 文档 ↗</a>
+</header>
+
+<main>
+  <!-- 后端能力 -->
+  <section class="panel">
+    <h2>后端能力</h2>
+    <div class="body">
+      <div class="status" id="caps"><span class="hint">探测中…</span></div>
+    </div>
+  </section>
+
+  <!-- 文件输入 -->
+  <section class="panel">
+    <h2>1 · 文件 / SMILES</h2>
+    <div class="body">
+      <div class="tabs" role="tablist" id="modeTabs">
+        <button role="tab" data-mode="smiles" aria-selected="true">SMILES</button>
+        <button role="tab" data-mode="file" aria-selected="false">文件上传</button>
+      </div>
+
+      <div id="paneSmiles" class="row">
+        <label>SMILES 字符串
+          <input type="text" id="smiles" value="CC(=O)Oc1ccccc1C(=O)O" spellcheck="false">
+        </label>
+        <span class="hint">用于「描述符计算」与「PSI4 反应能」的自定义反应物 / 产物。</span>
+      </div>
+
+      <div id="paneFile" class="row hide">
+        <div class="drop" id="drop">点击或拖拽文件到此处上传<br>
+          <span class="hint">支持 .xyz / .mol / .sdf / .pdb / .smi / .mol2，单文件 ≤ 50 MiB</span>
+        </div>
+        <input type="file" id="fileInput" class="hide" accept=".xyz,.mol,.sdf,.pdb,.smi,.mol2">
+        <div id="fileChips" class="status"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 计算 -->
+  <section class="panel">
+    <h2>2 · 执行计算</h2>
+    <div class="body">
+      <div class="row three">
+        <label>操作
+          <select id="op">
+            <option value="descriptors">描述符（MW/logP/TPSA）</option>
+            <option value="psi4">PSI4 反应能</option>
+            <option value="reaction">反应动画 / 轨迹</option>
+          </select>
+        </label>
+        <label id="lblMethod">方法 (method)
+          <input type="text" id="method" value="hf">
+        </label>
+        <label id="lblBasis">基组 (basis)
+          <input type="text" id="basis" value="sto-3g">
+        </label>
+      </div>
+
+      <div class="row two" id="rowPsi4">
+        <label>反应物 SMILES（逗号分隔）
+          <input type="text" id="reactantsSmiles" value="O=O">
+        </label>
+        <label>产物 SMILES（逗号分隔）
+          <input type="text" id="productsSmiles" value="[O][O]">
+        </label>
+      </div>
+
+      <div class="row two" id="rowReaction">
+        <label>动画格式
+          <select id="fmt">
+            <option value="gif">gif</option>
+            <option value="mp4">mp4</option>
+            <option value="none">none（仅轨迹）</option>
+          </select>
+        </label>
+        <label>插值步数 / 是否生成轨迹
+          <input type="text" id="steps" value="30">
+        </label>
+      </div>
+      <label id="lblTraj" class="hide"><input type="checkbox" id="traj"> 同时生成 IQmol 轨迹</label>
+
+      <div class="actions">
+        <button class="primary" id="run">开始计算</button>
+        <button class="danger" id="cancel" disabled>取消</button>
+        <span class="hint" id="runHint"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 进度与结果 -->
+  <section class="panel">
+    <h2>3 · 进度与结果</h2>
+    <div class="body">
+      <div class="status">
+        <span>任务</span><span class="badge" id="jobBadge">—</span>
+        <span class="hint" id="jobId"></span>
+      </div>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="log" id="log"></div>
+      <pre class="result hide" id="result"></pre>
+      <div id="images" class="row"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let uploads = [];        // [{file_id, name, size}]
+  let ws = null;
+  let currentJob = null;
+
+  // ---------- 工具 ----------
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const fmtSize = (n) => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KiB" : (n / 1048576).toFixed(2) + " MiB";
+
+  function logLine(text, cls) {
+    const el = document.createElement("div");
+    if (cls) el.className = cls;
+    el.textContent = text;
+    const box = $("log");
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+  }
+  const clearLog = () => { $("log").innerHTML = ""; };
+
+  function setBadge(state) {
+    const b = $("jobBadge");
+    b.className = "badge" + (state ? " " + state : "");
+    b.textContent = ({ running: "运行中", done: "已完成", error: "失败", cancelled: "已取消" })[state] || "—";
+  }
+  const setBar = (f) => { $("bar").style.width = Math.max(0, Math.min(1, f)) * 100 + "%"; };
+
+  async function api(path, opts) {
+    const res = await fetch(path, opts);
+    let body = null;
+    try { body = await res.json(); } catch (_) { /* 非 JSON 响应 */ }
+    if (!res.ok) {
+      const detail = (body && (body.detail || body.message)) || res.status + " " + res.statusText;
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    return body;
+  }
+
+  // ---------- 能力探测 ----------
+  async function loadCaps() {
+    try {
+      const h = await api("/health");
+      $("ver").textContent = "v" + (h.version || "?");
+      const c = h.capabilities || {};
+      const mark = (ok, label) => `<span class="badge" style="color:var(--${ok ? "ok" : "muted"});border-color:var(--${ok ? "ok" : "border"})">${label} ${ok ? "✓" : "✗"}</span>`;
+      $("caps").innerHTML =
+        mark(!!c.openbabel || !!c.obabel_cli, "OpenBabel") +
+        mark(!!c.pybel, "pybel") +
+        mark(!!c.psi4, "PSI4") +
+        `<span class="hint">${esc(c.openbabel_version || "版本未知")}${c.psi4_version ? " · PSI4 " + esc(c.psi4_version) : ""}</span>`;
+    } catch (err) {
+      $("caps").innerHTML = `<span class="badge error">健康检查失败</span><span class="hint">${esc(err.message)}</span>`;
+    }
+  }
+
+  // ---------- 上传 ----------
+  function renderChips() {
+    const box = $("fileChips");
+    box.innerHTML = "";
+    uploads.forEach((u, i) => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.innerHTML = `<b>${esc(u.name)}</b><span>${fmtSize(u.size)}</span>`;
+      const del = document.createElement("button");
+      del.textContent = "×";
+      del.title = "移除";
+      del.onclick = () => { uploads.splice(i, 1); renderChips(); };
+      chip.appendChild(del);
+      box.appendChild(chip);
+    });
+  }
+
+  async function doUpload(file) {
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    logLine("↑ 上传 " + file.name + " …", "l-stage");
+    try {
+      const r = await api("/files/upload", { method: "POST", body: fd });
+      uploads.push({ file_id: r.file_id, name: r.name, size: r.size });
+      renderChips();
+      logLine("✓ 上传成功 file_id=" + r.file_id, "l-done");
+    } catch (err) {
+      logLine("✗ 上传失败：" + err.message, "l-error");
+    }
+  }
+
+  // ---------- 模式切换 ----------
+  function setMode(mode) {
+    document.querySelectorAll("#modeTabs button").forEach((b) => {
+      b.setAttribute("aria-selected", String(b.dataset.mode === mode));
+    });
+    $("paneSmiles").classList.toggle("hide", mode !== "smiles");
+    $("paneFile").classList.toggle("hide", mode !== "file");
+    syncHint();
+  }
+
+  // ---------- 操作切换 ----------
+  function syncOp() {
+    const op = $("op").value;
+    $("rowPsi4").classList.toggle("hide", op !== "psi4");
+    $("rowReaction").classList.toggle("hide", op !== "reaction");
+    $("lblTraj").classList.toggle("hide", op !== "reaction");
+    const needsChem = op !== "descriptors";
+    $("lblMethod").classList.toggle("hide", !needsChem);
+    $("lblBasis").classList.toggle("hide", !needsChem);
+    if (op === "descriptors") $("steps").parentElement.classList.add("hide");
+    else $("steps").parentElement.classList.remove("hide");
+    syncHint();
+  }
+
+  function syncHint() {
+    const op = $("op").value;
+    const fileMode = $("paneFile").classList.contains("hide") === false;
+    let msg = "";
+    if (op === "descriptors") msg = fileMode ? "用第一个已上传文件计算描述符" : "用 SMILES 计算描述符";
+    else if (op === "psi4") msg = "反应物/产物须为 SMILES";
+    else msg = fileMode ? "用已上传的 XYZ 文件生成动画（反应物=第 1 个，产物=第 2 个）" : "反应动画需要 XYZ 文件，请切到「文件上传」";
+    $("runHint").textContent = msg;
+  }
+
+  // ---------- 提交与订阅 ----------
+  function connectWs(jobId) {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    ws = new WebSocket(`${proto}//${location.host}/ws/jobs/${jobId}`);
+    ws.onmessage = (ev) => {
+      let e = null;
+      try { e = JSON.parse(ev.data); } catch (_) { return; }
+      if (e.type === "stage") {
+        if (typeof e.fraction === "number") setBar(e.fraction);
+        const pct = typeof e.fraction === "number" ? ` [${Math.round(e.fraction * 100)}%]` : "";
+        logLine("▸ " + (e.message || "") + pct, "l-stage");
+      } else if (e.type === "log") {
+        logLine("· " + (e.message || ""), e.level === "error" ? "l-error" : e.level === "warning" ? "l-warning" : "");
+      } else if (e.type === "done") {
+        setBar(1); setBadge("done"); finish();
+        logLine("✔ 完成", "l-done");
+        showResult(e.result);
+      } else if (e.type === "error") {
+        setBadge("error"); finish();
+        logLine("✘ 失败：" + (e.error || e.message || ""), "l-error");
+      } else if (e.type === "cancelled") {
+        setBadge("cancelled"); finish();
+        logLine("⊘ 已取消", "l-warning");
+      }
+    };
+    ws.onerror = () => logLine("WebSocket 连接异常", "l-error");
+    ws.onclose = () => { if (currentJob) finish(); };
+  }
+
+  function finish() {
+    currentJob = null;
+    $("run").disabled = false;
+    $("cancel").disabled = true;
+    if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+    loadCaps();
+  }
+
+  function showResult(result) {
+    const pre = $("result");
+    const images = $("images");
+    images.innerHTML = "";
+    if (result == null) { pre.classList.add("hide"); return; }
+    pre.classList.remove("hide");
+    pre.textContent = JSON.stringify(result, null, 2);
+    // 若结果里带了可访问的相对/本地文件路径，尝试作为静态图展示（尽力而为）。
+    const visit = (o) => {
+      if (!o) return;
+      if (typeof o === "string") return;
+      if (Array.isArray(o)) { o.forEach(visit); return; }
+      if (typeof o === "object") {
+        for (const [k, v] of Object.entries(o)) {
+          if (typeof v === "string" && /\.(gif|mp4|png)$/i.test(v) && v.startsWith("/")) {
+            const el = document.createElement(v.endsWith(".mp4") ? "video" : "img");
+            el.src = v; el.controls = v.endsWith(".mp4");
+            el.style.maxWidth = "100%"; el.style.borderRadius = "8px"; el.style.border = "1px solid var(--border)";
+            images.appendChild(el);
+          } else visit(v);
+        }
+      }
+    };
+    visit(result);
+  }
+
+  async function run() {
+    const op = $("op").value;
+    const fileMode = !$("paneFile").classList.contains("hide");
+    $("result").classList.add("hide");
+    $("images").innerHTML = "";
+    clearLog();
+    setBar(0);
+    $("run").disabled = true;
+
+    try {
+      let jobId;
+      if (op === "descriptors") {
+        // 同步端点，直接拿结果
+        setBadge("running");
+        const payload = fileMode
+          ? { file_id: (uploads[0] || {}).file_id }
+          : { smiles: $("smiles").value.trim() };
+        if (fileMode && !payload.file_id) throw new Error("请先上传一个文件");
+        if (!fileMode && !payload.smiles) throw new Error("请输入 SMILES");
+        logLine("POST /descriptors", "l-stage");
+        const r = await api("/descriptors", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        setBar(1); setBadge(r.success ? "done" : "error");
+        showResult(r.descriptors);
+        logLine(r.success ? "✔ " + (r.message || "完成") : "✘ " + (r.message || "失败"), r.success ? "l-done" : "l-error");
+        finish();
+        return;
+      }
+
+      if (op === "psi4") {
+        const reactants = $("reactantsSmiles").value.split(",").map((s) => s.trim()).filter(Boolean);
+        const products = $("productsSmiles").value.split(",").map((s) => s.trim()).filter(Boolean);
+        if (!reactants.length || !products.length) throw new Error("反应物与产物都要填");
+        logLine("POST /psi4/compute", "l-stage");
+        const r = await api("/psi4/compute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            custom: { reactants, products },
+            method: $("method").value.trim() || "hf",
+            basis: $("basis").value.trim() || "sto-3g",
+            n_frames: Math.max(1, Math.min(200, parseInt($("steps").value, 10) || 15)),
+          }),
+        });
+        jobId = r.job_id;
+      } else {
+        if (!fileMode) throw new Error("反应动画需要 XYZ 文件，请切到「文件上传」");
+        if (uploads.length < 2) throw new Error("请至少上传 2 个 XYZ 文件（反应物 + 产物）");
+        const fmt = $("fmt").value;
+        logLine("POST /reaction/animate", "l-stage");
+        const r = await api("/reaction/animate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reactants: [uploads[0].file_id],
+            products: [uploads[1].file_id],
+            fmt,
+            steps: Math.max(1, Math.min(500, parseInt($("steps").value, 10) || 30)),
+            traj: $("traj").checked,
+          }),
+        });
+        jobId = r.job_id;
+      }
+
+      currentJob = jobId;
+      $("cancel").disabled = false;
+      setBadge("running");
+      $("jobId").textContent = jobId;
+      logLine("job_id = " + jobId + "，订阅进度…", "l-stage");
+      connectWs(jobId);
+    } catch (err) {
+      setBadge("error");
+      logLine("✘ " + err.message, "l-error");
+      finish();
+    }
+  }
+
+  // ---------- 事件绑定 ----------
+  document.querySelectorAll("#modeTabs button").forEach((b) => {
+    b.onclick = () => setMode(b.dataset.mode);
+  });
+  $("op").onchange = syncOp;
+  $("drop").onclick = () => $("fileInput").click();
+  $("fileInput").onchange = (ev) => {
+    for (const f of ev.target.files) doUpload(f);
+    ev.target.value = "";
+  };
+  ["dragenter", "dragover"].forEach((t) =>
+    $("drop").addEventListener(t, (ev) => { ev.preventDefault(); $("drop").classList.add("over"); })
+  );
+  ["dragleave", "drop"].forEach((t) =>
+    $("drop").addEventListener(t, (ev) => { ev.preventDefault(); $("drop").classList.remove("over"); })
+  );
+  $("drop").addEventListener("drop", (ev) => {
+    for (const f of ev.dataTransfer.files) doUpload(f);
+  });
+  $("run").onclick = run;
+  $("cancel").onclick = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action: "cancel" }));
+      logLine("→ 已发送取消请求", "l-warning");
+    }
+  };
+
+  setMode("smiles");
+  syncOp();
+  loadCaps();
+})();
+</script>
+</body>
+</html>

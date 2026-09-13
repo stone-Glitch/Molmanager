@@ -298,9 +298,14 @@ def test_webdispatcher_cancel_by_job_id() -> None:
     assert mgr.get_status("svc-cancel")["status"] == "cancelled"
 
 
-def test_reaction_animate_routes_through_service(client: TestClient) -> None:
-    """POST /reaction/animate 单物种分支应经 ReactionService 落到领域函数。"""
+def test_reaction_animate_routes_through_service(client: TestClient, monkeypatch, tmp_path) -> None:
+    """POST /reaction/animate 单物种分支应经 ReactionService 落到领域函数。
+
+    阶段3 起 reactants/products 是 file_id 或上传根内路径，故此用例改为先把文件
+    放进上传根目录（``api.uploads.UPLOAD_ROOT``）再引用。
+    """
     import chem.reaction_animation as ra
+    from api import uploads
 
     seen = {}
 
@@ -308,15 +313,20 @@ def test_reaction_animate_routes_through_service(client: TestClient) -> None:
         seen["out"] = str(out)
         return {"success": True, "output": str(out), "n_frames": 3}
 
+    # 在上传根内造两个合法文件。
+    fid_a = uploads.save_upload("a.xyz", b"2\na b\nH 0 0 0\nH 0 0 0.74\n")
+    fid_b = uploads.save_upload("b.xyz", b"2\na b\nH 0 0 0\nH 0 0 0.80\n")
+
     monkeypatch_orig = ra.generate_reaction_animation
     ra.generate_reaction_animation = fake_anim
     try:
         r = client.post(
             "/reaction/animate",
-            json={"reactants": ["a.xyz"], "products": ["b.xyz"], "fmt": "gif"},
+            json={"reactants": [fid_a], "products": [fid_b], "fmt": "gif"},
         )
         assert r.status_code == 200
         job_id = r.json()["job_id"]
+        st = None
         for _ in range(200):
             st = jobs.get_status(job_id)
             if st and st["status"] in ("done", "error", "cancelled"):

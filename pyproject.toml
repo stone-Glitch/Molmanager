@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "molmanager"
-version = "1.5.0"
+version = "1.6.0"
 description = "MolManager · 分子管理器：计算产物归档、批量格式转换、PSI4 量化计算与分子检索"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -34,6 +34,7 @@ api = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
     "websockets>=12",          # WebSocket 进度推送（uvicorn[standard] 已传递，显式声明更稳妥）
+    "python-multipart>=0.0.9", # POST /files/upload 的 multipart 解析（缺失时该端点返回 503）
 ]
 # 可选：改用 RDKit 指纹（默认走 OpenBabel FP2，无需安装）
 rdkit = ["rdkit>=2024.3.1"]

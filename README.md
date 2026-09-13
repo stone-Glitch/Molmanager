@@ -3,7 +3,7 @@
 基于 **Tkinter** 的桌面分子管理工具：统一管理计算产物文件、批量格式转换、调用
 **PSI4** 做量化计算、**OpenBabel** 做结构渲染与描述符，并生成反应动画字幕。
 
-> 当前版本：**1.5.0**
+> 当前版本：**1.6.0**
 > 技术栈：Python 3.12 · Tkinter · PSI4 · OpenBabel · NumPy/SciPy/Matplotlib · FastAPI（可选）
 > 运行环境固定见 `environment.yml`（conda-forge，含 psi4 / openbabel C++ 扩展）。
 
@@ -67,16 +67,32 @@ pip install -e ".[dev]"     # 开发：pytest / ruff / mypy
 ```bash
 uvicorn api.server:app --reload --port 8000
 # 交互式文档： http://127.0.0.1:8000/docs
+# 内置前端单页： http://127.0.0.1:8000/   （上传 → 计算 → WebSocket 进度）
 ```
 
 | 端点 | 说明 | 需要 OpenBabel |
 | --- | --- | --- |
+| `GET /` | 内置的最小 Web 前端（上传 / SMILES → 计算 → 实时进度） | 否 |
 | `GET /health` | 健康检查 + 后端能力探测（`?refresh=true` 强制重探） | 否 |
+| `POST /files/upload` | 上传分子文件（multipart），返回受控 `file_id` 供计算端点引用 | 否 |
 | `POST /inchikey` | SMILES → InChIKey，支持批量，单条失败不影响整体 | 是（pybel） |
-| `POST /descriptors` | 分子描述符：MW / logP / TPSA / HBD / HBA / 环数 …，入参可为 `smiles` 或 `path` | 是（pybel） |
+| `POST /descriptors` | 分子描述符：MW / logP / TPSA / HBD / HBA / 环数 …，入参可为 `smiles` / `file_id` / `path` | 是（pybel） |
 | `POST /substructure` | SMARTS 子结构检索 | 是 |
 | `POST /similarity` | 指纹相似性检索（默认 FP2，可选 threshold / top_n） | 是 |
-| `POST /query` | 化学条件过滤（`MW>200 logP<3` 这类串），纯 Python | 否 |
+| `POST /psi4/compute` | PSI4 量子反应能计算（后台任务，返回 `job_id`） | 否（需 PSI4） |
+| `POST /reaction/animate` | 反应动画 / IQmol 轨迹（`reactants`/`products` 传 `file_id`） | 是 |
+| `GET /jobs/{job_id}` | 任务状态轮询（WebSocket 不可用时的兜底） | 否 |
+| `WS /ws/jobs/{job_id}` | 任务进度实时推送，客户端可发 `{"action":"cancel"}` 取消 | 否 |
+
+**文件引用与路径安全（1.6.0 起）**：计算端点不再接受任意服务端绝对路径。
+推荐流程是 `POST /files/upload` 拿 `file_id` 再引用；上传内容落在进程内受控临时根
+（`<tmp>/mm_upload_*`，随进程退出自动清理），`file_id` 的目录部分由服务端 uuid 生成，
+用户输入永不参与目录拼接。裸 `path` 默认也收紧为「上传根内」，越界 / 符号链接返回 **403**、
+不存在返回 **404**。确需访问服务端任意路径时，显式设环境变量
+`MOLMANAGER_ALLOW_SERVER_PATH=1` 作为逃生开关（默认关闭）。
+
+上传依赖 `python-multipart`（已含在 `.[api]`）；缺失时 `/files/upload` 返回 **503 + 安装指引**，
+其余端点不受影响。
 
 后端缺 OpenBabel 时，需要它的端点返回 **503 + 安装指引**，`/health` 与 `/query` 照常可用。
 
@@ -145,4 +161,4 @@ pytest tests/ -q                               # 单元测试
 - **已知欠账**：历史代码尚未统一跑过 `ruff format`（全量格式化约 1.9 万行 diff），
   CI 中该步骤目前只提示不阻塞，待专项整改。
 
-详见 `CHANGELOG.md`（1.5.0 记录了 Web 迁移阶段2：Service 层全覆盖 + api→services 统一）。
+详见 `CHANGELOG.md`（1.6.0 记录了 Web 迁移阶段3：文件上传 + 路径安全校验 + 最小 Web 前端）。

@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import os
 import tempfile
 import traceback
@@ -24,14 +25,16 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-    from fastapi.responses import JSONResponse
+    from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+    from fastapi.responses import FileResponse, JSONResponse
+    from fastapi.staticfiles import StaticFiles
 except ImportError as _exc:  # pragma: no cover - 取决于是否安装了 [api] 依赖
     raise ImportError(f'接口层需要额外依赖，请先安装：\n    pip install -e ".[api]"\n（原始错误：{_exc}）') from _exc
 
+from utils.path_utils import resolve_secure_input_file
 from utils.version import APP_DISPLAY_NAME, APP_NAME, get_full_version
 
-from . import capabilities
+from . import capabilities, uploads
 from .jobs import jobs
 from .models import (
     Capabilities,
@@ -53,7 +56,15 @@ from .models import (
     SimilarityResponse,
     SubstructureRequest,
     SubstructureResponse,
+    UploadResponse,
 )
+
+#: 前端静态资源目录（``api/static/``）。注意不要命名为 ``templates`` / ``temp*``，
+#: 否则会被 ``.dockerignore`` 的通配规则排除。
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+#: 显式逃生开关：设为 1/true/yes 时，裸 ``path`` 允许指向上传根之外（默认关闭）。
+ALLOW_SERVER_PATH_ENV = "MOLMANAGER_ALLOW_SERVER_PATH"
 
 # ---------------------------------------------------------------- 应用
 
@@ -76,6 +87,49 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
     )
+
+    # ---------------- 前端单页 ----------------
+    @application.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        """返回内联 JS/CSS 的最小前端单页（上传 → 计算 → WebSocket 进度）。"""
+        page = STATIC_DIR / "index.html"
+        if not page.is_file():
+            raise HTTPException(status_code=404, detail="前端页面缺失（api/static/index.html）")
+        return FileResponse(str(page), media_type="text/html")
+
+    # 只把 /static 挂在子路径上：**不要**用 StaticFiles(html=True) 挂根，
+    # 否则会抢占 /docs、/redoc、/openapi.json 的路由。
+    if STATIC_DIR.is_dir():
+        application.mount("/static", StaticFiles(directory=str(STATIC_DIR), check_dir=False), name="static")
+
+    # ---------------- 文件上传 ----------------
+    @application.post(
+        "/files/upload",
+        response_model=UploadResponse,
+        responses={400: {"model": ErrorResponse}, 413: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
+        summary="上传分子文件，返回受控 file_id（供计算端点引用）",
+        tags=["文件"],
+    )
+    async def upload_file(
+        file: UploadFile = File(..., description="分子文件（xyz/mol/sdf/pdb/smi/mol2）"),
+    ) -> UploadResponse:
+        _require_multipart()
+        data = await file.read()
+        if len(data) > uploads.MAX_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"文件过大：{len(data)} 字节，上限 {uploads.MAX_BYTES} 字节（50 MiB）",
+            )
+        try:
+            file_id = uploads.save_upload(file.filename, data)
+        except uploads.UploadError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return UploadResponse(
+            success=True,
+            file_id=file_id,
+            name=uploads.sanitize_name(file.filename),
+            size=len(data),
+        )
 
     # ---------------- 健康检查 ----------------
     @application.get(
@@ -155,20 +209,26 @@ def create_app() -> FastAPI:
         _require_pybel()
         from chem.openbabel_utils import calculate_descriptors
 
-        if not req.smiles and not req.path:
-            raise HTTPException(status_code=400, detail="smiles 与 path 必须提供一个")
+        if not req.smiles and not req.file_id and not req.path:
+            raise HTTPException(status_code=400, detail="smiles、file_id 与 path 必须提供一个")
+        if req.smiles and (req.file_id or req.path):
+            raise HTTPException(status_code=400, detail="smiles 与 file_id / path 不能同时提供，二选一")
 
         # 给了 SMILES：落到临时文件再走既有实现（底层 API 只吃路径）
         if req.smiles:
             tmp_path = _write_smiles_temp(req.smiles)
             source = "smiles"
             cleanup = True
+        elif req.file_id:
+            resolved = _resolve_ref(req.file_id, field="file_id")
+            tmp_path = str(resolved)
+            source = "file_id"
+            cleanup = False
         else:
-            tmp_path = str(req.path)
+            resolved = _resolve_ref(req.path, field="path")
+            tmp_path = str(resolved)
             source = "path"
             cleanup = False
-            if not os.path.isfile(tmp_path):
-                raise HTTPException(status_code=404, detail=f"文件不存在：{tmp_path}")
 
         try:
             result = calculate_descriptors(tmp_path)
@@ -311,7 +371,12 @@ def create_app() -> FastAPI:
     def reaction_animate(req: ReactionAnimateRequest) -> JobSubmitResponse:
         job_id = uuid.uuid4().hex
         out_dir = Path(tempfile.mkdtemp(prefix="mm_rxn_"))
-        single = len(req.reactants) == 1 and len(req.products) == 1
+        if not req.reactants or not req.products:
+            raise HTTPException(status_code=400, detail="reactants 与 products 都不能为空")
+        # 路径安全：逐个把 file_id / 路径解析为上传根内的真实文件，越界 / 穿越 / symlink 直接拒。
+        reactants = [str(_resolve_ref(ref, field="reactants")) for ref in req.reactants]
+        products = [str(_resolve_ref(ref, field="products")) for ref in req.products]
+        single = len(reactants) == 1 and len(products) == 1
 
         out_ext = "mp4" if req.fmt == "mp4" else "gif"
         out_path = str(out_dir / f"anim.{out_ext}")
@@ -331,8 +396,8 @@ def create_app() -> FastAPI:
 
         service = _get_reaction_service()
         service.start_animation(
-            reactants=list(req.reactants),
-            products=list(req.products),
+            reactants=reactants,
+            products=products,
             out=out_path,
             traj=traj_path,
             mode=req.mode,
@@ -374,9 +439,7 @@ def create_app() -> FastAPI:
         try:
             # 未知任务：直接报错关闭，避免无限等待
             if jobs.get_status(job_id) is None:
-                await websocket.send_json(
-                    {"type": "error", "job_id": job_id, "error": f"未知 job_id: {job_id}"}
-                )
+                await websocket.send_json({"type": "error", "job_id": job_id, "error": f"未知 job_id: {job_id}"})
                 return
             while True:
                 # 接收客户端消息（支持取消）
@@ -493,6 +556,76 @@ def _require_psi4() -> None:
             "仅装了 OpenBabel 时，请用桌面版 GUI 执行该操作。"
         ),
     )
+
+
+def _require_multipart() -> None:
+    """multipart 解析依赖不可用时抛 503。
+
+    用 ``importlib.util.find_spec`` **惰性探测**：绝不能在模块顶层 import ``multipart``，
+    否则缺依赖时整个 API（含 ``/docs``）都起不来，与「依赖可缺省」的设计约定相悖。
+    """
+    if importlib.util.find_spec("multipart") is not None:
+        return
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            "后端缺少文件上传依赖（python-multipart），无法处理 multipart 请求。\n"
+            'pip  ：pip install "python-multipart>=0.0.9"\n'
+            '或整包装：pip install -e ".[api]"'
+        ),
+    )
+
+
+def _allow_server_path() -> bool:
+    """是否允许裸 ``path`` 指向上传根之外（默认关闭，需显式设环境变量）。"""
+    return os.environ.get(ALLOW_SERVER_PATH_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _resolve_ref(ref: str | None, *, field: str = "path") -> Path:
+    """把一个「文件引用」解析为服务端可读的绝对路径。
+
+    引用可以是：
+      - ``file_id``：``POST /files/upload`` 返回的句柄，解析到上传根内（强制白名单）；
+      - 上传根内的相对/绝对路径（默认）；
+      - 其它路径：仅当 ``MOLMANAGER_ALLOW_SERVER_PATH`` 显式开启时才允许。
+
+    抛出 ``HTTPException``：越界 / symlink → 403；不存在 → 404；其余 → 400。
+    """
+    if ref is None or not str(ref).strip():
+        raise HTTPException(status_code=400, detail=f"{field} 不能为空")
+    raw = str(ref).strip()
+
+    # 1) 先按 file_id 试（命中上传根本身就命中，未命中会抛 UploadError）。
+    fid_candidate = raw != Path(raw).name or "/" in raw or "\\" in raw
+    if not fid_candidate:
+        try:
+            return uploads.resolve_file_id(raw)
+        except uploads.UploadError as exc:
+            msg = str(exc)
+            # 上传根内确实没有这个 file_id 时，继续按「裸路径」逻辑处理。
+            if "不存在" not in msg:
+                raise HTTPException(status_code=403, detail=f"非法的 {field}（{raw}）：{msg}") from exc
+
+    # 2) 退化为裸路径：默认只允许上传根内。
+    root = uploads.upload_root()
+    p = Path(raw)
+    if not p.is_absolute():
+        # ⚠️ resolve_secure_input_file 对相对路径按 CWD 解析，故先拼绝对路径（按上传根）。
+        p = root / raw
+    allow_outside = _allow_server_path()
+    try:
+        return resolve_secure_input_file(
+            str(p),
+            base_dir=root,
+            allow_outside=allow_outside,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "越出" in msg or "符号链接" in msg or "不是普通文件" in msg:
+            raise HTTPException(status_code=403, detail=f"拒绝访问的 {field}（{raw}）：{msg}") from exc
+        if "不存在" in msg:
+            raise HTTPException(status_code=404, detail=f"{field} 对应的文件不存在：{raw}") from exc
+        raise HTTPException(status_code=400, detail=f"非法的 {field}（{raw}）：{msg}") from exc
 
 
 def _write_smiles_temp(smiles: str) -> str:

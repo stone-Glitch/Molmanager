@@ -3,6 +3,39 @@
 本文件记录 MolManager 每个版本值得注意的变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.6.0] - 2026-09-13
+
+Web 迁移阶段3（收官）：**文件上传 + 路径安全校验 + 最小 Web 前端**。补齐阶段1/2 遗留的两处路径安全缺口，新增受控上传通道与内置单页前端，并顺带修复一个长期潜伏的渲染路径 Bug。全量测试 343 → 406（新增 63 个验收用例）。
+
+### 新增（Added）
+
+- **文件上传（`api/uploads.py` + `POST /files/upload`）**：`multipart` 上传分子文件（`.xyz/.mol/.sdf/.pdb/.smi/.mol2`，单文件上限 50 MiB），返回受控 `file_id` 供计算端点引用。
+  - 上传根为进程内单例 `<tmp>/mm_upload_*`（`make_temp_dir` 创建，**随进程退出由 atexit 自动清理**）。
+  - `file_id` 形如 `<uuid4hex>_<净化名>`——**目录部分完全由服务端构造，用户输入永不参与目录拼接**。
+  - 三重防线：① 原名经 `Path(name).name` 剥目录 + 扩展名白名单；② 落盘名目录段由 uuid 生成；③ 写前复检 `resolve_secure_output_path(..., allow_outside=False)`。
+- **内置 Web 前端单页（`api/static/index.html`）**：零前端依赖（内联 JS/CSS），`GET /` 直接访问。支持「上传文件 / 输入 SMILES → 选操作（描述符 / PSI4 反应能 / 反应动画）→ 提交 → WebSocket 实时进度 → 结果展示」，含取消按钮与后端能力探测徽章。
+  - 挂载方式：`@app.get("/")` 返回 `FileResponse` + `/static` 挂**子路径**；**刻意不用** `StaticFiles(html=True)` 挂根，避免抢占 `/docs`、`/redoc`、`/openapi.json` 的路由。
+- **`DescriptorRequest` 新增 `file_id`** 字段（与 `smiles` / `path` 三选一）；新增 `UploadResponse` 响应模型。
+- **`pyproject.toml` / `Dockerfile`**：`[api]` extra 追加 `python-multipart>=0.0.9`。
+
+### 安全修复（Security / Fixed）
+
+- **`POST /descriptors` 的路径遍历缺口**：原先仅用 `os.path.isfile()` 判断存在性，无 `..` / 符号链接 / 越界防护；现改走 `_resolve_ref()` 的路径白名单校验。
+- **`POST /reaction/animate` 完全缺失的输入校验**：`reactants` / `products` 原先直接透传给领域层；现逐个经 `_resolve_ref()` 解析为上传根内的真实文件，空列表返回 400、越界 / 符号链接返回 **403**、不存在返回 **404**。
+- **裸 `path` 收紧为「上传根内」**（这正是不再允许任意服务端绝对路径的本意）。确需访问服务端其他路径时，显式设 `MOLMANAGER_ALLOW_SERVER_PATH=1` 作为逃生开关（默认关闭）。
+- **multipart 依赖惰性探测**：`_require_multipart()` 用 `importlib.util.find_spec` 惰性检查，**不顶层 import** —— 缺依赖时 `/files/upload` 返回 503 + 安装指引，其余端点（含 `/docs`）照常可用。
+
+### 修复（Fixed）
+
+- **`render_png_2d` 的输出根退回 CWD 导致渲染静默失败**：`_secure_output_path` 在未显式传 `base_dir` 时会退回**当前工作目录**作为允许根，于是「CWD = 仓库根、输出 = /tmp/xxx」这类完全正常的组合被判为「越界」，表现为渲染失败、上层只报「未能生成任何有效帧，请确认 OpenBabel 可用」，**极难定位**。现 `render_png_2d` 新增 `base_dir` 形参（默认取输出文件所在目录），并在 `reaction_animation` 渲染帧时显式传入 `raw_dir`。
+- **Web 端反应动画的输出路径被误判越界**：`ReactionService._do_generate` 现在显式传 `base_dir=输出目录`。领域层未传 `base_dir` 时会用「输入文件所在目录」当允许根（桌面语义：输出跟着输入走），但 Web 端输入在上传临时根、输出在任务临时目录，两者不同 → 会被白名单判为越界而失败。`chem.reaction_animation.generate_reaction_multispecies` 同步新增 `base_dir` 形参以支持该透传。
+
+### 测试（Tests）
+
+- **`tests/test_path_utils_security.py`（新，42 例）**：`sanitize_name` / `save_upload` / `resolve_file_id` 的纯逻辑验收（目录穿越、绝对路径、分隔符、symlink 穿透、越界、超大、扩展名白名单），并**固化「相对路径按 CWD 解析」这一实测行为**作为护栏；含 `render_png_2d` 输出目录 ≠ CWD 的回归用例。
+- **`tests/test_api_stage3.py`（新，21 例）**：上传端点（成功 / 净化穿越名 / 扩展名拒绝 / 413 / 503）、`_resolve_ref` 的 403/404/400 错误映射、`/descriptors` 的 `file_id` 通路与参数冲突、`/reaction/animate` 的校验、逃生开关、**上传 → 动画 → WebSocket 端到端**、`/` 与 `/docs` 不回归。
+- **`tests/test_api_jobs.py`**：`test_reaction_animate_routes_through_service` 改为先把文件放入上传根再引用（原用例传裸 `"a.xyz"`，按新的收紧策略应被拒）。
+
 ## [1.5.0] - 2026-09-13
 
 Web 迁移阶段2：**Service 层全覆盖 + api→services 统一**。剩余 5 个对话框（15 个后台调用点）全部收口到 `services/`，`api/` 不再直连 `chem.*`，重复实现彻底消除。功能行为零变更，全量测试 322 → 343（新增 21 个验收用例）。

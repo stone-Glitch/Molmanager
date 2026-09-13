@@ -62,9 +62,34 @@ class InChIKeyResponse(BaseModel):
     results: list[InChIKeyItem] = Field(default_factory=list)
 
 
+# ---------------------------------------------------------------- 文件上传
+class UploadResponse(BaseModel):
+    """``POST /files/upload`` 的响应：返回服务端受控的 ``file_id``。
+
+    ``file_id`` 可直接用于 ``/descriptors``（``file_id`` 字段）与
+    ``/reaction/animate``（``reactants`` / ``products`` 列表项）。
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "file_id": "9f1c…_benzene.xyz",
+                "name": "benzene.xyz",
+                "size": 512,
+            },
+        }
+    )
+
+    success: bool = True
+    file_id: str = Field(description="服务端文件句柄，目录部分由服务端生成")
+    name: str = Field(description="净化后的原始文件名")
+    size: int = Field(default=0, description="字节数")
+
+
 # ---------------------------------------------------------------- 描述符
 class DescriptorRequest(BaseModel):
-    """分子描述符计算：给 SMILES（写临时文件）或给本地文件路径。"""
+    """分子描述符计算：给 SMILES、上传 ``file_id``、或本地文件路径，三者选一。"""
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -72,10 +97,11 @@ class DescriptorRequest(BaseModel):
         }
     )
 
-    smiles: str | None = Field(default=None, description="SMILES 字符串（与 path 二选一）")
-    path: str | None = Field(default=None, description="本地分子文件路径（mol/sdf/pdb/xyz…）")
+    smiles: str | None = Field(default=None, description="SMILES 字符串（与 file_id / path 三选一）")
+    file_id: str | None = Field(default=None, description="上传接口返回的 file_id（与 smiles / path 三选一）")
+    path: str | None = Field(default=None, description="分子文件路径（需在上传根内，或显式开启服务端路径访问）")
 
-    @field_validator("smiles", "path", mode="before")
+    @field_validator("smiles", "file_id", "path", mode="before")
     @classmethod
     def _strip(cls, v: object) -> object:
         return v.strip() if isinstance(v, str) else v
@@ -262,23 +288,23 @@ class Psi4ComputeRequest(BaseModel):
 class ReactionAnimateRequest(BaseModel):
     """反应动画 / IQmol 轨迹生成请求。
 
-    阶段1 直接接收**服务端可访问的文件路径**（XYZ）。Phase3 将改为上传 +
-    ``utils/path_utils`` 校验（路径遍历在 Web 下风险更大）。
+    阶段3 起 ``reactants`` / ``products`` 列表项为 ``file_id``（``POST /files/upload``
+    返回）或上传根内的文件路径，服务端会逐个做路径安全校验后再交给领域层。
     """
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "reactants": ["/data/reactant.xyz"],
-                "products": ["/data/product.xyz"],
+                "reactants": ["9f1c…_reactant.xyz"],
+                "products": ["9f1c…_product.xyz"],
                 "fmt": "gif",
                 "steps": 30,
             },
         }
     )
 
-    reactants: list[str] = Field(default_factory=list, description="反应物 XYZ 文件路径")
-    products: list[str] = Field(default_factory=list, description="产物 XYZ 文件路径")
+    reactants: list[str] = Field(default_factory=list, description="反应物 file_id / 文件路径（XYZ）")
+    products: list[str] = Field(default_factory=list, description="产物 file_id / 文件路径（XYZ）")
     fmt: str = Field(default="gif", description="可视化格式：gif / mp4 / none")
     steps: int = Field(default=30, description="插值步数", ge=1, le=500)
     mode: str = Field(default="bounce", description="插值模式：bounce / linear …")

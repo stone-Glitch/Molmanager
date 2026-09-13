@@ -137,9 +137,7 @@ def invert_enantiomer(input_path: str, output_path: str) -> dict[str, Any]:
             try:
                 cfg = ts.GetConfig()
                 cfg.winding = (
-                    ob.OBStereo.AntiClockwise
-                    if cfg.winding == ob.OBStereo.Clockwise
-                    else ob.OBStereo.Clockwise
+                    ob.OBStereo.AntiClockwise if cfg.winding == ob.OBStereo.Clockwise else ob.OBStereo.Clockwise
                 )
                 ts.SetConfig(cfg)
                 n_flipped += 1
@@ -357,11 +355,30 @@ def align_molecules(ref_path: str, mobile_path: str, output_path: str) -> dict[s
         return {"success": False, "message": str(e), "output_path": None}
 
 
-def render_png_2d(input_path: str, output_path: str, width: int = 800, height: int = 600) -> dict[str, Any]:
-    """渲染 2D PNG 图：优先 pybel → OBDepict，最后回退 obabel CLI。"""
+def render_png_2d(
+    input_path: str,
+    output_path: str,
+    width: int = 800,
+    height: int = 600,
+    *,
+    base_dir: str | os.PathLike[str] | None = None,
+) -> dict[str, Any]:
+    """渲染 2D PNG 图：优先 pybel → OBDepict，最后回退 obabel CLI。
+
+    ``base_dir`` 是输出路径的允许根目录（路径安全白名单）。**调用方务必显式传入
+    ``os.path.dirname(output_path)``**：不传时 ``_secure_output_path`` 会退回以
+    **当前工作目录（CWD）** 为基准，于是「输出在 /tmp、CWD 在仓库根」这类完全正常的
+    组合会被判为「越界」而静默失败（表现为「未能生成任何有效帧」——极难定位）。
+    """
     # 【审计 1.1】输出路径安全解析
     try:
-        output_path = str(_secure_output_path(output_path, create_parent=True))
+        output_path = str(
+            _secure_output_path(
+                output_path,
+                base_dir=base_dir if base_dir is not None else os.path.dirname(os.path.abspath(output_path)),
+                create_parent=True,
+            )
+        )
     except ValueError as e:
         return {"success": False, "message": f"输出路径非法: {e}", "output_path": None}
 

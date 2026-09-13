@@ -12,6 +12,7 @@
 设计约束：本模块**不 import FastAPI**，只依赖 ``api.jobs`` 与 ``services.base``，
 便于脱离 Web 直接单测。
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable, Optional
@@ -66,7 +67,12 @@ class WebDispatcher(Scheduler):
 
         def _runner(*, emit: Callable[[dict], Any], should_cancel: Callable[[], bool]) -> Any:
             def _progress(percent: float, message: str = "") -> None:
-                emit({"type": "stage", "fraction": float(percent), "message": str(message)})
+                # ⚠️ Service 层注入的 progress_callback 沿用桌面约定，传的是 **0~100 百分比**；
+                # 而统一事件契约（models.ProgressEvent / 前端进度条）要求 fraction 是 **0~1 比例**。
+                # 这里是 Web 侧唯一的归一化收口点——不归一化会让 JobManager.progress 和前端
+                # 进度条出现 500%/1350% 这类溢出值。
+                pct = max(0.0, min(100.0, float(percent)))
+                emit({"type": "stage", "fraction": pct / 100.0, "message": str(message)})
 
             def _log(message: str, level: str = "info") -> None:
                 emit({"type": "log", "message": str(message), "level": level})

@@ -51,7 +51,7 @@ COPY . .
 # --no-deps：运行时依赖已由 conda 提供，避免 pip 覆盖 conda 的 C++ 扩展
 RUN /opt/conda/envs/${CONDA_ENV}/bin/python -m pip install --no-cache-dir --no-deps -e . \
     && /opt/conda/envs/${CONDA_ENV}/bin/python -m pip install --no-cache-dir \
-        "fastapi>=0.110" "uvicorn[standard]>=0.27"
+        "fastapi>=0.110" "uvicorn[standard]>=0.27" "python-multipart>=0.0.9"
 
 # 冒烟：确保依赖装全（缺 openbabel / pydantic 会在这里失败而不是等到运行时）
 RUN conda run -n ${CONDA_ENV} python -c "\

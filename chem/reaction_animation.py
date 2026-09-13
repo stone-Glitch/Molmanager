@@ -797,6 +797,7 @@ def generate_reaction_multispecies(
     trajectory_format: str = "xyz",
     energy_csv: str | os.PathLike[str] | None = None,
     translate_spacing: float = 6.0,
+    base_dir: str | os.PathLike[str] | None = None,
     progress_callback: Callable[[float, str], None] | None = None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {"success": False, "output": None, "n_frames": 0, "energies_written": False, "error": None}
@@ -813,9 +814,13 @@ def generate_reaction_multispecies(
         if progress_callback:
             progress_callback(14, "自动对齐产物原子顺序（Kabsch 预对齐 + 匈牙利最小总距离匹配）...")
         atoms_P_sorted, coords_P_sorted = _auto_reorder_atoms(atoms_R, coords_R, atoms_P, coords_P)
-        # 用用户原始输入目录作为输出 base_dir（而非内部合并临时目录），
-        # 避免输出路径相对临时目录被安全校验误判为「越界」。
-        _out_base_dir = _default_base_dir_from_input(*reactant_files, *product_files, fallback=energy_csv)
+        # 用调用方显式传入的 base_dir 优先；否则用用户原始输入目录作为输出 base_dir
+        # （而非内部合并临时目录），避免输出路径相对临时目录被安全校验误判为「越界」。
+        # Web 端输入在上传临时根、输出在任务目录，必须显式传 base_dir 才能通过校验。
+        if base_dir is not None:
+            _out_base_dir = Path(base_dir)
+        else:
+            _out_base_dir = _default_base_dir_from_input(*reactant_files, *product_files, fallback=energy_csv)
         with tempfile.TemporaryDirectory(prefix="ms_xyz_") as td:
             td_path = Path(td)
             r_combined = td_path / "R_combined.xyz"
@@ -1098,7 +1103,14 @@ def generate_reaction_animation(
             if _cache_enabled and _cached_raw is not None:
                 raw_fp.write_bytes(_cached_raw)
             else:
-                r = ob_utils.render_png_2d(str(xyz_fp), str(raw_fp), width=width, height=height)
+                r = ob_utils.render_png_2d(
+                    str(xyz_fp),
+                    str(raw_fp),
+                    width=width,
+                    height=height,
+                    # 显式给输出根：否则会退回 CWD 判定，输出目录与 CWD 不同时静默失败。
+                    base_dir=raw_dir,
+                )
                 if not (r and r.get("success") and raw_fp.exists()):
                     continue
                 _raw_bytes = raw_fp.read_bytes()

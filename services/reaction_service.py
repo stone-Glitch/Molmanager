@@ -4,6 +4,7 @@
 ``task_manager``。UI 层（reaction_dialog）负责收集参数、提供 ``on_done`` 回调
 做结果渲染，不再直接碰 ``task_manager`` 或 ``run_task``。
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,9 +18,7 @@ def _do_preview(reactants, products, spacing, preview_path) -> dict:
     import chem.reaction_animation as ra
 
     if len(reactants) == 1 and len(products) == 1:
-        return ra.preview_first_frame(
-            reactants[0], products[0], preview_path, width=800, height=600
-        )
+        return ra.preview_first_frame(reactants[0], products[0], preview_path, width=800, height=600)
 
     import tempfile
 
@@ -38,9 +37,7 @@ def _do_preview(reactants, products, spacing, preview_path) -> dict:
         px = tdp / "P.xyz"
         rx.write_text(_write_xyz(nR, aR, cR), encoding="utf-8")
         px.write_text(_write_xyz(nP, aP2, cP2), encoding="utf-8")
-        return ra.preview_first_frame(
-            str(rx), str(px), preview_path, width=800, height=600
-        )
+        return ra.preview_first_frame(str(rx), str(px), preview_path, width=800, height=600)
 
 
 def _do_generate(
@@ -73,6 +70,11 @@ def _do_generate(
     if fmt != "none" and out:
         if progress_callback:
             progress_callback(0, "开始生成可视化动画")
+        # ⚠️ 必须显式传 base_dir=输出文件所在目录。
+        # 领域层未传 base_dir 时会用「输入文件所在目录」当允许根（桌面端语义：输出跟着输入走）。
+        # 但 Web 端调用的输入文件在上传临时根、输出在任务临时目录，两者不同 → 会被
+        # 路径白名单判为「越界」而失败（阶段3 实测回归）。显式传输出目录即与桌面语义等价。
+        _out_base = Path(out).parent if out else None
         if len(reactants) == 1 and len(products) == 1:
             r = ra.generate_reaction_animation(
                 reactants[0],
@@ -85,6 +87,7 @@ def _do_generate(
                 resolution=resolution,
                 ffmpeg_path=ffmpeg,
                 fps=fps,
+                base_dir=_out_base,
                 progress_callback=progress_callback,
             )
         else:
@@ -114,6 +117,7 @@ def _do_generate(
                         resolution=resolution,
                         ffmpeg_path=ffmpeg,
                         fps=fps,
+                        base_dir=_out_base,
                         progress_callback=progress_callback,
                     )
         viz_ok = bool(r.get("success"))
@@ -128,6 +132,8 @@ def _do_generate(
     if traj:
         if progress_callback:
             progress_callback(0, "开始生成 IQmol 轨迹")
+        # 同可视化分支：显式给 base_dir，避免「输入在上传临时根、输出在任务目录」被误判越界。
+        _traj_base = Path(traj).parent
         if len(reactants) == 1 and len(products) == 1:
             rr = ra.generate_xyz_trajectory(
                 reactants[0],
@@ -137,6 +143,7 @@ def _do_generate(
                 mode=mode,
                 smooth=smooth,
                 trajectory_format=traj_fmt,
+                base_dir=_traj_base,
                 progress_callback=progress_callback,
             )
         else:
@@ -149,6 +156,7 @@ def _do_generate(
                 smooth=smooth,
                 trajectory_format=traj_fmt,
                 translate_spacing=spacing,
+                base_dir=_traj_base,
                 progress_callback=progress_callback,
             )
         traj_ok = bool(rr.get("success"))
@@ -207,11 +215,19 @@ class ReactionService(ServiceBase):
     ):
         def _work(*, emit=None, should_cancel=None, progress_callback=None, log=None):  # noqa: ARG001
             def _pc(frac: float, msg: str = "") -> None:
-                # 优先调用方注入的 progress_callback；否则走统一 emit 事件。
+                # ⚠️ 领域层（chem.reaction_animation）的 progress_callback 传的是 **0~100 百分比**，
+                # 而统一事件契约里 fraction 是 **0~1 比例**（见 services/base.py 与 api/models.py）。
+                # 桌面端用百分比画进度条，故这里需归一化后再发事件。
+                #
+                # 注意：**只能走一条通路**。调度器注入的 ``progress_callback``（Web 端为
+                # WebDispatcher._progress）本身就会 emit 一个 stage 事件；若这里再调 ``emit``，
+                # 同一个进度会发出两条（一条原始百分比、一条归一化比例），前端就会看到 500%。
+                frac_pct = max(0.0, min(100.0, float(frac)))
                 if progress_callback is not None:
-                    progress_callback(frac, msg)
-                if emit is not None:
-                    emit({"type": "stage", "message": str(msg), "fraction": float(frac)})
+                    # 桌面路径：调度器负责把百分比转成统一 stage 事件。
+                    progress_callback(frac_pct, msg)
+                elif emit is not None:
+                    emit({"type": "stage", "message": str(msg), "fraction": frac_pct / 100.0})
 
             return _do_generate(
                 reactants,
